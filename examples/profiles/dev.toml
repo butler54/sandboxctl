@@ -1,0 +1,14 @@
+# General development sandbox profile
+# Usage: sandboxctl create --profile dev
+
+[sandbox]
+# default_repo = "my-project"
+
+[workspace]
+theme = "Default Dark Modern"
+zoom = -1
+
+[repos]
+github = [
+    # "owner/repo-name",
+]

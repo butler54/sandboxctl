@@ -1,0 +1,56 @@
+[project]
+name = "sandboxctl"
+dynamic = ["version"]
+description = "OpenShell sandbox management CLI"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+authors = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "typer>=0.15",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+sandboxctl = "sandboxctl.cli:app"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11",
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "pre-commit>=4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/sandboxctl/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sandboxctl"]
+
+[tool.ruff]
+target-version = "py312"
+src = ["src"]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "ANN", "B", "C4"]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sandboxctl"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=sandboxctl --cov-report=term-missing"

@@ -1,0 +1,84 @@
+"""Tests for configuration module."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from sandboxctl.config import load_config
+
+
+def test_load_config_defaults(tmp_path: Path) -> None:
+    """Config loads with sensible defaults when no file exists."""
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.config_dir == tmp_path
+    assert cfg.profiles_dir == tmp_path / "profiles"
+    assert cfg.default_theme == "dark"
+    assert cfg.default_zoom == -1
+    assert cfg.git_user_name == ""
+    assert cfg.git_user_email == ""
+
+
+def test_load_config_from_file(tmp_path: Path) -> None:
+    """Config reads values from config.toml."""
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        '[identity]\nuser_name = "Test User"\nuser_email = "test@example.com"\n'
+        '[defaults]\nmodel = "claude-opus-4-6"\ntheme = "light"\nzoom = 0\n'
+    )
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.git_user_name == "Test User"
+    assert cfg.git_user_email == "test@example.com"
+    assert cfg.default_model == "claude-opus-4-6"
+    assert cfg.default_theme == "light"
+    assert cfg.default_zoom == 0
+
+
+def test_load_config_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Environment variables override file values."""
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[identity]\nuser_name = "File User"\n')
+    monkeypatch.setenv("SANDBOXCTL_GIT_USER_NAME", "Env User")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.git_user_name == "Env User"
+
+
+def test_xdg_config_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Respects XDG_CONFIG_HOME environment variable."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfg = load_config()
+    assert cfg.config_dir == tmp_path / "sandboxctl"
+
+
+def test_ensure_config_dir(tmp_path: Path) -> None:
+    """Creates config and profiles directories."""
+    from sandboxctl.config import ensure_config_dir
+
+    cfg = load_config(config_dir=tmp_path / "new")
+    ensure_config_dir(cfg)
+    assert cfg.config_dir.is_dir()
+    assert cfg.profiles_dir.is_dir()
+
+
+def test_config_is_frozen(tmp_path: Path) -> None:
+    """Config is immutable after creation."""
+    cfg = load_config(config_dir=tmp_path)
+    with pytest.raises(AttributeError):
+        cfg.default_model = "changed"  # type: ignore[misc]
+
+
+def test_vertex_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ANTHROPIC_VERTEX_PROJECT_ID env var sets vertex_project_id."""
+    monkeypatch.setenv("ANTHROPIC_VERTEX_PROJECT_ID", "my-project")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.vertex_project_id == "my-project"
+
+
+def test_path_expansion_in_config(tmp_path: Path) -> None:
+    """Tilde paths in config are expanded."""
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[paths]\nssh_key = "~/.ssh/my_key"\n')
+    cfg = load_config(config_dir=tmp_path)
+    assert str(cfg.ssh_key).startswith(str(Path.home()))
+    assert str(cfg.ssh_key).endswith(".ssh/my_key")

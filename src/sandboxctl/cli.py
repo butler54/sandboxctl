@@ -64,3 +64,23 @@ def config_path() -> None:
     """Print config file path."""
     cfg = load_config()
     typer.echo(cfg.config_dir / "config.toml")
+
+
+@app.command()
+def doctor(
+    name: str = typer.Argument(help="Sandbox name to diagnose."),
+    no_recover: bool = typer.Option(False, "--no-recover", help="Skip auto-recovery, diagnose only."),
+) -> None:
+    """Diagnose and recover sandbox issues."""
+    from sandboxctl.health import diagnose
+
+    report = diagnose(name, auto_recover=not no_recover)
+    for detail in report.details:
+        typer.echo(f"  {detail}")
+    if report.healthy:
+        typer.echo(f"\n[bold green]Sandbox '{name}' is healthy.[/bold green]")
+    else:
+        typer.echo(f"\n[bold red]Sandbox '{name}' is unhealthy.[/bold red]")
+        typer.echo(f"  Recovery action: {report.recovery_action}")
+        if "needs_recreate" in report.recovery_action:
+            typer.echo("  Run 'sandboxctl restart' to recreate (will lose unsaved work).")

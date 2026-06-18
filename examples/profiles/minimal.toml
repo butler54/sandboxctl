@@ -1,0 +1,8 @@
+# Minimal sandbox profile — no repos, no extras
+# Usage: sandboxctl create --profile minimal
+
+[sandbox]
+
+[workspace]
+
+[repos]

@@ -1,0 +1,16 @@
+# AI-assisted development sandbox profile
+# Includes Claude Code with Vertex AI provider
+# Usage: sandboxctl create --profile ai-dev
+
+[sandbox]
+# default_repo = "my-ai-project"
+# model = "claude-sonnet-4-20250514"
+
+[workspace]
+theme = "Default Dark Modern"
+zoom = -1
+
+[repos]
+github = [
+    # "owner/ai-project",
+]

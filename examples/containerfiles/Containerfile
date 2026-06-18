@@ -1,0 +1,26 @@
+# Base sandbox Containerfile
+# Customizable per-profile via [sandbox] containerfile field
+#
+# Build args (set by sandboxctl):
+#   GIT_USER_NAME — git commit identity
+#   GIT_USER_EMAIL — git commit identity
+#   DEFAULT_MODEL — Claude model
+
+FROM ghcr.io/nvidia/openshell-community/sandboxes/base:latest
+
+ARG GIT_USER_NAME=""
+ARG GIT_USER_EMAIL=""
+ARG DEFAULT_MODEL="claude-sonnet-4-20250514"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git config --system commit.gpgsign true && \
+    git config --system gpg.format ssh && \
+    git config --system user.signingkey /sandbox/.ssh/id_ed25519 && \
+    git config --system user.name "${GIT_USER_NAME}" && \
+    git config --system user.email "${GIT_USER_EMAIL}"
+
+ENV CLAUDE_CODE_USE_VERTEX=1
+ENV CLOUD_ML_REGION=global

@@ -1,0 +1,37 @@
+# Default sandbox network policy
+# Allows access to common development services
+#
+# Customize per-profile via [sandbox] policy field
+
+network:
+  outbound:
+    allow:
+      # Git hosting
+      - github.com
+      - api.github.com
+      - gitlab.com
+      # Package registries
+      - pypi.org
+      - files.pythonhosted.org
+      - registry.npmjs.org
+      - proxy.golang.org
+      # Container registries
+      - ghcr.io
+      - registry.access.redhat.com
+      # Claude / Vertex AI
+      - global-aiplatform.googleapis.com
+      - us-central1-aiplatform.googleapis.com
+      - us-east1-aiplatform.googleapis.com
+      - oauth2.googleapis.com
+      - accounts.google.com
+      - statsig.anthropic.com
+      - sentry.io
+
+filesystem:
+  readonly:
+    - /usr
+    - /bin
+    - /sbin
+  writable:
+    - /sandbox
+    - /tmp

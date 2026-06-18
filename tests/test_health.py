@@ -11,7 +11,10 @@ from sandboxctl.health import (
     HealthReport,
     check_container_state,
     check_gateway_state,
+    check_ssh_connectivity,
     diagnose,
+    recover_container,
+    recover_gateway,
 )
 
 
@@ -121,3 +124,62 @@ class TestDiagnose:
             report = diagnose("test", auto_recover=False)
             assert report.recovery_action == "gateway_not_running"
             assert not report.healthy
+
+    def test_gateway_recovery_failure(self) -> None:
+        with patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.STOPPED), patch(
+            "sandboxctl.health.recover_gateway", return_value=False
+        ):
+            report = diagnose("test", auto_recover=True)
+            assert report.recovery_action == "gateway_recovery_failed"
+            assert not report.healthy
+
+    def test_container_recovery_failure(self) -> None:
+        with patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING), patch(
+            "sandboxctl.health.check_container_state", return_value=ContainerState.STOPPED
+        ), patch("sandboxctl.health.recover_container", return_value=False):
+            report = diagnose("test", auto_recover=True)
+            assert report.recovery_action == "container_recovery_failed"
+
+
+class TestSshConnectivity:
+    def test_reachable(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=0, stdout="ok")
+            assert check_ssh_connectivity("test") is True
+
+    def test_unreachable(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=1, stdout="")
+            assert check_ssh_connectivity("test") is False
+
+    def test_timeout(self) -> None:
+        with patch("sandboxctl.health._run", side_effect=subprocess.TimeoutExpired("cmd", 5)):
+            assert check_ssh_connectivity("test") is False
+
+    def test_not_found(self) -> None:
+        with patch("sandboxctl.health._run", side_effect=FileNotFoundError):
+            assert check_ssh_connectivity("test") is False
+
+
+class TestRecoveryFunctions:
+    def test_recover_gateway_success(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=0)
+            assert recover_gateway() is True
+
+    def test_recover_gateway_failure(self) -> None:
+        with patch("sandboxctl.health._run", side_effect=FileNotFoundError):
+            assert recover_gateway() is False
+
+    def test_recover_gateway_timeout(self) -> None:
+        with patch("sandboxctl.health._run", side_effect=subprocess.TimeoutExpired("cmd", 60)):
+            assert recover_gateway() is False
+
+    def test_recover_container_success(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=0)
+            assert recover_container("test") is True
+
+    def test_recover_container_failure(self) -> None:
+        with patch("sandboxctl.health._run", side_effect=FileNotFoundError):
+            assert recover_container("test") is False

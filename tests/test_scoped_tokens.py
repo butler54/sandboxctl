@@ -142,3 +142,28 @@ class TestResolveTokenStrategy:
             tokens = resolve_token_strategy(repos)
             assert len(tokens) == 1
             assert tokens[0].provider == "github"
+
+    def test_empty_repos(self) -> None:
+        tokens = resolve_token_strategy({})
+        assert tokens == []
+
+
+class TestGitLabValidateProjects:
+    """Tests for GitLab project validation."""
+
+    def test_valid_projects(self) -> None:
+        mgr = GitLabTokenManager(server="https://gitlab.com", token="test")
+        with patch("urllib.request.urlopen") as mock_open:
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = b'{"id": 1}'
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_open.return_value = mock_resp
+            invalid = mgr.validate_projects(["group/project"])
+            assert invalid == []
+
+    def test_invalid_projects(self) -> None:
+        mgr = GitLabTokenManager(server="https://gitlab.com", token="test")
+        with patch("urllib.request.urlopen", side_effect=Exception("404")):
+            invalid = mgr.validate_projects(["group/nonexistent"])
+            assert invalid == ["group/nonexistent"]

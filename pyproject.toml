@@ -52,6 +52,20 @@ ignore = ["ANN401"]
 [tool.ruff.lint.isort]
 known-first-party = ["sandboxctl"]
 
+[tool.hatch.envs.test]
+dependencies = [
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+]
+
+[tool.hatch.envs.test.scripts]
+run = "pytest {args}"
+cov = "pytest --cov=sandboxctl --cov-report=term-missing {args}"
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.12", "3.13"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=sandboxctl --cov-report=term-missing"
+markers = ["integration: requires openshell CLI (may be skipped in CI)"]

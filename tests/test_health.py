@@ -86,35 +86,40 @@ class TestHealthReport:
 
 class TestDiagnose:
     def test_healthy_sandbox(self) -> None:
-        with patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING), patch(
-            "sandboxctl.health.check_container_state", return_value=ContainerState.RUNNING
-        ), patch("sandboxctl.health.check_ssh_connectivity", return_value=True):
+        with (
+            patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING),
+            patch("sandboxctl.health.check_container_state", return_value=ContainerState.RUNNING),
+            patch("sandboxctl.health.check_ssh_connectivity", return_value=True),
+        ):
             report = diagnose("test")
             assert report.healthy is True
             assert report.recovery_action == "none"
 
     def test_stopped_container_auto_recovers(self) -> None:
-        with patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING), patch(
-            "sandboxctl.health.check_container_state", return_value=ContainerState.STOPPED
-        ), patch("sandboxctl.health.recover_container", return_value=True), patch(
-            "sandboxctl.health.check_ssh_connectivity", return_value=True
+        with (
+            patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING),
+            patch("sandboxctl.health.check_container_state", return_value=ContainerState.STOPPED),
+            patch("sandboxctl.health.recover_container", return_value=True),
+            patch("sandboxctl.health.check_ssh_connectivity", return_value=True),
         ):
             report = diagnose("test", auto_recover=True)
             assert report.recovery_action == "container_restarted"
 
     def test_missing_container_needs_recreate(self) -> None:
-        with patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING), patch(
-            "sandboxctl.health.check_container_state", return_value=ContainerState.MISSING
+        with (
+            patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING),
+            patch("sandboxctl.health.check_container_state", return_value=ContainerState.MISSING),
         ):
             report = diagnose("test")
             assert report.recovery_action == "container_missing_needs_recreate"
             assert not report.healthy
 
     def test_gateway_down_auto_recovers(self) -> None:
-        with patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.STOPPED), patch(
-            "sandboxctl.health.recover_gateway", return_value=True
-        ), patch("sandboxctl.health.check_container_state", return_value=ContainerState.RUNNING), patch(
-            "sandboxctl.health.check_ssh_connectivity", return_value=True
+        with (
+            patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.STOPPED),
+            patch("sandboxctl.health.recover_gateway", return_value=True),
+            patch("sandboxctl.health.check_container_state", return_value=ContainerState.RUNNING),
+            patch("sandboxctl.health.check_ssh_connectivity", return_value=True),
         ):
             report = diagnose("test", auto_recover=True)
             assert report.recovery_action == "gateway_restarted"
@@ -126,17 +131,20 @@ class TestDiagnose:
             assert not report.healthy
 
     def test_gateway_recovery_failure(self) -> None:
-        with patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.STOPPED), patch(
-            "sandboxctl.health.recover_gateway", return_value=False
+        with (
+            patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.STOPPED),
+            patch("sandboxctl.health.recover_gateway", return_value=False),
         ):
             report = diagnose("test", auto_recover=True)
             assert report.recovery_action == "gateway_recovery_failed"
             assert not report.healthy
 
     def test_container_recovery_failure(self) -> None:
-        with patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING), patch(
-            "sandboxctl.health.check_container_state", return_value=ContainerState.STOPPED
-        ), patch("sandboxctl.health.recover_container", return_value=False):
+        with (
+            patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING),
+            patch("sandboxctl.health.check_container_state", return_value=ContainerState.STOPPED),
+            patch("sandboxctl.health.recover_container", return_value=False),
+        ):
             report = diagnose("test", auto_recover=True)
             assert report.recovery_action == "container_recovery_failed"
 

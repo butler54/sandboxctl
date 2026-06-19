@@ -1,0 +1,16 @@
+name: Lint PR title
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+    branches:
+      - main
+
+permissions: read-all
+
+jobs:
+  lint:
+    uses: butler54/sandboxctl-cicd/.github/workflows/commitlint.yml@main

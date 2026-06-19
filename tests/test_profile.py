@@ -13,9 +13,7 @@ from sandboxctl.profile import init_profile, list_profiles, load_profile
 def test_load_profile(tmp_path: Path) -> None:
     profiles_dir = tmp_path / "profiles"
     profiles_dir.mkdir()
-    (profiles_dir / "dev.toml").write_text(
-        '[sandbox]\ndefault_repo = "my-repo"\n\n[repos]\ngithub = ["owner/repo"]\n'
-    )
+    (profiles_dir / "dev.toml").write_text('[sandbox]\ndefault_repo = "my-repo"\n\n[repos]\ngithub = ["owner/repo"]\n')
     cfg = load_config(config_dir=tmp_path)
     profile = load_profile("dev", cfg)
     assert profile.name == "dev"

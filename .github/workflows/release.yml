@@ -4,7 +4,10 @@ on:
   push:
     branches: [main]
 
-permissions: {}
+permissions:
+  id-token: write
+  attestations: write
+  contents: write
 
 jobs:
   release:

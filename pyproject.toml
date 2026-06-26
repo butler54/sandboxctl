@@ -69,3 +69,18 @@ python = ["3.12", "3.13"]
 testpaths = ["tests"]
 addopts = "--cov=sandboxctl --cov-report=term-missing"
 markers = ["integration: requires openshell CLI (may be skipped in CI)"]
+
+[tool.semantic_release]
+version_variables = ["src/sandboxctl/__init__.py:__version__"]
+commit_message = "chore(release): {version}"
+build_command = "pip install build && python -m build"
+
+[tool.semantic_release.branches.main]
+match = "main"
+
+[tool.semantic_release.changelog]
+changelog_file = "CHANGELOG.md"
+
+[tool.semantic_release.remote]
+type = "github"
+token = { env = "GH_TOKEN" }

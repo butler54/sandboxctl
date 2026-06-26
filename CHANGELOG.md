@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.2 (2026-06-26)
+
+### Bug Fixes
+
+- Trigger release to verify PyPI trusted publisher
+  ([`9bbfec1`](https://github.com/butler54/sandboxctl/commit/9bbfec1156108998d2d2d721b41f089879a3d03e))
+
+
 ## v1.0.1 (2026-06-26)
 
 ### Bug Fixes

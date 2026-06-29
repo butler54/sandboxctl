@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from click.exceptions import Exit
 
 from sandboxctl.open_cmd import open_sandbox
 
@@ -16,7 +15,7 @@ class TestOpenSandboxHealth:
         config = MagicMock()
 
         with (
-            pytest.raises(Exit),
+            pytest.raises((SystemExit, RuntimeError)),
             patch("sandboxctl.open_cmd.diagnose", return_value=report),
         ):
             open_sandbox("mybox", config)

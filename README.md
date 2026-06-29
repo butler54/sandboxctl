@@ -1,6 +1,6 @@
 # sandboxctl
 
-OpenShell sandbox management CLI -- create, manage, and validate isolated development sandboxes.
+Safe, isolated sandboxes for using LLMs with minimal guardrails to maximize developer productivity.
 
 > **Experimental.** sandboxctl is under active development. Commands, configuration, and
 > behavior may change between releases.
@@ -85,8 +85,9 @@ default template:
 
 [providers]
 # provider = "anthropic"                  # "anthropic" (default) or "vertex"
-# vertex_project_id = ""
-# vertex_region = "global"
+# anthropic_api_key = ""                  # API key for direct Anthropic access
+# vertex_project_id = ""                  # Google Cloud project (vertex only)
+# vertex_region = "global"               # Vertex AI region (vertex only)
 
 [paths]
 # ssh_key = "~/.ssh/sandboxctl_ed25519"

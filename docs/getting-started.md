@@ -47,8 +47,9 @@ Run `sandboxctl config init` to create the default configuration file at
 
 [providers]
 # provider = "anthropic"                  # "anthropic" (default) or "vertex"
-# vertex_project_id = ""
-# vertex_region = "global"
+# anthropic_api_key = ""                  # API key for direct Anthropic access
+# vertex_project_id = ""                  # Google Cloud project (vertex only)
+# vertex_region = "global"               # Vertex AI region (vertex only)
 
 [paths]
 # ssh_key = "~/.ssh/sandboxctl_ed25519"
@@ -67,8 +68,8 @@ Run `sandboxctl config init` to create the default configuration file at
 - **`[defaults]`** -- Default Claude model, VS Code theme, and zoom level
   applied to new sandboxes unless overridden by a profile.
 
-- **`[providers]`** -- Claude API provider selection (`anthropic` or `vertex`) and Vertex AI project ID and region for
-  Claude API access.
+- **`[providers]`** -- Claude API provider selection. Use `anthropic` (default) for
+  direct API access with an API key, or `vertex` for Google Cloud Vertex AI.
 
 - **`[paths]`** -- Path to an SSH key for repository cloning and an optional
   CA certificate bundle for corporate environments.
@@ -133,7 +134,8 @@ github = [
 
 - **`[repos]`** -- Git repositories to clone into the sandbox. List GitHub
   repos under the `github` key. For GitLab or other hosts, use the hostname
-  as the key (e.g., `"gitlab.com"`).
+  as the key (e.g., `"gitlab.com"` or `"gitlab.corp.com"` for privately
+  hosted instances).
 
 - **`[ssh]`** -- SSH proxy host configuration for accessing remote machines
   from within the sandbox.

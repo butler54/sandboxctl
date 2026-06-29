@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from click.exceptions import Exit as ClickExit
 from typer.testing import CliRunner
 
 from sandboxctl.bundled_profiles import PROFILES
@@ -77,7 +76,7 @@ class TestCheckPrerequisites:
             patch("sandboxctl.setup_cmd.shutil.which", side_effect=which_side_effect),
             patch("sandboxctl.setup_cmd.subprocess.run"),
             patch("sandboxctl.setup_cmd.gateway_status", return_value={"status": "Connected"}),
-            pytest.raises((SystemExit, ClickExit)),
+            pytest.raises((SystemExit, RuntimeError)),
         ):
             _check_prerequisites()
 
@@ -94,7 +93,7 @@ class TestCheckPrerequisites:
                 return_value=MagicMock(stdout="openshell 1.0", stderr=""),
             ),
             patch("sandboxctl.setup_cmd.gateway_status", return_value={"status": "Connected"}),
-            pytest.raises((SystemExit, ClickExit)),
+            pytest.raises((SystemExit, RuntimeError)),
         ):
             _check_prerequisites()
 

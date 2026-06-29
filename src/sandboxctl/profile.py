@@ -46,10 +46,15 @@ _SKELETON = """\
 # Usage: sandboxctl create --profile {name}
 
 [sandbox]
-# containerfile = "Containerfile"       # Custom Containerfile (optional)
-# policy = "policy.yaml"               # Custom policy (optional)
-# default_repo = ""                    # Repo to cd into for Claude Code
-# model = ""                           # Claude model override
+# Build from a local Containerfile (default)
+# containerfile = "Containerfile"
+
+# OR use a pre-built container image (mutually exclusive with containerfile)
+# image = "ghcr.io/org/sandbox:latest"
+
+# policy = "policy.yaml"
+# default_repo = ""
+# model = ""
 
 [workspace]
 # theme = "Cobalt2"

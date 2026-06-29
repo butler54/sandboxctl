@@ -218,6 +218,45 @@ def upgrade() -> None:
 
 
 @app.command()
+def setup() -> None:
+    """First-time setup: prerequisites, SSH key, credentials, providers."""
+    from sandboxctl.setup_cmd import run_setup
+
+    cfg = load_config()
+    run_setup(cfg)
+
+
+@app.command()
+def restart(
+    name: str = typer.Argument(help="Sandbox name (must match a profile)."),
+    no_editor: bool = typer.Option(False, "--no-editor", help="Don't open editor after recreation."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+) -> None:
+    """Delete and recreate a sandbox from its profile."""
+    from sandboxctl import openshell as osh
+    from sandboxctl.create import create_sandbox
+    from sandboxctl.profile import list_profiles, load_profile
+
+    cfg = load_config()
+    try:
+        prof = load_profile(name, cfg)
+    except FileNotFoundError:
+        typer.echo(f"Profile not found: {name}")
+        typer.echo(f"Available: {', '.join(list_profiles(cfg)) or 'none'}")
+        raise typer.Exit(1) from None
+
+    if not yes:
+        typer.confirm(
+            f"This will destroy sandbox '{name}' and all uncommitted work. Continue?",
+            abort=True,
+        )
+
+    typer.echo(f"Restarting sandbox: {name}")
+    osh.sandbox_delete(name)
+    create_sandbox(prof, cfg, sandbox_name=name, open_editor=not no_editor)
+
+
+@app.command()
 def doctor(
     name: str = typer.Argument(help="Sandbox name to diagnose."),
     no_recover: bool = typer.Option(False, "--no-recover", help="Skip auto-recovery, diagnose only."),

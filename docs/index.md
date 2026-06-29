@@ -8,7 +8,7 @@ A command-line tool for managing isolated development sandboxes powered by [NVID
 
 ## Overview
 
-sandboxctl wraps the OpenShell CLI to provide profile-based configuration, credential management, and lifecycle commands for GPU-accelerated development containers.
+sandboxctl provides safe, isolated development environments for using LLMs with minimal guardrails to maximize productivity. It wraps the OpenShell CLI with profile-based configuration, credential management, and lifecycle commands.
 
 ## Documentation
 

@@ -84,6 +84,7 @@ default template:
 # zoom = -1
 
 [providers]
+# provider = "anthropic"                  # "anthropic" (default) or "vertex"
 # vertex_project_id = ""
 # vertex_region = "global"
 

@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.2.0 (2026-06-29)
+
+### Bug Fixes
+
+- Remove click import from test_setup — not a direct dependency
+  ([`b82473f`](https://github.com/butler54/sandboxctl/commit/b82473fec2f7c12eb6181d8ace330a54ab1ae1ce))
+
+### Features
+
+- Add setup and restart commands
+  ([`43dd535`](https://github.com/butler54/sandboxctl/commit/43dd535d8292df26c20afa219599f2321163d29c))
+
+
 ## v1.1.0 (2026-06-29)
 
 ### Bug Fixes

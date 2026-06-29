@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from sandboxctl.models import ClaudeSettings, ClaudeState, Profile, SandboxConfig, SshHostConfig
 
 
@@ -50,3 +53,18 @@ def test_ssh_host_config() -> None:
     ssh = SshHostConfig(user="admin", proxy_host="gateway:3128")
     assert ssh.user == "admin"
     assert ssh.proxy_host == "gateway:3128"
+
+
+class TestSandboxConfigImage:
+    def test_image_field_default_empty(self) -> None:
+        sc = SandboxConfig()
+        assert sc.image == ""
+
+    def test_image_and_default_containerfile_ok(self) -> None:
+        sc = SandboxConfig(image="ghcr.io/org/sandbox:latest")
+        assert sc.image == "ghcr.io/org/sandbox:latest"
+        assert sc.containerfile == "Containerfile"
+
+    def test_image_and_custom_containerfile_fails(self) -> None:
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            SandboxConfig(image="ghcr.io/org/sandbox:latest", containerfile="Custom.containerfile")

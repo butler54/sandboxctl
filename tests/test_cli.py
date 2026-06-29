@@ -205,3 +205,33 @@ class TestDoctorCommand:
             result = runner.invoke(app, ["doctor", "mybox", "--no-recover"])
             assert result.exit_code == 0
             mock_diag.assert_called_once_with("mybox", auto_recover=False)
+
+
+class TestCreateCommand:
+    def test_create_help(self) -> None:
+        result = runner.invoke(app, ["create", "--help"])
+        assert result.exit_code == 0
+        assert "--profile" in result.output
+        assert "--ephemeral" in result.output
+        assert "--no-editor" in result.output
+
+    def test_create_missing_profile(self, tmp_path: Path) -> None:
+        cfg = MagicMock(config_dir=tmp_path, profiles_dir=tmp_path / "profiles")
+        with (
+            patch("sandboxctl.cli.load_config", return_value=cfg),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError("not found")),
+            patch("sandboxctl.profile.list_profiles", return_value=[]),
+        ):
+            result = runner.invoke(app, ["create", "--profile", "nonexistent"])
+            assert result.exit_code == 1
+            assert "not found" in result.output.lower()
+
+
+class TestOpenCommand:
+    def test_open_help(self) -> None:
+        result = runner.invoke(app, ["open", "--help"])
+        assert result.exit_code == 0
+        assert "--shell" in result.output
+        assert "--code" in result.output
+        assert "--code-only" in result.output
+        assert "--claude-only" in result.output

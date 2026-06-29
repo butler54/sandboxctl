@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SandboxConfig(BaseModel):
     """Per-sandbox settings within a profile."""
 
     containerfile: str = "Containerfile"
+    image: str = ""
     policy: str = "policy.yaml"
     default_repo: str = ""
     model: str = ""
 
     model_config = {"extra": "ignore"}
+
+    @model_validator(mode="after")
+    def _check_image_or_containerfile(self) -> SandboxConfig:
+        if self.image and self.containerfile != "Containerfile":
+            msg = "Cannot set both 'image' and a custom 'containerfile' — they are mutually exclusive"
+            raise ValueError(msg)
+        return self
 
 
 class WorkspaceConfig(BaseModel):

@@ -121,6 +121,53 @@ def status() -> None:
         typer.echo("Could not reach gateway.")
 
 
+@app.command()
+def create(
+    profile: str = typer.Option(..., "--profile", "-p", help="Profile name."),
+    name: str | None = typer.Option(None, "--name", "-n", help="Sandbox name (defaults to profile name)."),
+    ephemeral: bool = typer.Option(False, "--ephemeral", help="Delete sandbox on exit."),
+    no_editor: bool = typer.Option(False, "--no-editor", help="Don't open editor after creation."),
+) -> None:
+    """Create a sandbox from a profile."""
+    from sandboxctl.create import create_sandbox
+    from sandboxctl.profile import list_profiles, load_profile
+
+    cfg = load_config()
+    try:
+        prof = load_profile(profile, cfg)
+    except FileNotFoundError:
+        typer.echo(f"Profile not found: {profile}")
+        typer.echo(f"Available: {', '.join(list_profiles(cfg)) or 'none'}")
+        raise typer.Exit(1) from None
+
+    create_sandbox(prof, cfg, sandbox_name=name, ephemeral=ephemeral, open_editor=not no_editor)
+
+
+@app.command("open")
+def open_cmd(
+    name: str = typer.Argument(help="Sandbox name."),
+    shell: bool = typer.Option(False, "--shell", help="Open interactive shell."),
+    code_only: bool = typer.Option(False, "--code-only", help="Open VS Code only."),
+    claude_only: bool = typer.Option(False, "--claude-only", help="Open Claude Code only."),
+    code: bool = typer.Option(False, "--code", help="Open both VS Code and Claude Code."),
+) -> None:
+    """Open a sandbox."""
+    from sandboxctl.open_cmd import open_sandbox
+
+    cfg = load_config()
+
+    if shell:
+        mode = "shell"
+    elif code_only:
+        mode = "code"
+    elif code:
+        mode = "both"
+    else:
+        mode = "claude"
+
+    open_sandbox(name, cfg, mode=mode)
+
+
 @app.command("delete")
 def delete_cmd(name: str = typer.Argument(help="Sandbox name.")) -> None:
     """Delete a sandbox."""

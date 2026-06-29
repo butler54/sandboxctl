@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,12 @@ from typer.testing import CliRunner
 from sandboxctl.cli import app
 
 runner = CliRunner()
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
 
 
 def test_version_flag() -> None:
@@ -211,9 +218,10 @@ class TestCreateCommand:
     def test_create_help(self) -> None:
         result = runner.invoke(app, ["create", "--help"])
         assert result.exit_code == 0
-        assert "--profile" in result.output
-        assert "--ephemeral" in result.output
-        assert "--no-editor" in result.output
+        output = _strip_ansi(result.output)
+        assert "--profile" in output
+        assert "--ephemeral" in output
+        assert "--no-editor" in output
 
     def test_create_missing_profile(self, tmp_path: Path) -> None:
         cfg = MagicMock(config_dir=tmp_path, profiles_dir=tmp_path / "profiles")
@@ -231,7 +239,8 @@ class TestOpenCommand:
     def test_open_help(self) -> None:
         result = runner.invoke(app, ["open", "--help"])
         assert result.exit_code == 0
-        assert "--shell" in result.output
-        assert "--code" in result.output
-        assert "--code-only" in result.output
-        assert "--claude-only" in result.output
+        output = _strip_ansi(result.output)
+        assert "--shell" in output
+        assert "--code" in output
+        assert "--code-only" in output
+        assert "--claude-only" in output

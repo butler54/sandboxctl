@@ -49,6 +49,7 @@ Full template with all available options:
 # zoom = -1
 
 [providers]
+# provider = "anthropic"                  # "anthropic" (default) or "vertex"
 # vertex_project_id = ""
 # vertex_region = "global"
 
@@ -70,7 +71,8 @@ Full template with all available options:
 | `[defaults]` | `model` | `"claude-sonnet-4-20250514"` | Claude model for new sandboxes |
 | | `theme` | `"dark"` | VS Code color theme |
 | | `zoom` | `-1` | VS Code zoom level |
-| `[providers]` | `vertex_project_id` | `""` | Google Cloud project for Vertex AI |
+| `[providers]` | `provider` | `"anthropic"` | Claude API provider (`anthropic` or `vertex`) |
+| | `vertex_project_id` | `""` | Google Cloud project for Vertex AI |
 | | `vertex_region` | `"global"` | Vertex AI region |
 | `[paths]` | `ssh_key` | `"~/.ssh/sandboxctl_ed25519"` | Path to SSH private key |
 | | `ca_bundle` | `None` | Path to custom CA certificate bundle |

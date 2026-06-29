@@ -51,6 +51,10 @@ github = [
 #     "group/repo-name",
 # ]
 
+# "gitlab.corp.com" = [
+#     "team/internal-repo",
+# ]
+
 # [ssh]
 # "hostname.example.com" = { user = "root" }
 ```

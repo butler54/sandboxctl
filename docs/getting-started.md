@@ -46,6 +46,7 @@ Run `sandboxctl config init` to create the default configuration file at
 # zoom = -1
 
 [providers]
+# provider = "anthropic"                  # "anthropic" (default) or "vertex"
 # vertex_project_id = ""
 # vertex_region = "global"
 
@@ -66,7 +67,7 @@ Run `sandboxctl config init` to create the default configuration file at
 - **`[defaults]`** -- Default Claude model, VS Code theme, and zoom level
   applied to new sandboxes unless overridden by a profile.
 
-- **`[providers]`** -- Google Cloud Vertex AI project ID and region for
+- **`[providers]`** -- Claude API provider selection (`anthropic` or `vertex`) and Vertex AI project ID and region for
   Claude API access.
 
 - **`[paths]`** -- Path to an SSH key for repository cloning and an optional
@@ -112,6 +113,10 @@ github = [
 
 # "gitlab.com" = [
 #     "group/repo-name",
+# ]
+
+# "gitlab.corp.com" = [
+#     "team/internal-repo",
 # ]
 
 # [ssh]

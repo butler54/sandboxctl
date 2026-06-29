@@ -22,6 +22,9 @@ dependencies = [
 [project.scripts]
 sandboxctl = "sandboxctl.cli:app"
 
+[project.optional-dependencies]
+docs = ["mkdocs>=1.6", "mkdocs-material>=9.5"]
+
 [dependency-groups]
 dev = [
     "ruff>=0.11",

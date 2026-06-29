@@ -1,6 +1,6 @@
 # sandboxctl
 
-A command-line tool for managing isolated development sandboxes powered by [NVIDIA OpenShell](https://github.com/NVIDIA/openshell).
+A safe, isolated mechanism for using LLMs with minimal guardrails to maximize developer productivity.
 
 !!! warning "Experimental"
 
@@ -8,7 +8,7 @@ A command-line tool for managing isolated development sandboxes powered by [NVID
 
 ## Overview
 
-sandboxctl provides safe, isolated development environments for using LLMs with minimal guardrails to maximize productivity. It wraps the OpenShell CLI with profile-based configuration, credential management, and lifecycle commands.
+sandboxctl provides isolated development sandboxes powered by [OpenShell](https://github.com/NVIDIA/openshell) where developers can work with LLMs freely without risk to their host environment. It wraps the OpenShell CLI with profile-based configuration, credential management, and lifecycle commands. No GPU required.
 
 ## Documentation
 

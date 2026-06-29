@@ -50,8 +50,9 @@ Full template with all available options:
 
 [providers]
 # provider = "anthropic"                  # "anthropic" (default) or "vertex"
-# vertex_project_id = ""
-# vertex_region = "global"
+# anthropic_api_key = ""                  # API key for direct Anthropic access
+# vertex_project_id = ""                  # Google Cloud project (vertex only)
+# vertex_region = "global"               # Vertex AI region (vertex only)
 
 [paths]
 # ssh_key = "~/.ssh/sandboxctl_ed25519"
@@ -72,8 +73,9 @@ Full template with all available options:
 | | `theme` | `"dark"` | VS Code color theme |
 | | `zoom` | `-1` | VS Code zoom level |
 | `[providers]` | `provider` | `"anthropic"` | Claude API provider (`anthropic` or `vertex`) |
-| | `vertex_project_id` | `""` | Google Cloud project for Vertex AI |
-| | `vertex_region` | `"global"` | Vertex AI region |
+| | `anthropic_api_key` | `""` | API key for direct Anthropic access |
+| | `vertex_project_id` | `""` | Google Cloud project (vertex only) |
+| | `vertex_region` | `"global"` | Vertex AI region (vertex only) |
 | `[paths]` | `ssh_key` | `"~/.ssh/sandboxctl_ed25519"` | Path to SSH private key |
 | | `ca_bundle` | `None` | Path to custom CA certificate bundle |
 | `[keychain]` | `github_service` | `"sandboxctl-github-token"` | Keychain service name for GitHub token |

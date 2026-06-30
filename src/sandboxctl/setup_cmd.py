@@ -123,18 +123,9 @@ def _setup_ssh_key(config: SandboxctlConfig) -> None:
 
 def _validate_github_token(token: str) -> str | None:
     """Validate a GitHub PAT and return the login, or None if invalid."""
-    try:
-        result = subprocess.run(
-            ["gh", "api", "user", "--jq", ".login"],
-            capture_output=True,
-            text=True,
-            check=True,
-            env={**os.environ, "GH_TOKEN": token},
-        )
-        login = result.stdout.strip()
-        return login if login else None
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
+    from sandboxctl.http_utils import validate_github_token
+
+    return validate_github_token(token)
 
 
 def _setup_github_pat(config: SandboxctlConfig) -> str | None:
@@ -176,7 +167,7 @@ def _setup_gitlab_pats(config: SandboxctlConfig) -> dict[str, str | None]:
             for server in prof.repos:
                 if "gitlab" in server.lower():
                     gitlab_urls.add(server)
-        except Exception:
+        except Exception:  # noqa: BLE001, S112
             continue
 
     if not gitlab_urls:
@@ -199,22 +190,17 @@ def _setup_gitlab_pats(config: SandboxctlConfig) -> dict[str, str | None]:
 
     for server in sorted(gitlab_urls):
         service = f"sandboxctl-gitlab-{server}"
-        full_url = f"https://{server}"
         typer.echo(f"\n  [{server}]")
 
         token = get_credential(service, account)
         if token:
-            try:
-                subprocess.run(
-                    ["curl", "-sf", "-H", f"PRIVATE-TOKEN: {token}", f"{full_url}/api/v4/user"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
+            from sandboxctl.http_utils import validate_gitlab_token
+
+            if validate_gitlab_token(server, token):
                 typer.echo("  Authenticated (stored token valid)")
                 tokens[server] = token
                 continue
-            except (subprocess.CalledProcessError, FileNotFoundError):
+            else:
                 typer.echo("  Stored token is invalid or expired.")
 
         token = typer.prompt(f"  Paste PAT for {server} (or Enter to skip)", hide_input=True, default="")
@@ -223,17 +209,13 @@ def _setup_gitlab_pats(config: SandboxctlConfig) -> dict[str, str | None]:
             tokens[server] = None
             continue
 
-        try:
-            subprocess.run(
-                ["curl", "-sf", "-H", f"PRIVATE-TOKEN: {token}", f"{full_url}/api/v4/user"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
+        from sandboxctl.http_utils import validate_gitlab_token
+
+        if validate_gitlab_token(server, token):
             store_credential(service, account, token)
             typer.echo("  Token validated and stored.")
             tokens[server] = token
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        else:
             typer.echo("  Token validation failed. Not stored.")
             tokens[server] = None
 

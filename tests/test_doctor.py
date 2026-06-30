@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -95,10 +94,9 @@ class TestGitHubPATCheck:
     def test_token_valid(self) -> None:
         cfg = _make_config()
         chk = GitHubPATCheck()
-        mock_proc = MagicMock(returncode=0, stdout="testuser\n", stderr="")
         with (
             patch("sandboxctl.doctor.get_credential", return_value="ghp_testtoken"),
-            patch("sandboxctl.doctor.subprocess.run", return_value=mock_proc),
+            patch("sandboxctl.http_utils.validate_github_token", return_value="testuser"),
         ):
             result = chk.check(cfg)
         assert result.passed is True
@@ -107,39 +105,24 @@ class TestGitHubPATCheck:
     def test_token_expired(self) -> None:
         cfg = _make_config()
         chk = GitHubPATCheck()
-        mock_proc = MagicMock(returncode=1, stdout="", stderr="Bad credentials")
         with (
             patch("sandboxctl.doctor.get_credential", return_value="ghp_expired"),
-            patch("sandboxctl.doctor.subprocess.run", return_value=mock_proc),
+            patch("sandboxctl.http_utils.validate_github_token", return_value=None),
         ):
             result = chk.check(cfg)
         assert result.passed is False
         assert "expired" in result.fix_hint.lower()
 
-    def test_gh_cli_not_found(self) -> None:
+    def test_token_validation_failed(self) -> None:
         cfg = _make_config()
         chk = GitHubPATCheck()
         with (
             patch("sandboxctl.doctor.get_credential", return_value="ghp_token"),
-            patch("sandboxctl.doctor.subprocess.run", side_effect=FileNotFoundError),
+            patch("sandboxctl.http_utils.validate_github_token", return_value=None),
         ):
             result = chk.check(cfg)
         assert result.passed is False
-        assert "not found" in result.details.lower()
-
-    def test_gh_cli_timeout(self) -> None:
-        cfg = _make_config()
-        chk = GitHubPATCheck()
-        with (
-            patch("sandboxctl.doctor.get_credential", return_value="ghp_token"),
-            patch(
-                "sandboxctl.doctor.subprocess.run",
-                side_effect=subprocess.TimeoutExpired("gh", 10),
-            ),
-        ):
-            result = chk.check(cfg)
-        assert result.passed is False
-        assert "timed out" in result.details.lower()
+        assert "failed" in result.details.lower()
 
     def test_fix_injects_token(self) -> None:
         cfg = _make_config()
@@ -203,12 +186,11 @@ class TestGitLabPATCheck:
         profile = MagicMock()
         profile.repos = {"gitlab.example.com": ["repo1"]}
         profile.credentials.gitlab_servers = []
-        mock_proc = MagicMock(returncode=0, stdout='{"username":"testuser"}', stderr="")
         with (
             patch("sandboxctl.doctor.get_credential", return_value="glpat-test"),
             patch("sandboxctl.doctor.list_profiles", return_value=["dev"]),
             patch("sandboxctl.doctor.load_profile", return_value=profile),
-            patch("sandboxctl.doctor.subprocess.run", return_value=mock_proc),
+            patch("sandboxctl.http_utils.validate_gitlab_token", return_value=True),
         ):
             result = chk.check(cfg)
         assert result.passed is True
@@ -220,12 +202,11 @@ class TestGitLabPATCheck:
         profile = MagicMock()
         profile.repos = {"gitlab.example.com": ["repo1"]}
         profile.credentials.gitlab_servers = []
-        mock_proc = MagicMock(returncode=22, stdout="", stderr="Unauthorized")
         with (
             patch("sandboxctl.doctor.get_credential", return_value="glpat-bad"),
             patch("sandboxctl.doctor.list_profiles", return_value=["dev"]),
             patch("sandboxctl.doctor.load_profile", return_value=profile),
-            patch("sandboxctl.doctor.subprocess.run", return_value=mock_proc),
+            patch("sandboxctl.http_utils.validate_gitlab_token", return_value=False),
         ):
             result = chk.check(cfg)
         assert result.passed is False

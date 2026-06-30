@@ -49,8 +49,11 @@ src = ["src"]
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "ANN", "B", "C4"]
-ignore = ["ANN401"]
+select = ["E", "F", "I", "UP", "ANN", "B", "C4", "S"]
+ignore = ["ANN401", "S603", "S607"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S108"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["sandboxctl"]

@@ -2,10 +2,25 @@
 
 from __future__ import annotations
 
+import re
+
 import typer
 from rich.table import Table
 
 from sandboxctl.config import CONFIG_TEMPLATE, ensure_config_dir, load_config
+
+_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+
+
+def _validate_name(value: str) -> str:
+    if not _NAME_RE.match(value):
+        msg = (
+            f"Invalid name '{value}': must start with alphanumeric, "
+            "contain only alphanumeric, dots, hyphens, underscores"
+        )
+        raise typer.BadParameter(msg)
+    return value
+
 
 app = typer.Typer(
     name="sandboxctl",
@@ -123,8 +138,12 @@ def status() -> None:
 
 @app.command()
 def create(
-    profile: str = typer.Option(..., "--profile", "-p", help="Profile name."),
-    name: str | None = typer.Option(None, "--name", "-n", help="Sandbox name (defaults to profile name)."),
+    profile: str = typer.Option(..., "--profile", "-p", help="Profile name.", callback=_validate_name),
+    name: str | None = typer.Option(
+        None, "--name", "-n",
+        help="Sandbox name (defaults to profile name).",
+        callback=lambda v: _validate_name(v) if v else v,
+    ),
     ephemeral: bool = typer.Option(False, "--ephemeral", help="Delete sandbox on exit."),
     no_editor: bool = typer.Option(False, "--no-editor", help="Don't open editor after creation."),
 ) -> None:
@@ -145,7 +164,7 @@ def create(
 
 @app.command("open")
 def open_cmd(
-    name: str = typer.Argument(help="Sandbox name."),
+    name: str = typer.Argument(help="Sandbox name.", callback=_validate_name),
     shell: bool = typer.Option(False, "--shell", help="Open interactive shell."),
     code_only: bool = typer.Option(False, "--code-only", help="Open VS Code only."),
     claude_only: bool = typer.Option(False, "--claude-only", help="Open Claude Code only."),
@@ -169,7 +188,7 @@ def open_cmd(
 
 
 @app.command("delete")
-def delete_cmd(name: str = typer.Argument(help="Sandbox name.")) -> None:
+def delete_cmd(name: str = typer.Argument(help="Sandbox name.", callback=_validate_name)) -> None:
     """Delete a sandbox."""
     from sandboxctl import openshell as osh
 
@@ -179,7 +198,7 @@ def delete_cmd(name: str = typer.Argument(help="Sandbox name.")) -> None:
 
 
 @app.command()
-def validate(name: str = typer.Argument(help="Sandbox name.")) -> None:
+def validate(name: str = typer.Argument(help="Sandbox name.", callback=_validate_name)) -> None:
     """Run validation tests inside a sandbox."""
     from sandboxctl import openshell as osh
     from sandboxctl.health import diagnose
@@ -195,7 +214,7 @@ def validate(name: str = typer.Argument(help="Sandbox name.")) -> None:
 
 
 @app.command("init")
-def init_cmd(name: str = typer.Argument(help="Profile name.")) -> None:
+def init_cmd(name: str = typer.Argument(help="Profile name.", callback=_validate_name)) -> None:
     """Create a new profile skeleton."""
     from sandboxctl.profile import init_profile
 
@@ -228,7 +247,7 @@ def setup() -> None:
 
 @app.command()
 def restart(
-    name: str = typer.Argument(help="Sandbox name (must match a profile)."),
+    name: str = typer.Argument(help="Sandbox name (must match a profile).", callback=_validate_name),
     no_editor: bool = typer.Option(False, "--no-editor", help="Don't open editor after recreation."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
 ) -> None:
@@ -258,7 +277,11 @@ def restart(
 
 @app.command()
 def doctor(
-    name: str | None = typer.Argument(None, help="Sandbox name (omit to check all running)."),
+    name: str | None = typer.Argument(
+        None,
+        help="Sandbox name (omit to check all running).",
+        callback=lambda v: _validate_name(v) if v else v,
+    ),
     fix: bool = typer.Option(False, "--fix", help="Re-inject credentials into running sandbox(es)."),
     no_recover: bool = typer.Option(False, "--no-recover", help="Skip auto-recovery, diagnose only."),
 ) -> None:

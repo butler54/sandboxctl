@@ -140,7 +140,9 @@ def status() -> None:
 def create(
     profile: str = typer.Option(..., "--profile", "-p", help="Profile name.", callback=_validate_name),
     name: str | None = typer.Option(
-        None, "--name", "-n",
+        None,
+        "--name",
+        "-n",
         help="Sandbox name (defaults to profile name).",
         callback=lambda v: _validate_name(v) if v else v,
     ),

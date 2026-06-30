@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -24,6 +25,13 @@ from sandboxctl.doctor import (
     fix_sandbox_credentials,
 )
 from sandboxctl.models import CredentialConfig
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
 
 runner = CliRunner()
 
@@ -544,7 +552,7 @@ class TestDoctorCLI:
     def test_doctor_help(self) -> None:
         result = runner.invoke(app, ["doctor", "--help"])
         assert result.exit_code == 0
-        assert "--fix" in result.output
+        assert "--fix" in _strip_ansi(result.output)
 
     def test_doctor_shows_host_checks(self) -> None:
         health_report = MagicMock(

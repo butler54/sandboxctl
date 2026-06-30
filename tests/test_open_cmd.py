@@ -75,9 +75,13 @@ class TestOpenClaudeMode:
         ):
             open_sandbox("mybox", config, mode="claude")
 
-        assert mock_exec.call_args[0][1] == "claude"
+        # First call is --continue, using /sandbox as base_dir (no profile)
+        cmd = mock_exec.call_args[0][1]
+        assert "claude --continue" in cmd
+        assert "/sandbox" in cmd
 
     def test_nonzero_exit_reconnects(self) -> None:
+        """When both --continue and fresh session fail, fall back to shell."""
         report = MagicMock(healthy=True)
         config = MagicMock()
 
@@ -132,3 +136,69 @@ class TestOpenCodeMode:
             open_sandbox("mybox", config, mode="code")
 
         mock_connect.assert_called_once_with("mybox", editor="vscode")
+
+
+class TestClaudeContinueHardening:
+    """Tests for the --continue → fresh → shell fallback chain."""
+
+    def test_continue_succeeds_first_try(self) -> None:
+        """--continue returns 0 on first call; no second call made."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=0) as mock_exec,
+            patch("sandboxctl.open_cmd.osh.sandbox_connect") as mock_connect,
+        ):
+            open_sandbox("mybox", config, mode="claude")
+
+        # Only one call (--continue succeeded)
+        assert mock_exec.call_count == 1
+        assert "--continue" in mock_exec.call_args[0][1]
+        mock_connect.assert_not_called()
+
+    def test_continue_fails_fresh_succeeds(self) -> None:
+        """--continue returns non-zero, fresh session returns 0."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        # First call (--continue) returns 1, second call (fresh) returns 0
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch(
+                "sandboxctl.open_cmd.osh.sandbox_exec_interactive",
+                side_effect=[1, 0],
+            ) as mock_exec,
+            patch("sandboxctl.open_cmd.osh.sandbox_connect") as mock_connect,
+        ):
+            open_sandbox("mybox", config, mode="claude")
+
+        assert mock_exec.call_count == 2
+        first_cmd = mock_exec.call_args_list[0][0][1]
+        second_cmd = mock_exec.call_args_list[1][0][1]
+        assert "--continue" in first_cmd
+        assert "--continue" not in second_cmd
+        assert "claude" in second_cmd
+        mock_connect.assert_not_called()
+
+    def test_both_fail_fallback_to_shell(self) -> None:
+        """Both --continue and fresh return non-zero; falls back to sandbox_connect."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch(
+                "sandboxctl.open_cmd.osh.sandbox_exec_interactive",
+                side_effect=[1, 1],
+            ) as mock_exec,
+            patch("sandboxctl.open_cmd.osh.sandbox_connect") as mock_connect,
+        ):
+            open_sandbox("mybox", config, mode="claude")
+
+        assert mock_exec.call_count == 2
+        mock_connect.assert_called_once_with("mybox")

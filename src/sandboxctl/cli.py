@@ -258,19 +258,82 @@ def restart(
 
 @app.command()
 def doctor(
-    name: str = typer.Argument(help="Sandbox name to diagnose."),
+    name: str | None = typer.Argument(None, help="Sandbox name (omit to check all running)."),
+    fix: bool = typer.Option(False, "--fix", help="Re-inject credentials into running sandbox(es)."),
     no_recover: bool = typer.Option(False, "--no-recover", help="Skip auto-recovery, diagnose only."),
 ) -> None:
-    """Diagnose and recover sandbox issues."""
-    from sandboxctl.health import diagnose
+    """Diagnose sandbox health, credentials, and profile readiness."""
+    from sandboxctl import openshell as osh
+    from sandboxctl.doctor import (
+        check_host_credentials,
+        check_profile_readiness,
+        fix_sandbox_credentials,
+    )
+    from sandboxctl.health import diagnose as health_diagnose
 
-    report = diagnose(name, auto_recover=not no_recover)
-    for detail in report.details:
-        typer.echo(f"  {detail}")
-    if report.healthy:
-        typer.echo(f"\n[bold green]Sandbox '{name}' is healthy.[/bold green]")
+    cfg = load_config()
+
+    # Section 1: Host Credentials
+    typer.echo("\n--- Host Credentials ---")
+    host_results = check_host_credentials(cfg)
+    for r in host_results:
+        symbol = "✓" if r.passed else "✗"
+        typer.echo(f"  {symbol} {r.name}: {r.details}")
+        if not r.passed and r.fix_hint:
+            typer.echo(f"    Fix: {r.fix_hint}")
+
+    # Section 2: Infrastructure
+    typer.echo("\n--- Infrastructure ---")
+    if name:
+        sandbox_names = [name]
     else:
-        typer.echo(f"\n[bold red]Sandbox '{name}' is unhealthy.[/bold red]")
-        typer.echo(f"  Recovery action: {report.recovery_action}")
-        if "needs_recreate" in report.recovery_action:
-            typer.echo("  Run 'sandboxctl restart' to recreate (will lose unsaved work).")
+        try:
+            sandboxes = osh.sandbox_list()
+            sandbox_names = [sb["name"] for sb in sandboxes]
+        except Exception:
+            sandbox_names = []
+            typer.echo("  Could not list sandboxes.")
+
+    if not sandbox_names and not name:
+        typer.echo("  No running sandboxes found.")
+    else:
+        for sname in sandbox_names:
+            report = health_diagnose(sname, auto_recover=not no_recover)
+            symbol = "✓" if report.healthy else "✗"
+            typer.echo(f"  {symbol} {sname}:")
+            for detail in report.details:
+                typer.echo(f"      {detail}")
+            if not report.healthy:
+                typer.echo(f"      Recovery: {report.recovery_action}")
+
+    # Section 3: --fix mode
+    if fix:
+        typer.echo("\n--- Fix: Credential Injection ---")
+        targets = sandbox_names if sandbox_names else []
+        if not targets:
+            typer.echo("  No sandbox targets for --fix.")
+        for sname in targets:
+            typer.echo(f"\n  [{sname}]")
+            fix_results = fix_sandbox_credentials(sname, cfg)
+            for fr in fix_results:
+                symbol = "✓" if fr.success else "✗"
+                typer.echo(f"    {symbol} {fr.name}: {fr.details}")
+
+    # Section 4: Profile Readiness
+    typer.echo("\n--- Profile Readiness ---")
+    readiness = check_profile_readiness(cfg)
+    if not readiness:
+        typer.echo("  No profiles found.")
+    for profile_name, missing in readiness.items():
+        if not missing:
+            typer.echo(f"  ✓ {profile_name}: ready")
+        else:
+            typer.echo(f"  ✗ {profile_name}: missing {', '.join(missing)}")
+
+    # Summary
+    host_ok = all(r.passed for r in host_results)
+    if host_ok:
+        typer.echo("\nHost credentials: all checks passed.")
+    else:
+        failed = [r.name for r in host_results if not r.passed]
+        typer.echo(f"\nHost credentials: {len(failed)} check(s) failed.")

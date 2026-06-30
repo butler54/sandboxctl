@@ -56,6 +56,16 @@ class KeychainConfig(_SubConfig):
     gitlab_service: str = "sandboxctl-gitlab-token"
 
 
+class TlsConfig(_SubConfig):
+    ca_paths: list[Path] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _expand_paths(self) -> TlsConfig:
+        expanded = [p.expanduser() if "~" in str(p) else p for p in self.ca_paths]
+        object.__setattr__(self, "ca_paths", expanded)
+        return self
+
+
 class SandboxctlConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SANDBOXCTL_",
@@ -71,6 +81,7 @@ class SandboxctlConfig(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     keychain: KeychainConfig = Field(default_factory=KeychainConfig)
+    tls: TlsConfig = Field(default_factory=TlsConfig)
 
     _config_dir_override: ClassVar[Path | None] = None
 
@@ -142,6 +153,10 @@ class SandboxctlConfig(BaseSettings):
     def keychain_gitlab(self) -> str:
         return self.keychain.gitlab_service
 
+    @property
+    def ca_paths(self) -> list[Path]:
+        return self.tls.ca_paths
+
 
 def load_config(config_dir: Path | None = None) -> SandboxctlConfig:
     """Load config with optional config_dir override (mainly for testing)."""
@@ -188,6 +203,9 @@ CONFIG_TEMPLATE = """\
 [keychain]
 # github_service = "sandboxctl-github-token"
 # gitlab_service = "sandboxctl-gitlab-token"
+
+[tls]
+# ca_paths = ["~/.config/certs/custom-ca.pem"]
 """
 
 

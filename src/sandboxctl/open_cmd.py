@@ -58,17 +58,24 @@ def open_sandbox(
             pass
 
         if default_repo:
-            typer.echo(f"Launching Claude Code in: {default_repo}")
-            cmd = f"cd /sandbox/workspace/{default_repo} && claude"
+            base_dir = f"/sandbox/workspace/{default_repo}"
         else:
-            typer.echo(f"Launching Claude Code in sandbox: {name}")
-            cmd = "claude"
+            base_dir = "/sandbox"
 
-        result = osh.sandbox_exec_interactive(name, cmd)
+        # Try --continue first to resume existing session
+        typer.echo(f"Resuming Claude Code session in: {base_dir}")
+        resume_cmd = f"cd {base_dir} && claude --continue"
+        result = osh.sandbox_exec_interactive(name, resume_cmd)
+
+        if result == 0:
+            return
+
+        # Fallback to fresh session
+        typer.echo("No prior session found. Starting new Claude Code session...")
+        fresh_cmd = f"cd {base_dir} && claude"
+        result = osh.sandbox_exec_interactive(name, fresh_cmd)
+
         if result != 0:
-            typer.echo("\nAn existing session is running. Reconnecting via shell.")
-            if default_repo:
-                typer.echo(f"  Resume with: cd /sandbox/workspace/{default_repo} && claude --continue")
-            else:
-                typer.echo("  Resume with: claude --continue")
+            typer.echo("\nClaude Code exited. Connecting via shell.")
+            typer.echo(f"  Resume with: cd {base_dir} && claude --continue")
             osh.sandbox_connect(name)

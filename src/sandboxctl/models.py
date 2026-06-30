@@ -42,6 +42,16 @@ class SshHostConfig(BaseModel):
     model_config = {"extra": "ignore"}
 
 
+class CredentialConfig(BaseModel):
+    github: bool = True
+    gitlab: bool = False
+    gitlab_servers: list[str] = Field(default_factory=list)
+    gcloud_adc: bool = False
+    gws: bool = False
+    ssh_key: bool = True
+    model_config = {"extra": "ignore"}
+
+
 class Profile(BaseModel):
     """Sandbox profile loaded from TOML."""
 
@@ -50,6 +60,7 @@ class Profile(BaseModel):
     workspace: WorkspaceConfig = Field(default_factory=WorkspaceConfig)
     repos: dict[str, list[str]] = Field(default_factory=dict)
     ssh: dict[str, SshHostConfig] = Field(default_factory=dict)
+    credentials: CredentialConfig = Field(default_factory=CredentialConfig)
 
 
 class ClaudePermissions(BaseModel):

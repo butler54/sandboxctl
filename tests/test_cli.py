@@ -187,12 +187,29 @@ class TestUpgradeCommand:
 
 
 class TestDoctorCommand:
+    def _mock_host_checks(self) -> list:
+        from sandboxctl.doctor import CheckResult
+
+        return [
+            CheckResult(passed=True, name="GitHub PAT", details="Authenticated"),
+            CheckResult(passed=True, name="GitLab PAT", details="No servers"),
+            CheckResult(passed=True, name="gcloud ADC", details="Valid"),
+            CheckResult(passed=True, name="GWS credentials", details="Valid"),
+            CheckResult(passed=True, name="SSH key", details="Present"),
+            CheckResult(passed=True, name="CA bundle", details="System defaults"),
+        ]
+
     def test_doctor_healthy(self) -> None:
         report = MagicMock(healthy=True, details=["Gateway: running", "Container: running"], recovery_action="none")
-        with patch("sandboxctl.health.diagnose", return_value=report):
+        with (
+            patch("sandboxctl.cli.load_config", return_value=MagicMock()),
+            patch("sandboxctl.doctor.check_host_credentials", return_value=self._mock_host_checks()),
+            patch("sandboxctl.doctor.check_profile_readiness", return_value={}),
+            patch("sandboxctl.health.diagnose", return_value=report),
+        ):
             result = runner.invoke(app, ["doctor", "mybox"])
             assert result.exit_code == 0
-            assert "healthy" in result.output
+            assert "all checks passed" in result.output
 
     def test_doctor_unhealthy(self) -> None:
         report = MagicMock(
@@ -200,15 +217,24 @@ class TestDoctorCommand:
             details=["Gateway: running", "Container: stopped"],
             recovery_action="container_missing_needs_recreate",
         )
-        with patch("sandboxctl.health.diagnose", return_value=report):
+        with (
+            patch("sandboxctl.cli.load_config", return_value=MagicMock()),
+            patch("sandboxctl.doctor.check_host_credentials", return_value=self._mock_host_checks()),
+            patch("sandboxctl.doctor.check_profile_readiness", return_value={}),
+            patch("sandboxctl.health.diagnose", return_value=report),
+        ):
             result = runner.invoke(app, ["doctor", "mybox"])
             assert result.exit_code == 0
-            assert "unhealthy" in result.output
-            assert "restart" in result.output
+            assert "container_missing_needs_recreate" in result.output
 
     def test_doctor_no_recover(self) -> None:
         report = MagicMock(healthy=False, details=["Gateway: stopped"], recovery_action="gateway_not_running")
-        with patch("sandboxctl.health.diagnose", return_value=report) as mock_diag:
+        with (
+            patch("sandboxctl.cli.load_config", return_value=MagicMock()),
+            patch("sandboxctl.doctor.check_host_credentials", return_value=self._mock_host_checks()),
+            patch("sandboxctl.doctor.check_profile_readiness", return_value={}),
+            patch("sandboxctl.health.diagnose", return_value=report) as mock_diag,
+        ):
             result = runner.invoke(app, ["doctor", "mybox", "--no-recover"])
             assert result.exit_code == 0
             mock_diag.assert_called_once_with("mybox", auto_recover=False)

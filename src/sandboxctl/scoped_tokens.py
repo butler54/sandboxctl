@@ -77,8 +77,8 @@ class GitLabTokenManager:
         url = f"{self.server}/api/v4{endpoint}"
         headers = {"PRIVATE-TOKEN": self.token, "Content-Type": "application/json"}
         body = json.dumps(data).encode() if data else None
-        req = urllib.request.Request(url, data=body, headers=headers, method=method)
-        with urllib.request.urlopen(req) as resp:
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)  # noqa: S310
+        with urllib.request.urlopen(req) as resp:  # noqa: S310
             return json.loads(resp.read().decode())
 
     def validate_server(self) -> bool:

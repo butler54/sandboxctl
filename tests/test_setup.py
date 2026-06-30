@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 import tomllib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -162,16 +161,9 @@ class TestSetupGithubPat:
     def test_github_pat_valid_in_keychain(self) -> None:
         cfg = MagicMock(keychain_github="sandboxctl-github-token")
 
-        mock_result = subprocess.CompletedProcess(
-            args=["gh", "api", "user", "--jq", ".login"],
-            returncode=0,
-            stdout="testuser\n",
-            stderr="",
-        )
-
         with (
             patch("sandboxctl.setup_cmd.get_credential", return_value="ghp_testtoken"),
-            patch("sandboxctl.setup_cmd.subprocess.run", return_value=mock_result),
+            patch("sandboxctl.http_utils.validate_github_token", return_value="testuser"),
         ):
             token = _setup_github_pat(cfg)
             assert token == "ghp_testtoken"

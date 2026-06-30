@@ -100,41 +100,21 @@ class GitHubPATCheck(CredentialCheck):
                 details="No GitHub token found in credential store",
                 fix_hint="Run: sandboxctl setup --github-token",
             )
-        try:
-            result = subprocess.run(
-                ["gh", "api", "user", "--jq", ".login"],
-                env={**os.environ, "GH_TOKEN": token},
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return CheckResult(
-                    passed=True,
-                    name=self.check_name,
-                    details=f"Authenticated as {result.stdout.strip()}",
-                )
+        from sandboxctl.http_utils import validate_github_token
+
+        login = validate_github_token(token)
+        if login:
             return CheckResult(
-                passed=False,
+                passed=True,
                 name=self.check_name,
-                details=f"gh API validation failed: {result.stderr.strip()}",
-                fix_hint="Token may be expired — re-run: sandboxctl setup --github-token",
+                details=f"Authenticated as {login}",
             )
-        except FileNotFoundError:
-            return CheckResult(
-                passed=False,
-                name=self.check_name,
-                details="gh CLI not found on host",
-                fix_hint="Install the GitHub CLI: https://cli.github.com/",
-            )
-        except subprocess.TimeoutExpired:
-            return CheckResult(
-                passed=False,
-                name=self.check_name,
-                details="gh API call timed out",
-                fix_hint="Check network connectivity",
-            )
+        return CheckResult(
+            passed=False,
+            name=self.check_name,
+            details="Token validation failed",
+            fix_hint="Token may be expired — re-run: sandboxctl setup --github-token",
+        )
 
     def fix(self, sandbox_name: str, config: SandboxctlConfig) -> FixResult:
         account = os.environ.get("USER", "")
@@ -175,7 +155,7 @@ class GitLabPATCheck(CredentialCheck):
         for profile_name in list_profiles(config):
             try:
                 profile = load_profile(profile_name, config)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S112
                 continue
             # Check repos dict keys for GitLab servers
             for server_key in profile.repos:
@@ -203,26 +183,12 @@ class GitLabPATCheck(CredentialCheck):
                 name=self.check_name,
                 details="Token present but no GitLab servers configured in profiles",
             )
+        from sandboxctl.http_utils import validate_gitlab_token
+
         errors: list[str] = []
         for server in servers:
-            try:
-                result = subprocess.run(
-                    [
-                        "curl",
-                        "-sf",
-                        "-H",
-                        f"PRIVATE-TOKEN: {token}",
-                        f"https://{server}/api/v4/user",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    check=False,
-                )
-                if result.returncode != 0:
-                    errors.append(f"{server}: API validation failed")
-            except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
-                errors.append(f"{server}: {exc}")
+            if not validate_gitlab_token(server, token):
+                errors.append(f"{server}: token invalid or expired")
         if errors:
             return CheckResult(
                 passed=False,

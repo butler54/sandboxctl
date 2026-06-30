@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.4.0 (2026-06-30)
+
+### Code Style
+
+- Fix ruff format violation in cli.py
+  ([`8d878ce`](https://github.com/butler54/sandboxctl/commit/8d878ce40e0f36a4402d3761f24c34c818c4baad))
+
+### Features
+
+- Security uplift — input validation, SAST, urllib refactor
+  ([`6013016`](https://github.com/butler54/sandboxctl/commit/601301687a23de65913a3585929c47fb51ce5dfa))
+
+
 ## v1.3.0 (2026-06-30)
 
 ### Bug Fixes

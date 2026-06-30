@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.3.0 (2026-06-30)
+
+### Bug Fixes
+
+- Strip ANSI codes in doctor help test assertion
+  ([`a72aea0`](https://github.com/butler54/sandboxctl/commit/a72aea03a1e6b43b9a968e9fe99b9ce355a0ebf5))
+
+### Features
+
+- Enhanced doctor with credential validation, --fix, and --continue
+  ([`9ceffcb`](https://github.com/butler54/sandboxctl/commit/9ceffcbf2b4df73033000f02c8af68fe0bfab572))
+
+
 ## v1.2.0 (2026-06-29)
 
 ### Bug Fixes

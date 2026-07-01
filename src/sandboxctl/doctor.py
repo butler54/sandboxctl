@@ -218,8 +218,7 @@ class GitLabPATCheck(CredentialCheck):
         env_line = f'export GITLAB_TOKEN="{token}"'
         encoded_env = base64.b64encode(env_line.encode()).decode()
         script_parts = [
-            f"grep -q GITLAB_TOKEN /sandbox/.bashrc 2>/dev/null"
-            f" || echo {encoded_env} | base64 -d >> /sandbox/.bashrc",
+            f"grep -q GITLAB_TOKEN /sandbox/.bashrc 2>/dev/null || echo {encoded_env} | base64 -d >> /sandbox/.bashrc",
         ]
         for server in servers:
             script_parts.append(

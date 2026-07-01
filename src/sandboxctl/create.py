@@ -219,7 +219,7 @@ def post_launch_setup(
     if gws_client_secret.exists():
         osh.sandbox_exec_pipe(
             name,
-            'grep -q GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND /sandbox/.bashrc 2>/dev/null || '
+            "grep -q GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND /sandbox/.bashrc 2>/dev/null || "
             'echo "export GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file" >> /sandbox/.bashrc; '
             'echo "  GWS keyring backend: configured"',
         )

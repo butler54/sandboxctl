@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.4.2 (2026-07-01)
+
+### Bug Fixes
+
+- Close remaining feature gaps from external analysis
+  ([`e96c000`](https://github.com/butler54/sandboxctl/commit/e96c00065930fad818eb9cd1252e1bea946e75d7))
+
+
 ## v1.4.1 (2026-07-01)
 
 ### Bug Fixes

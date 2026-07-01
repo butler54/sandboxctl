@@ -76,6 +76,13 @@ def stage_credentials(stage_dir: Path, config: SandboxctlConfig) -> list[str]:
         shutil.copy2(ssh_config, ssh_dst / "config")
         staged.append("SSH config")
 
+    drawio_src = config.config_dir / "drawio-libs"
+    if drawio_src.exists() and any(drawio_src.iterdir()):
+        drawio_dst = stage_dir / ".drawio-libs"
+        drawio_dst.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(drawio_src, drawio_dst, dirs_exist_ok=True)
+        staged.append("draw.io libraries")
+
     return staged
 
 
@@ -148,24 +155,35 @@ def post_launch_setup(
 
     osh.sandbox_exec_pipe(name, "chmod 600 /sandbox/.ssh/id_ed25519 2>/dev/null; echo ok")
 
+    # Always build CA bundle — OpenShell proxy CA is needed for tls:terminate endpoints
+    osh.sandbox_exec_pipe(
+        name,
+        "cat /etc/openshell-tls/ca-bundle.pem > /sandbox/.ca-bundle.pem 2>/dev/null; "
+        "cat /etc/openshell-tls/openshell-ca.pem >> /sandbox/.ca-bundle.pem 2>/dev/null; "
+        'echo "CA bundle: OpenShell CAs"',
+    )
+    # Append custom CAs from config
+    ca_sources: list[Path] = []
     if config.ca_bundle and config.ca_bundle.exists():
-        ca_data = config.ca_bundle.read_text()
-        encoded_ca = base64.b64encode(ca_data.encode()).decode()
+        ca_sources.append(config.ca_bundle)
+    ca_sources.extend(p for p in config.ca_paths if p.exists())
+    if ca_sources:
+        combined = "\n".join(p.read_text() for p in ca_sources)
+        encoded_ca = base64.b64encode(combined.encode()).decode()
         osh.sandbox_exec_pipe(
             name,
-            "cat /etc/openshell-tls/ca-bundle.pem > /sandbox/.ca-bundle.pem 2>/dev/null; "
-            "cat /etc/openshell-tls/openshell-ca.pem >> /sandbox/.ca-bundle.pem 2>/dev/null; "
             f"echo {encoded_ca} | base64 -d >> /sandbox/.ca-bundle.pem; "
-            'echo "CA bundle: injected"',
+            f'echo "CA bundle: +{len(ca_sources)} custom CA(s)"',
         )
-        osh.sandbox_exec_pipe(
-            name,
-            'echo "export GIT_SSL_CAINFO=/sandbox/.ca-bundle.pem\n'
-            "export SSL_CERT_FILE=/sandbox/.ca-bundle.pem\n"
-            "export CURL_CA_BUNDLE=/sandbox/.ca-bundle.pem\n"
-            'export REQUESTS_CA_BUNDLE=/sandbox/.ca-bundle.pem" >> /sandbox/.bashrc; '
-            'echo "CA env vars: configured"',
-        )
+    osh.sandbox_exec_pipe(
+        name,
+        "grep -q GIT_SSL_CAINFO /sandbox/.bashrc 2>/dev/null || "
+        'echo "export GIT_SSL_CAINFO=/sandbox/.ca-bundle.pem\n'
+        "export SSL_CERT_FILE=/sandbox/.ca-bundle.pem\n"
+        "export CURL_CA_BUNDLE=/sandbox/.ca-bundle.pem\n"
+        'export REQUESTS_CA_BUNDLE=/sandbox/.ca-bundle.pem" >> /sandbox/.bashrc; '
+        'echo "CA env vars: configured"',
+    )
 
     if profile.ssh:
         typer.echo("Configuring SSH proxy hosts...")

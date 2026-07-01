@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.4.1 (2026-07-01)
+
+### Bug Fixes
+
+- Close security findings and feature gaps
+  ([`fa4fb3e`](https://github.com/butler54/sandboxctl/commit/fa4fb3ea2f92152a285e6c59f30fa74e78723e71))
+
+### Code Style
+
+- Fix ruff format violations
+  ([`b1d2c12`](https://github.com/butler54/sandboxctl/commit/b1d2c12d0d6bd2b6f924c7d1b1a4b12ff1468492))
+
+
 ## v1.4.0 (2026-06-30)
 
 ### Code Style

@@ -71,11 +71,11 @@ def open_sandbox(
             return
 
         # Fallback to fresh session
-        typer.echo("No prior session found. Starting new Claude Code session...")
+        typer.echo("Starting new Claude Code session...")
         fresh_cmd = f"cd {base_dir} && claude"
         result = osh.sandbox_exec_interactive(name, fresh_cmd)
 
         if result != 0:
-            typer.echo("\nClaude Code exited. Connecting via shell.")
+            typer.echo("\nExisting session may be running. Reconnecting via shell.")
             typer.echo(f"  Resume with: cd {base_dir} && claude --continue")
             osh.sandbox_connect(name)

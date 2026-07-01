@@ -67,6 +67,8 @@ class GitLabTokenManager:
     """
 
     def __init__(self, server: str = "https://gitlab.com", token: str = "") -> None:
+        if not server.startswith("https://"):
+            server = f"https://{server}"
         self.server = server.rstrip("/")
         self.token = token
 

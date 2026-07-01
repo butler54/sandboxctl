@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from pathlib import Path
@@ -134,7 +135,12 @@ class TestGitHubPATCheck:
             result = chk.fix("mybox", cfg)
         assert result.success is True
         mock_pipe.assert_called_once()
-        assert "ghp_mytoken" in mock_pipe.call_args[0][1]
+        script = mock_pipe.call_args[0][1]
+        # Token is base64-encoded, not raw in the script
+        encoded_token = base64.b64encode(b"ghp_mytoken").decode()
+        assert encoded_token in script
+        assert "base64 -d" in script
+        assert "gh auth login --with-token" in script
 
     def test_fix_no_token(self) -> None:
         cfg = _make_config()

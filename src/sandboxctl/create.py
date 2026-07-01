@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -13,6 +15,16 @@ from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig
 from sandboxctl.credentials import get_credential
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile
+
+_REPO_RE = re.compile(r"^[a-zA-Z0-9._/-]+$")
+
+
+def _validate_repo_ref(value: str) -> str:
+    """Validate a server or repo reference for safe shell interpolation."""
+    if not _REPO_RE.match(value):
+        msg = f"Invalid repo reference: {value}"
+        raise ValueError(msg)
+    return value
 
 
 def stage_skills(stage_dir: Path) -> int:
@@ -138,11 +150,12 @@ def post_launch_setup(
 
     if config.ca_bundle and config.ca_bundle.exists():
         ca_data = config.ca_bundle.read_text()
+        encoded_ca = base64.b64encode(ca_data.encode()).decode()
         osh.sandbox_exec_pipe(
             name,
             "cat /etc/openshell-tls/ca-bundle.pem > /sandbox/.ca-bundle.pem 2>/dev/null; "
             "cat /etc/openshell-tls/openshell-ca.pem >> /sandbox/.ca-bundle.pem 2>/dev/null; "
-            f"cat >> /sandbox/.ca-bundle.pem << 'CADATA'\n{ca_data}\nCADATA\n"
+            f"echo {encoded_ca} | base64 -d >> /sandbox/.ca-bundle.pem; "
             'echo "CA bundle: injected"',
         )
         osh.sandbox_exec_pipe(
@@ -164,9 +177,10 @@ def post_launch_setup(
             ssh_lines.append(f"  ProxyCommand nc -X connect -x 10.200.0.1:3128 {proxy_target} %p")
             ssh_lines.append("  StrictHostKeyChecking no")
         ssh_block = "\n".join(ssh_lines)
+        encoded_ssh = base64.b64encode(ssh_block.encode()).decode()
         osh.sandbox_exec_pipe(
             name,
-            f"cat >> /sandbox/.ssh/config << 'SSHEOF'\n{ssh_block}\nSSHEOF\n"
+            f"echo {encoded_ssh} | base64 -d >> /sandbox/.ssh/config; "
             f'echo "  SSH hosts: {len(profile.ssh)} configured"',
         )
 
@@ -183,6 +197,39 @@ def post_launch_setup(
             '\'!f() { echo "username=oauth2"; echo "password=$GITLAB_TOKEN"; }; f\' && '
             'echo "GitLab git: configured"',
         )
+
+    # Stage gcloud ADC for Vertex AI
+    adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+    if adc_path.exists():
+        osh.sandbox_exec_pipe(name, "mkdir -p /sandbox/.config/gcloud")
+        osh.sandbox_upload(name, adc_path, "/sandbox/.config/gcloud/application_default_credentials.json")
+        typer.echo("  gcloud ADC: staged")
+
+    # Stage GWS credentials
+    gws_client_secret = Path.home() / ".config" / "gws" / "client_secret.json"
+    gws_creds = Path.home() / ".config" / "gws" / "credentials.json"
+    if gws_client_secret.exists():
+        osh.sandbox_exec_pipe(name, "mkdir -p /sandbox/.config/gws")
+        osh.sandbox_upload(name, gws_client_secret, "/sandbox/.config/gws/client_secret.json")
+        if gws_creds.exists():
+            osh.sandbox_upload(name, gws_creds, "/sandbox/.config/gws/credentials.json")
+        typer.echo("  GWS credentials: staged")
+
+    # Set GWS keyring backend for container environment
+    if gws_client_secret.exists():
+        osh.sandbox_exec_pipe(
+            name,
+            'grep -q GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND /sandbox/.bashrc 2>/dev/null || '
+            'echo "export GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file" >> /sandbox/.bashrc; '
+            'echo "  GWS keyring backend: configured"',
+        )
+
+    # Verify GSD runtime
+    gsd_check = osh.sandbox_exec_pipe(name, "test -d /sandbox/.claude/gsd-core && echo 'present' || echo 'missing'")
+    if "present" in gsd_check:
+        typer.echo("  GSD runtime: present")
+    else:
+        typer.echo("  GSD runtime: not found (install with: npx -y @opengsd/gsd-core@latest --claude --global)")
 
 
 def clone_repos(name: str, profile: Profile) -> list[str]:
@@ -205,6 +252,8 @@ def clone_repos(name: str, profile: Profile) -> list[str]:
                     ["gh", "repo", "clone", repo, f"/sandbox/workspace/{repo_name}"],
                 )
             else:
+                _validate_repo_ref(server)
+                _validate_repo_ref(repo)
                 osh.sandbox_exec_pipe(
                     name,
                     "source /sandbox/.bashrc && "
@@ -234,9 +283,10 @@ def generate_workspace(
         settings["window.zoomLevel"] = profile.workspace.zoom
 
     workspace = json.dumps({"folders": folders, "settings": settings})
+    encoded_ws = base64.b64encode(workspace.encode()).decode()
     osh.sandbox_exec_pipe(
         name,
-        f"cat > {workspace_path} << 'WSEOF'\n{workspace}\nWSEOF",
+        f"echo {encoded_ws} | base64 -d > {workspace_path}",
     )
     typer.echo(f"  Workspace: {len(repo_names)} folders")
 

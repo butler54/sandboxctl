@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -125,7 +126,8 @@ class GitHubPATCheck(CredentialCheck):
                 name=self.check_name,
                 details="No GitHub token available to inject",
             )
-        script = f"cat <<'GHEOF' | gh auth login --with-token && gh auth setup-git\n{token}\nGHEOF"
+        encoded = base64.b64encode(token.encode()).decode()
+        script = f"echo {encoded} | base64 -d | gh auth login --with-token && gh auth setup-git"
         osh.sandbox_exec_pipe(sandbox_name, script)
         return FixResult(
             success=True,
@@ -214,8 +216,10 @@ class GitLabPATCheck(CredentialCheck):
         servers = self._discover_servers(config)
         # Inject GITLAB_TOKEN env var and configure git credential helper per server
         env_line = f'export GITLAB_TOKEN="{token}"'
+        encoded_env = base64.b64encode(env_line.encode()).decode()
         script_parts = [
-            f"grep -q \"GITLAB_TOKEN\" /sandbox/.bashrc 2>/dev/null || echo '{env_line}' >> /sandbox/.bashrc",
+            f"grep -q GITLAB_TOKEN /sandbox/.bashrc 2>/dev/null"
+            f" || echo {encoded_env} | base64 -d >> /sandbox/.bashrc",
         ]
         for server in servers:
             script_parts.append(
@@ -398,9 +402,11 @@ class GWSCredentialCheck(CredentialCheck):
                 # Filter out non-JSON log lines
                 if "Using keyring" in stdout:
                     stdout = "\n".join(line for line in stdout.split("\n") if not line.startswith("Using keyring"))
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+                fd, tmp_name = tempfile.mkstemp(suffix=".json")
+                tmp_path = Path(tmp_name)
+                os.fchmod(fd, 0o600)
+                with os.fdopen(fd, "w") as tmp:
                     tmp.write(stdout.strip() + "\n")
-                    tmp_path = Path(tmp.name)
                 try:
                     osh.sandbox_upload(
                         sandbox_name,
@@ -603,7 +609,8 @@ def build_and_inject_ca_bundle(
                 continue
         if ca_data_parts:
             combined_ca = "\n".join(ca_data_parts)
-            script_parts.append(f"cat >> /sandbox/.ca-bundle.pem << 'CADATA'\n{combined_ca}\nCADATA")
+            encoded = base64.b64encode(combined_ca.encode()).decode()
+            script_parts.append(f"echo {encoded} | base64 -d >> /sandbox/.ca-bundle.pem")
 
     # Set TLS environment variables idempotently
     env_block = (

@@ -252,9 +252,9 @@ class TestPostLaunchSetup:
         vertex_calls = [c for c in mock_pipe.call_args_list if "CLAUDE_CODE_USE_VERTEX" in str(c)]
         assert len(vertex_calls) == 0
 
-    def test_gitlab_token_injected(self, tmp_path: Path) -> None:
+    def test_gitlab_token_injected_without_shell_expansion(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)
-        profile = Profile(name="test")
+        profile = Profile(name="test", repos={"gitlab.com": ["group/project"]})
 
         with (
             patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
@@ -267,6 +267,50 @@ class TestPostLaunchSetup:
         assert len(token_calls) >= 2  # token injection + credential helper
         inject_call = [c for c in token_calls if "base64" in str(c)]
         assert len(inject_call) == 1
+        script = inject_call[0][0][1]
+        assert "$(" not in script  # no command substitution
+
+    def test_gitlab_credential_helper_per_server(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test", repos={"gitlab.example.com": ["team/project"]})
+
+        with (
+            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value="glpat-test"),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        helper_calls = [c for c in mock_pipe.call_args_list if "credential.https://" in str(c)]
+        assert len(helper_calls) == 1
+        script = helper_calls[0][0][1]
+        assert "credential.https://gitlab.example.com.helper" in script
+        global_calls = [
+            c for c in mock_pipe.call_args_list if "credential.helper " in str(c) and "https://" not in str(c)
+        ]
+        assert len(global_calls) == 0
+
+    def test_gitlab_servers_from_credentials_config(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path)
+        from sandboxctl.models import CredentialConfig
+
+        profile = Profile(
+            name="test",
+            credentials=CredentialConfig(gitlab_servers=["gitlab.com", "gitlab.internal.co"]),
+        )
+
+        with (
+            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value="glpat-test"),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        helper_calls = [c for c in mock_pipe.call_args_list if "credential.https://" in str(c)]
+        assert len(helper_calls) == 2
+        scripts = [c[0][1] for c in helper_calls]
+        assert any("credential.https://gitlab.com.helper" in s for s in scripts)
+        assert any("credential.https://gitlab.internal.co.helper" in s for s in scripts)
 
 
 class TestCloneRepos:

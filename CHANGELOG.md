@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.4.6 (2026-07-02)
+
+### Bug Fixes
+
+- Use $USER for keychain account lookup in post-launch setup
+  ([`5db1514`](https://github.com/butler54/sandboxctl/commit/5db151454f109333f1577d45a09119118ee1933a))
+
+
 ## v1.4.5 (2026-07-02)
 
 ### Bug Fixes

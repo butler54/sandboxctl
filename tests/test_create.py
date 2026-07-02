@@ -229,6 +229,7 @@ class TestPostLaunchSetup:
             patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 
@@ -246,6 +247,7 @@ class TestPostLaunchSetup:
             patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 
@@ -260,6 +262,7 @@ class TestPostLaunchSetup:
             patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value="glpat-test-token"),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 
@@ -278,6 +281,7 @@ class TestPostLaunchSetup:
             patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value="glpat-test"),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 
@@ -303,6 +307,7 @@ class TestPostLaunchSetup:
             patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value="glpat-test"),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 
@@ -320,6 +325,7 @@ class TestPostLaunchSetup:
             patch("sandboxctl.create.osh.sandbox_exec_pipe"),
             patch("sandboxctl.create.get_credential") as mock_get_cred,
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
             patch.dict("os.environ", {"USER": "testuser"}),
         ):
             mock_get_cred.return_value = None

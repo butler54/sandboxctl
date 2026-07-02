@@ -168,6 +168,11 @@ def post_launch_setup(
 
     osh.sandbox_exec_pipe(name, "chmod 600 /sandbox/.ssh/id_ed25519 2>/dev/null; echo ok")
 
+    from sandboxctl.context import restore_claude_context
+
+    if restore_claude_context(name, config):
+        typer.echo("  Claude context: restored from backup")
+
     # Always build CA bundle — OpenShell proxy CA is needed for tls:terminate endpoints
     osh.sandbox_exec_pipe(
         name,

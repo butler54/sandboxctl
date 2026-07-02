@@ -124,7 +124,10 @@ class TestStatusCommand:
 
 class TestDeleteCommand:
     def test_delete_confirmed(self) -> None:
-        with patch("sandboxctl.openshell.sandbox_delete") as mock_del:
+        with (
+            patch("sandboxctl.openshell.sandbox_delete") as mock_del,
+            patch("sandboxctl.context.backup_claude_context", return_value=None),
+        ):
             result = runner.invoke(app, ["delete", "mybox"], input="y\n")
             assert result.exit_code == 0
             assert "Deleted" in result.output
@@ -135,6 +138,16 @@ class TestDeleteCommand:
             result = runner.invoke(app, ["delete", "mybox"], input="n\n")
             assert result.exit_code != 0
             mock_del.assert_not_called()
+
+    def test_delete_backs_up_context(self, tmp_path: Path) -> None:
+        with (
+            patch("sandboxctl.openshell.sandbox_delete"),
+            patch("sandboxctl.context.backup_claude_context", return_value=tmp_path) as mock_backup,
+        ):
+            result = runner.invoke(app, ["delete", "mybox"], input="y\n")
+            assert result.exit_code == 0
+            assert "backed up" in result.output.lower()
+            mock_backup.assert_called_once()
 
 
 class TestValidateCommand:
@@ -259,6 +272,34 @@ class TestCreateCommand:
             result = runner.invoke(app, ["create", "--profile", "nonexistent"])
             assert result.exit_code == 1
             assert "not found" in result.output.lower()
+
+
+class TestBackupCommand:
+    def test_backup_success(self, tmp_path: Path) -> None:
+        with patch("sandboxctl.context.backup_claude_context", return_value=tmp_path):
+            result = runner.invoke(app, ["backup", "mybox"])
+            assert result.exit_code == 0
+            assert "Backed up" in result.output
+
+    def test_backup_no_context(self) -> None:
+        with patch("sandboxctl.context.backup_claude_context", return_value=None):
+            result = runner.invoke(app, ["backup", "mybox"])
+            assert result.exit_code == 0
+            assert "No Claude context" in result.output
+
+
+class TestRestoreCommand:
+    def test_restore_success(self) -> None:
+        with patch("sandboxctl.context.restore_claude_context", return_value=True):
+            result = runner.invoke(app, ["restore", "mybox"])
+            assert result.exit_code == 0
+            assert "restored" in result.output.lower()
+
+    def test_restore_no_backup(self) -> None:
+        with patch("sandboxctl.context.restore_claude_context", return_value=False):
+            result = runner.invoke(app, ["restore", "mybox"])
+            assert result.exit_code == 0
+            assert "No backup" in result.output
 
 
 class TestOpenCommand:

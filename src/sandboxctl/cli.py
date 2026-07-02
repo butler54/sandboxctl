@@ -193,10 +193,43 @@ def open_cmd(
 def delete_cmd(name: str = typer.Argument(help="Sandbox name.", callback=_validate_name)) -> None:
     """Delete a sandbox."""
     from sandboxctl import openshell as osh
+    from sandboxctl.context import backup_claude_context
 
     typer.confirm(f"Delete sandbox '{name}'?", abort=True)
+    cfg = load_config()
+    try:
+        backup_path = backup_claude_context(name, cfg)
+        if backup_path:
+            typer.echo(f"  Claude context backed up to {backup_path}")
+    except Exception:  # noqa: BLE001
+        typer.echo("  Claude context backup skipped (sandbox may not be running)")
     osh.sandbox_delete(name)
     typer.echo(f"Deleted sandbox: {name}")
+
+
+@app.command()
+def backup(name: str = typer.Argument(help="Sandbox name.", callback=_validate_name)) -> None:
+    """Back up Claude context (memory, settings) from a running sandbox."""
+    from sandboxctl.context import backup_claude_context
+
+    cfg = load_config()
+    path = backup_claude_context(name, cfg)
+    if path:
+        typer.echo(f"Backed up Claude context: {path}")
+    else:
+        typer.echo("No Claude context found in sandbox.")
+
+
+@app.command()
+def restore(name: str = typer.Argument(help="Sandbox name.", callback=_validate_name)) -> None:
+    """Restore Claude context (memory, settings) into a running sandbox."""
+    from sandboxctl.context import restore_claude_context
+
+    cfg = load_config()
+    if restore_claude_context(name, cfg):
+        typer.echo("Claude context restored.")
+    else:
+        typer.echo("No backup found for this sandbox.")
 
 
 @app.command()

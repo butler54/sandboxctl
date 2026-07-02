@@ -138,6 +138,10 @@ class SandboxctlConfig(BaseSettings):
         return self.providers.vertex_project_id
 
     @property
+    def vertex_region(self) -> str:
+        return self.providers.vertex_region
+
+    @property
     def ssh_key(self) -> Path:
         return self.paths.ssh_key
 

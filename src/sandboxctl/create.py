@@ -197,6 +197,17 @@ def post_launch_setup(
         'echo "CA env vars: configured"',
     )
 
+    if config.vertex_project_id:
+        vertex_region = config.vertex_region
+        osh.sandbox_exec_pipe(
+            name,
+            "grep -q CLAUDE_CODE_USE_VERTEX /sandbox/.bashrc 2>/dev/null || "
+            'echo "export CLAUDE_CODE_USE_VERTEX=1\n'
+            f"export CLOUD_ML_REGION={vertex_region}"
+            '" >> /sandbox/.bashrc; '
+            'echo "Vertex AI env: configured"',
+        )
+
     if profile.ssh:
         typer.echo("Configuring SSH proxy hosts...")
         ssh_lines: list[str] = []
@@ -221,6 +232,14 @@ def post_launch_setup(
 
     gitlab_token = get_credential(config.keychain_gitlab, "gitlab")
     if gitlab_token:
+        encoded_token = base64.b64encode(gitlab_token.encode()).decode()
+        osh.sandbox_exec_pipe(
+            name,
+            "grep -q GITLAB_TOKEN /sandbox/.bashrc 2>/dev/null || "
+            f"printf 'export GITLAB_TOKEN=%s\\n' \"$(echo {encoded_token} | base64 -d)\" "
+            ">> /sandbox/.bashrc; "
+            'echo "GitLab token: configured"',
+        )
         osh.sandbox_exec_pipe(
             name,
             "git config --global credential.helper "
@@ -377,6 +396,10 @@ def create_sandbox(
                 shutil.rmtree(cleanup_dir, ignore_errors=True)
 
     typer.echo(f"\nSandbox '{name}' created.")
+
+    if policy_path.exists():
+        osh.policy_set(name, policy_path)
+        typer.echo("  Policy re-applied (TLS directives active)")
 
     post_launch_setup(name, profile, config)
     repo_names = clone_repos(name, profile)

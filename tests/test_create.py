@@ -12,6 +12,7 @@ from sandboxctl.create import (
     clone_repos,
     create_sandbox,
     generate_workspace,
+    post_launch_setup,
     resolve_build_context,
     setup_providers,
     stage_claude_settings,
@@ -208,6 +209,66 @@ class TestGenerateProviderYaml:
         mock_create.assert_called_once_with("anthropic-direct", "anthropic", "ANTHROPIC_API_KEY=sk-test")
 
 
+class TestPostLaunchSetup:
+    def _make_config(self, tmp_path: Path, vertex: bool = False, gitlab: bool = False) -> MagicMock:
+        config = MagicMock(
+            vertex_project_id="my-project" if vertex else "",
+            vertex_region="us-central1" if vertex else "global",
+            providers=MagicMock(vertex_region="us-central1" if vertex else "global"),
+            ca_bundle=None,
+            ca_paths=[],
+            keychain_gitlab="sandboxctl-gitlab-token",
+        )
+        return config
+
+    def test_vertex_env_vars_injected(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path, vertex=True)
+        profile = Profile(name="test")
+
+        with (
+            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        vertex_calls = [c for c in mock_pipe.call_args_list if "CLAUDE_CODE_USE_VERTEX" in str(c)]
+        assert len(vertex_calls) == 1
+        script = vertex_calls[0][0][1]
+        assert "CLAUDE_CODE_USE_VERTEX=1" in script
+        assert "CLOUD_ML_REGION=us-central1" in script
+
+    def test_no_vertex_env_vars_when_not_configured(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path, vertex=False)
+        profile = Profile(name="test")
+
+        with (
+            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        vertex_calls = [c for c in mock_pipe.call_args_list if "CLAUDE_CODE_USE_VERTEX" in str(c)]
+        assert len(vertex_calls) == 0
+
+    def test_gitlab_token_injected(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test")
+
+        with (
+            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value="glpat-test-token"),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        token_calls = [c for c in mock_pipe.call_args_list if "GITLAB_TOKEN" in str(c)]
+        assert len(token_calls) >= 2  # token injection + credential helper
+        inject_call = [c for c in token_calls if "base64" in str(c)]
+        assert len(inject_call) == 1
+
+
 class TestCloneRepos:
     def test_no_repos(self) -> None:
         profile = Profile(name="test")
@@ -261,6 +322,10 @@ class TestGenerateWorkspace:
 class TestCreateSandbox:
     def test_happy_path(self, tmp_path: Path) -> None:
         profile = Profile(name="test", sandbox=SandboxConfig(image="ghcr.io/org/img:v1"))
+        policy_dir = tmp_path / "profiles" / "test"
+        policy_dir.mkdir(parents=True)
+        (policy_dir / "policy.yaml").write_text("network: {}")
+
         config = MagicMock(
             default_model="claude-sonnet-4-20250514",
             default_theme="dark",
@@ -275,6 +340,7 @@ class TestCreateSandbox:
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.create.setup_providers", return_value=["github", "vertex-claude"]),
             patch("sandboxctl.create.osh.sandbox_create"),
+            patch("sandboxctl.create.osh.policy_set") as mock_policy_set,
             patch("sandboxctl.create.post_launch_setup"),
             patch("sandboxctl.create.clone_repos", return_value=[]),
             patch("sandboxctl.create.generate_workspace"),
@@ -282,6 +348,7 @@ class TestCreateSandbox:
             name = create_sandbox(profile, config, open_editor=False)
 
         assert name == "test"
+        mock_policy_set.assert_called_once_with("test", policy_dir / "policy.yaml")
 
     def test_ephemeral_passes_no_keep(self, tmp_path: Path) -> None:
         profile = Profile(name="test", sandbox=SandboxConfig(image="img:v1"))
@@ -299,6 +366,7 @@ class TestCreateSandbox:
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.create.setup_providers", return_value=["github", "anthropic-direct"]),
             patch("sandboxctl.create.osh.sandbox_create") as mock_create,
+            patch("sandboxctl.create.osh.policy_set"),
             patch("sandboxctl.create.post_launch_setup"),
             patch("sandboxctl.create.clone_repos", return_value=[]),
             patch("sandboxctl.create.generate_workspace"),

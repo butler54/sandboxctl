@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.5.0 (2026-07-02)
+
+### Bug Fixes
+
+- Stage GWS OAuth credentials via live export during sandbox creation
+  ([`0a8ba3b`](https://github.com/butler54/sandboxctl/commit/0a8ba3b7712724e87336af4a7d27107d9aab1ecf))
+
+### Features
+
+- Claude context backup and restore across sandbox lifecycle
+  ([`0bb87e4`](https://github.com/butler54/sandboxctl/commit/0bb87e42b3e994cf6329d48335e9c35263072d35))
+
+
 ## v1.4.6 (2026-07-02)
 
 ### Bug Fixes

@@ -236,16 +236,22 @@ def post_launch_setup(
         osh.sandbox_exec_pipe(
             name,
             "grep -q GITLAB_TOKEN /sandbox/.bashrc 2>/dev/null || "
-            f"printf 'export GITLAB_TOKEN=%s\\n' \"$(echo {encoded_token} | base64 -d)\" "
-            ">> /sandbox/.bashrc; "
+            "{ printf 'export GITLAB_TOKEN=' >> /sandbox/.bashrc && "
+            f"echo {encoded_token} | base64 -d >> /sandbox/.bashrc && "
+            "echo >> /sandbox/.bashrc; }; "
             'echo "GitLab token: configured"',
         )
-        osh.sandbox_exec_pipe(
-            name,
-            "git config --global credential.helper "
-            '\'!f() { echo "username=oauth2"; echo "password=$GITLAB_TOKEN"; }; f\' && '
-            'echo "GitLab git: configured"',
-        )
+        gitlab_servers = list(profile.credentials.gitlab_servers)
+        if not gitlab_servers:
+            gitlab_servers = [s for s in profile.repos if s != "github"]
+        for server in gitlab_servers:
+            _validate_repo_ref(server)
+            osh.sandbox_exec_pipe(
+                name,
+                f"git config --global credential.https://{server}.helper "
+                '\'!f() { echo "username=oauth2"; echo "password=$GITLAB_TOKEN"; }; f\' && '
+                f'echo "  GitLab git ({server}): configured"',
+            )
 
     # Stage gcloud ADC for Vertex AI
     adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"

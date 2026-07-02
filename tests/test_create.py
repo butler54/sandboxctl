@@ -11,9 +11,9 @@ import pytest
 from sandboxctl.create import (
     clone_repos,
     create_sandbox,
-    generate_provider_yaml,
     generate_workspace,
     resolve_build_context,
+    setup_providers,
     stage_claude_settings,
     stage_claude_state,
     stage_credentials,
@@ -139,6 +139,13 @@ class TestResolveBuildContext:
         assert result == "ghcr.io/org/sandbox:latest"
         assert cleanup is None
 
+    def test_containerfile_image_ref_detected(self) -> None:
+        profile = Profile(name="test", sandbox=SandboxConfig(containerfile="ghcr.io/org/sandbox:latest"))
+        config = MagicMock()
+        result, cleanup = resolve_build_context(profile, config)
+        assert result == "ghcr.io/org/sandbox:latest"
+        assert cleanup is None
+
     def test_default_containerfile(self, tmp_path: Path) -> None:
         profiles_dir = tmp_path / "profiles"
         (profiles_dir / "test").mkdir(parents=True)
@@ -180,21 +187,25 @@ class TestGenerateProviderYaml:
     def test_vertex_provider(self, tmp_path: Path) -> None:
         config = MagicMock(
             vertex_project_id="my-project",
-            providers=MagicMock(vertex_region="us-central1"),
+            config_dir=tmp_path,
         )
-        path = generate_provider_yaml(config, tmp_path)
-        content = path.read_text()
-        assert "vertex-claude" in content
-        assert "my-project" in content
-        assert "us-central1" in content
+        with (
+            patch("sandboxctl.create.osh.settings_set"),
+            patch("sandboxctl.create.osh.provider_create") as mock_create,
+        ):
+            providers = setup_providers(config)
+        assert "vertex-claude" in providers
+        mock_create.assert_called_once_with("vertex-claude", "vertex-claude", "ANTHROPIC_VERTEX_PROJECT_ID=my-project")
 
     def test_anthropic_direct_provider(self, tmp_path: Path) -> None:
-        config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token")
-        with patch("sandboxctl.create.get_credential", return_value="sk-test"):
-            path = generate_provider_yaml(config, tmp_path)
-        content = path.read_text()
-        assert "anthropic-direct" in content
-        assert "sk-test" in content
+        config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)
+        with (
+            patch("sandboxctl.create.get_credential", return_value="sk-test"),
+            patch("sandboxctl.create.osh.provider_create") as mock_create,
+        ):
+            providers = setup_providers(config)
+        assert "anthropic-direct" in providers
+        mock_create.assert_called_once_with("anthropic-direct", "anthropic", "ANTHROPIC_API_KEY=sk-test")
 
 
 class TestCloneRepos:
@@ -262,7 +273,7 @@ class TestCreateSandbox:
 
         with (
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
-            patch("sandboxctl.create.osh.provider_profile_import"),
+            patch("sandboxctl.create.setup_providers", return_value=["github", "vertex-claude"]),
             patch("sandboxctl.create.osh.sandbox_create"),
             patch("sandboxctl.create.post_launch_setup"),
             patch("sandboxctl.create.clone_repos", return_value=[]),
@@ -286,8 +297,7 @@ class TestCreateSandbox:
 
         with (
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
-            patch("sandboxctl.create.get_credential", return_value="key"),
-            patch("sandboxctl.create.osh.provider_profile_import"),
+            patch("sandboxctl.create.setup_providers", return_value=["github", "anthropic-direct"]),
             patch("sandboxctl.create.osh.sandbox_create") as mock_create,
             patch("sandboxctl.create.post_launch_setup"),
             patch("sandboxctl.create.clone_repos", return_value=[]),

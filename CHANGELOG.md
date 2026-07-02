@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.4.3 (2026-07-02)
+
+### Bug Fixes
+
+- Resolve migration blockers — provider YAML, image refs, CA bundle
+  ([`e3530ba`](https://github.com/butler54/sandboxctl/commit/e3530bad525ba4e1102f419265ef92643b4cbd7b))
+
+
 ## v1.4.2 (2026-07-01)
 
 ### Bug Fixes

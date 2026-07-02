@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -268,16 +269,29 @@ def post_launch_setup(
 
     # Stage GWS credentials
     gws_client_secret = Path.home() / ".config" / "gws" / "client_secret.json"
-    gws_creds = Path.home() / ".config" / "gws" / "credentials.json"
-    if gws_client_secret.exists():
+    if shutil.which("gws") and gws_client_secret.exists():
         osh.sandbox_exec_pipe(name, "mkdir -p /sandbox/.config/gws")
         osh.sandbox_upload(name, gws_client_secret, "/sandbox/.config/gws/client_secret.json")
-        if gws_creds.exists():
-            osh.sandbox_upload(name, gws_creds, "/sandbox/.config/gws/credentials.json")
-        typer.echo("  GWS credentials: staged")
-
-    # Set GWS keyring backend for container environment
-    if gws_client_secret.exists():
+        try:
+            export_result = subprocess.run(
+                ["gws", "auth", "export", "--unmasked"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            if export_result.stdout.strip():
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                    f.write(export_result.stdout)
+                    creds_tmp = Path(f.name)
+                try:
+                    osh.sandbox_upload(name, creds_tmp, "/sandbox/.config/gws/credentials.json")
+                finally:
+                    creds_tmp.unlink(missing_ok=True)
+                typer.echo("  GWS credentials: staged (live export)")
+            else:
+                typer.echo("  GWS credentials: client_secret only (export empty)")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            typer.echo("  GWS credentials: client_secret only (auth export failed)")
         osh.sandbox_exec_pipe(
             name,
             "grep -q GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND /sandbox/.bashrc 2>/dev/null || "

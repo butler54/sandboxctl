@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -328,6 +329,69 @@ class TestPostLaunchSetup:
         gitlab_calls = [c for c in mock_get_cred.call_args_list if c[0][0] == "sandboxctl-gitlab-token"]
         assert len(gitlab_calls) == 1
         assert gitlab_calls[0][0][1] == "testuser"
+
+    def test_gws_credentials_exported_when_gws_installed(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test")
+        gws_dir = tmp_path / "nohome" / ".config" / "gws"
+        gws_dir.mkdir(parents=True)
+        (gws_dir / "client_secret.json").write_text('{"installed":{}}')
+
+        with (
+            patch("sandboxctl.create.osh.sandbox_exec_pipe"),
+            patch("sandboxctl.create.osh.sandbox_upload") as mock_upload,
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.create.shutil.which", return_value="/usr/bin/gws"),
+            patch("sandboxctl.create.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(stdout='{"refresh_token": "tok"}', returncode=0)
+            post_launch_setup("mybox", profile, config)
+
+        upload_calls = [c for c in mock_upload.call_args_list if "gws" in str(c)]
+        assert len(upload_calls) == 2  # client_secret + credentials
+
+    def test_gws_skipped_when_not_installed(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test")
+        gws_dir = tmp_path / "nohome" / ".config" / "gws"
+        gws_dir.mkdir(parents=True)
+        (gws_dir / "client_secret.json").write_text('{"installed":{}}')
+
+        with (
+            patch("sandboxctl.create.osh.sandbox_exec_pipe"),
+            patch("sandboxctl.create.osh.sandbox_upload") as mock_upload,
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        upload_calls = [c for c in mock_upload.call_args_list if "gws" in str(c)]
+        assert len(upload_calls) == 0
+
+    def test_gws_graceful_on_export_failure(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test")
+        gws_dir = tmp_path / "nohome" / ".config" / "gws"
+        gws_dir.mkdir(parents=True)
+        (gws_dir / "client_secret.json").write_text('{"installed":{}}')
+
+        with (
+            patch("sandboxctl.create.osh.sandbox_exec_pipe"),
+            patch("sandboxctl.create.osh.sandbox_upload") as mock_upload,
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.create.shutil.which", return_value="/usr/bin/gws"),
+            patch(
+                "sandboxctl.create.subprocess.run",
+                side_effect=subprocess.CalledProcessError(1, "gws"),
+            ),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        upload_calls = [c for c in mock_upload.call_args_list if "gws" in str(c)]
+        assert len(upload_calls) == 1  # client_secret only
 
 
 class TestCloneRepos:

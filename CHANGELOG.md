@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.4.5 (2026-07-02)
+
+### Bug Fixes
+
+- GitLab token shell quoting and per-server credential helpers
+  ([`6940dc3`](https://github.com/butler54/sandboxctl/commit/6940dc34202fcc45ce5b58e7b174c9e449c70dcf))
+
+
 ## v1.4.4 (2026-07-02)
 
 ### Bug Fixes

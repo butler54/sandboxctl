@@ -312,6 +312,23 @@ class TestPostLaunchSetup:
         assert any("credential.https://gitlab.com.helper" in s for s in scripts)
         assert any("credential.https://gitlab.internal.co.helper" in s for s in scripts)
 
+    def test_gitlab_credential_uses_user_account(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test")
+
+        with (
+            patch("sandboxctl.create.osh.sandbox_exec_pipe"),
+            patch("sandboxctl.create.get_credential") as mock_get_cred,
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch.dict("os.environ", {"USER": "testuser"}),
+        ):
+            mock_get_cred.return_value = None
+            post_launch_setup("mybox", profile, config)
+
+        gitlab_calls = [c for c in mock_get_cred.call_args_list if c[0][0] == "sandboxctl-gitlab-token"]
+        assert len(gitlab_calls) == 1
+        assert gitlab_calls[0][0][1] == "testuser"
+
 
 class TestCloneRepos:
     def test_no_repos(self) -> None:

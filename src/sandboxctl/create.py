@@ -96,6 +96,10 @@ def resolve_build_context(
     containerfile = profile.sandbox.containerfile
     profiles_dir = config.profiles_dir or config.config_dir / "profiles"
 
+    # Detect image references used in the containerfile field (e.g. ghcr.io/org/img:tag)
+    if "/" in containerfile and ":" in containerfile:
+        return containerfile, None
+
     if containerfile == "Containerfile":
         default_path = profiles_dir / profile.name / "Containerfile"
         if default_path.exists():
@@ -122,22 +126,30 @@ def resolve_build_context(
     return build_ctx, build_ctx
 
 
-def generate_provider_yaml(config: SandboxctlConfig, tmp_dir: Path) -> Path:
+def setup_providers(config: SandboxctlConfig) -> list[str]:
+    """Register providers with OpenShell. Returns list of provider names to attach."""
+    providers = ["github"]
+
     if config.vertex_project_id:
-        content = (
-            "name: vertex-claude\n"
-            "type: vertex\n"
-            "credentials:\n"
-            "  CLAUDE_CODE_USE_VERTEX: '1'\n"
-            f"  CLOUD_ML_REGION: '{config.providers.vertex_region}'\n"
-            f"  ANTHROPIC_VERTEX_PROJECT_ID: '{config.vertex_project_id}'\n"
+        osh.settings_set("providers_v2_enabled", "true")
+        osh.provider_create(
+            "vertex-claude",
+            "vertex-claude",
+            f"ANTHROPIC_VERTEX_PROJECT_ID={config.vertex_project_id}",
         )
+        providers.append("vertex-claude")
+
+        # Import a full provider profile YAML if user has one
+        profile_yaml = config.config_dir / "providers" / "vertex-claude.yaml"
+        if profile_yaml.exists():
+            osh.provider_profile_import(profile_yaml)
     else:
         api_key = get_credential(config.keychain_github, "anthropic-api-key") or ""
-        content = f"name: anthropic-direct\ntype: anthropic\ncredentials:\n  ANTHROPIC_API_KEY: '{api_key}'\n"
-    path = tmp_dir / "provider.yaml"
-    path.write_text(content)
-    return path
+        if api_key:
+            osh.provider_create("anthropic-direct", "anthropic", f"ANTHROPIC_API_KEY={api_key}")
+            providers.append("anthropic-direct")
+
+    return providers
 
 
 def post_launch_setup(
@@ -347,15 +359,8 @@ def create_sandbox(
         build_from, cleanup_dir = resolve_build_context(profile, config)
         policy_path = (config.profiles_dir or config.config_dir / "profiles") / profile.name / profile.sandbox.policy
 
-        provider_yaml = generate_provider_yaml(config, Path(stage_root))
-        osh.provider_profile_import(provider_yaml)
-        typer.echo("  Provider profile: imported")
-
-        providers = ["github"]
-        if config.vertex_project_id:
-            providers.append("vertex-claude")
-        else:
-            providers.append("anthropic-direct")
+        providers = setup_providers(config)
+        typer.echo(f"  Providers: {', '.join(providers)}")
 
         typer.echo("\nCreating sandbox...")
         try:

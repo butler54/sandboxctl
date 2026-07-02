@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -230,7 +231,7 @@ def post_launch_setup(
         'gh auth setup-git 2>/dev/null && echo "GitHub git: configured"',
     )
 
-    gitlab_token = get_credential(config.keychain_gitlab, "gitlab")
+    gitlab_token = get_credential(config.keychain_gitlab, os.environ.get("USER", "sandboxctl"))
     if gitlab_token:
         encoded_token = base64.b64encode(gitlab_token.encode()).decode()
         osh.sandbox_exec_pipe(

@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.4.4 (2026-07-02)
+
+### Bug Fixes
+
+- Inject Vertex AI env vars, GitLab token, and re-apply TLS policy
+  ([`6a49e9f`](https://github.com/butler54/sandboxctl/commit/6a49e9fca7432221486111a11e2c3e16bff35c1f))
+
+
 ## v1.4.3 (2026-07-02)
 
 ### Bug Fixes

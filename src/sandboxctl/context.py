@@ -14,6 +14,7 @@ _BACKUP_PATHS = (
     ".claude/settings.local.json",
     ".claude/projects",
     ".claude/CLAUDE.md",
+    ".claude-mem",
 )
 
 _MAX_BACKUPS = 10
@@ -50,7 +51,8 @@ def backup_claude_context(name: str, config: SandboxctlConfig) -> Path | None:
     Rotates existing backups, keeping up to 10 copies.
     Returns the backup path, or None if the sandbox has no Claude context.
     """
-    paths = " ".join(_BACKUP_PATHS)
+    all_paths = list(_BACKUP_PATHS) + list(config.backup_extra_paths)
+    paths = " ".join(all_paths)
     encoded = osh.sandbox_exec_pipe(
         name,
         f"cd /sandbox && tar czf - {paths} 2>/dev/null | base64",

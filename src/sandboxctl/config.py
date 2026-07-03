@@ -66,6 +66,10 @@ class TlsConfig(_SubConfig):
         return self
 
 
+class BackupConfig(_SubConfig):
+    extra_paths: list[str] = Field(default_factory=list)
+
+
 class SandboxctlConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SANDBOXCTL_",
@@ -82,6 +86,7 @@ class SandboxctlConfig(BaseSettings):
     paths: PathsConfig = Field(default_factory=PathsConfig)
     keychain: KeychainConfig = Field(default_factory=KeychainConfig)
     tls: TlsConfig = Field(default_factory=TlsConfig)
+    backup: BackupConfig = Field(default_factory=BackupConfig)
 
     _config_dir_override: ClassVar[Path | None] = None
 
@@ -161,6 +166,10 @@ class SandboxctlConfig(BaseSettings):
     def ca_paths(self) -> list[Path]:
         return self.tls.ca_paths
 
+    @property
+    def backup_extra_paths(self) -> list[str]:
+        return self.backup.extra_paths
+
 
 def load_config(config_dir: Path | None = None) -> SandboxctlConfig:
     """Load config with optional config_dir override (mainly for testing)."""
@@ -210,6 +219,9 @@ CONFIG_TEMPLATE = """\
 
 [tls]
 # ca_paths = ["~/.config/certs/custom-ca.pem"]
+
+[backup]
+# extra_paths = [".some-plugin"]
 """
 
 

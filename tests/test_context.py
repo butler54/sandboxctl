@@ -75,6 +75,33 @@ class TestBackupClaudeContext:
 
         assert result == tmp_path / "backups" / "docs"
 
+    def test_backup_includes_claude_mem(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
+        config = MagicMock(config_dir=tmp_path, backup_extra_paths=[])
+        fake_tar = _make_fake_tar()
+        encoded = base64.b64encode(fake_tar).decode()
+
+        with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value=encoded) as mock_pipe:
+            backup_claude_context("mybox", config)
+
+        script = mock_pipe.call_args[0][1]
+        assert ".claude-mem" in script
+
+    def test_backup_includes_extra_paths(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
+        config = MagicMock(config_dir=tmp_path, backup_extra_paths=[".my-plugin", ".other-data"])
+        fake_tar = _make_fake_tar()
+        encoded = base64.b64encode(fake_tar).decode()
+
+        with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value=encoded) as mock_pipe:
+            backup_claude_context("mybox", config)
+
+        script = mock_pipe.call_args[0][1]
+        assert ".my-plugin" in script
+        assert ".other-data" in script
+
 
 class TestRotateBackups:
     def test_rotates_existing_backup(self, tmp_path: Path) -> None:

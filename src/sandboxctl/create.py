@@ -39,6 +39,16 @@ def stage_skills(stage_dir: Path) -> int:
     return len(list(skills_dst.iterdir()))
 
 
+def stage_agents(stage_dir: Path) -> int:
+    agents_src = Path.home() / ".claude" / "agents"
+    if not agents_src.exists():
+        return 0
+    agents_dst = stage_dir / ".claude" / "agents"
+    agents_dst.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(agents_src, agents_dst, symlinks=False, dirs_exist_ok=True)
+    return len(list(agents_dst.iterdir()))
+
+
 def stage_claude_settings(stage_dir: Path, profile: Profile, config: SandboxctlConfig) -> None:
     claude_dir = stage_dir / ".claude"
     claude_dir.mkdir(parents=True, exist_ok=True)
@@ -390,6 +400,10 @@ def create_sandbox(
         skill_count = stage_skills(stage_dir)
         if skill_count:
             typer.echo(f"  Skills: {skill_count} (symlinks dereferenced)")
+
+        agent_count = stage_agents(stage_dir)
+        if agent_count:
+            typer.echo(f"  Agents: {agent_count} (symlinks dereferenced)")
 
         stage_claude_settings(stage_dir, profile, config)
         typer.echo(f"  Claude settings: staged (model: {model})")

@@ -16,6 +16,7 @@ from sandboxctl.create import (
     post_launch_setup,
     resolve_build_context,
     setup_providers,
+    stage_agents,
     stage_claude_settings,
     stage_claude_state,
     stage_credentials,
@@ -46,6 +47,31 @@ class TestStageSkills:
 
         with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
             count = stage_skills(stage_dir)
+
+        assert count == 0
+
+
+class TestStageAgents:
+    def test_copies_agents(self, tmp_path: Path) -> None:
+        agents_src = tmp_path / "home" / ".claude" / "agents"
+        agents_src.mkdir(parents=True)
+        (agents_src / "my-agent.md").write_text("agent definition")
+
+        stage_dir = tmp_path / "stage"
+        stage_dir.mkdir()
+
+        with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+            count = stage_agents(stage_dir)
+
+        assert count == 1
+        assert (stage_dir / ".claude" / "agents" / "my-agent.md").exists()
+
+    def test_no_agents_dir(self, tmp_path: Path) -> None:
+        stage_dir = tmp_path / "stage"
+        stage_dir.mkdir()
+
+        with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+            count = stage_agents(stage_dir)
 
         assert count == 0
 
@@ -350,6 +376,7 @@ class TestPostLaunchSetup:
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.create.shutil.which", return_value="/usr/bin/gws"),
             patch("sandboxctl.create.subprocess.run") as mock_run,
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             mock_run.return_value = MagicMock(stdout='{"refresh_token": "tok"}', returncode=0)
             post_launch_setup("mybox", profile, config)
@@ -370,6 +397,7 @@ class TestPostLaunchSetup:
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 
@@ -393,6 +421,7 @@ class TestPostLaunchSetup:
                 "sandboxctl.create.subprocess.run",
                 side_effect=subprocess.CalledProcessError(1, "gws"),
             ),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 

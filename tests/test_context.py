@@ -6,9 +6,15 @@ import base64
 import tarfile
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from sandboxctl.context import backup_claude_context, restore_claude_context
+from sandboxctl.context import (
+    _BACKUP_NAME,
+    _MAX_BACKUPS,
+    _rotate_backups,
+    backup_claude_context,
+    restore_claude_context,
+)
 
 
 def _make_fake_tar() -> bytes:
@@ -23,6 +29,8 @@ def _make_fake_tar() -> bytes:
 
 class TestBackupClaudeContext:
     def test_backup_creates_tarball(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
         config = MagicMock(config_dir=tmp_path)
         fake_tar = _make_fake_tar()
         encoded = base64.b64encode(fake_tar).decode()
@@ -31,11 +39,13 @@ class TestBackupClaudeContext:
             result = backup_claude_context("mybox", config)
 
         assert result is not None
-        tarball = result / "claude-context.tar.gz"
+        tarball = result / f"{_BACKUP_NAME}.tar.gz"
         assert tarball.exists()
         assert tarball.read_bytes() == fake_tar
 
     def test_backup_returns_none_when_empty(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
         config = MagicMock(config_dir=tmp_path)
 
         with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value=""):
@@ -44,6 +54,8 @@ class TestBackupClaudeContext:
         assert result is None
 
     def test_backup_returns_none_on_invalid_base64(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
         config = MagicMock(config_dir=tmp_path)
 
         with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value="not-valid-base64!!!"):
@@ -52,6 +64,8 @@ class TestBackupClaudeContext:
         assert result is None
 
     def test_backup_dir_structure(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
         config = MagicMock(config_dir=tmp_path)
         fake_tar = _make_fake_tar()
         encoded = base64.b64encode(fake_tar).decode()
@@ -62,13 +76,67 @@ class TestBackupClaudeContext:
         assert result == tmp_path / "backups" / "docs"
 
 
+class TestRotateBackups:
+    def test_rotates_existing_backup(self, tmp_path: Path) -> None:
+        (tmp_path / f"{_BACKUP_NAME}.tar.gz").write_text("current")
+        _rotate_backups(tmp_path)
+
+        assert not (tmp_path / f"{_BACKUP_NAME}.tar.gz").exists()
+        assert (tmp_path / f"{_BACKUP_NAME}.1.tar.gz").read_text() == "current"
+
+    def test_shifts_indexed_backups(self, tmp_path: Path) -> None:
+        (tmp_path / f"{_BACKUP_NAME}.tar.gz").write_text("current")
+        (tmp_path / f"{_BACKUP_NAME}.1.tar.gz").write_text("prev1")
+        (tmp_path / f"{_BACKUP_NAME}.2.tar.gz").write_text("prev2")
+
+        _rotate_backups(tmp_path)
+
+        assert (tmp_path / f"{_BACKUP_NAME}.1.tar.gz").read_text() == "current"
+        assert (tmp_path / f"{_BACKUP_NAME}.2.tar.gz").read_text() == "prev1"
+        assert (tmp_path / f"{_BACKUP_NAME}.3.tar.gz").read_text() == "prev2"
+
+    def test_drops_oldest_at_max(self, tmp_path: Path) -> None:
+        for i in range(1, _MAX_BACKUPS + 1):
+            (tmp_path / f"{_BACKUP_NAME}.{i}.tar.gz").write_text(f"backup-{i}")
+        (tmp_path / f"{_BACKUP_NAME}.tar.gz").write_text("current")
+
+        _rotate_backups(tmp_path)
+
+        assert not (tmp_path / f"{_BACKUP_NAME}.{_MAX_BACKUPS + 1}.tar.gz").exists()
+        assert (tmp_path / f"{_BACKUP_NAME}.1.tar.gz").read_text() == "current"
+        assert (tmp_path / f"{_BACKUP_NAME}.{_MAX_BACKUPS}.tar.gz").read_text() == f"backup-{_MAX_BACKUPS - 1}"
+
+    def test_noop_when_no_backups(self, tmp_path: Path) -> None:
+        _rotate_backups(tmp_path)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_multiple_backups_accumulate(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
+        config = MagicMock(config_dir=tmp_path)
+        fake_tar = _make_fake_tar()
+        encoded = base64.b64encode(fake_tar).decode()
+
+        with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value=encoded):
+            backup_claude_context("mybox", config)
+            backup_claude_context("mybox", config)
+            backup_claude_context("mybox", config)
+
+        backup_dir = tmp_path / "backups" / "mybox"
+        assert (backup_dir / f"{_BACKUP_NAME}.tar.gz").exists()
+        assert (backup_dir / f"{_BACKUP_NAME}.1.tar.gz").exists()
+        assert (backup_dir / f"{_BACKUP_NAME}.2.tar.gz").exists()
+
+
 class TestRestoreClaudeContext:
     def test_restore_uploads_and_extracts(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
         config = MagicMock(config_dir=tmp_path)
         backup_dir = tmp_path / "backups" / "mybox"
         backup_dir.mkdir(parents=True)
         fake_tar = _make_fake_tar()
-        (backup_dir / "claude-context.tar.gz").write_bytes(fake_tar)
+        (backup_dir / f"{_BACKUP_NAME}.tar.gz").write_bytes(fake_tar)
 
         with patch("sandboxctl.context.osh.sandbox_exec_pipe") as mock_pipe:
             result = restore_claude_context("mybox", config)
@@ -80,6 +148,8 @@ class TestRestoreClaudeContext:
         assert "tar xzf" in script
 
     def test_restore_returns_false_when_no_backup(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
         config = MagicMock(config_dir=tmp_path)
 
         result = restore_claude_context("mybox", config)
@@ -87,11 +157,13 @@ class TestRestoreClaudeContext:
         assert result is False
 
     def test_restore_sends_correct_data(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
         config = MagicMock(config_dir=tmp_path)
         backup_dir = tmp_path / "backups" / "mybox"
         backup_dir.mkdir(parents=True)
         fake_tar = _make_fake_tar()
-        (backup_dir / "claude-context.tar.gz").write_bytes(fake_tar)
+        (backup_dir / f"{_BACKUP_NAME}.tar.gz").write_bytes(fake_tar)
         expected_b64 = base64.b64encode(fake_tar).decode()
 
         with patch("sandboxctl.context.osh.sandbox_exec_pipe") as mock_pipe:

@@ -32,6 +32,7 @@ filesystem:
     - /usr
     - /bin
     - /sbin
+    - /opt
   writable:
     - /sandbox
     - /tmp

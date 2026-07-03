@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.6.0 (2026-07-03)
+
+### Features
+
+- Stage agents, backup rotation, and /opt in default policy
+  ([`310e285`](https://github.com/butler54/sandboxctl/commit/310e2858e25386262c6dcd6b61b42718f430d428))
+
+
 ## v1.5.0 (2026-07-02)
 
 ### Bug Fixes

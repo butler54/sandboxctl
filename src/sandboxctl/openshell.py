@@ -200,6 +200,30 @@ def provider_profile_import(path: Path) -> None:
     )
 
 
+def sandbox_ssh_config(name: str) -> str:
+    result = _run(["openshell", "sandbox", "ssh-config", name], check=False)
+    return result.stdout
+
+
+def update_local_ssh_config(name: str) -> None:
+    ssh_config_dir = Path.home() / ".config" / "openshell"
+    ssh_config_dir.mkdir(parents=True, exist_ok=True)
+    ssh_config_path = ssh_config_dir / "ssh_config"
+
+    new_block = sandbox_ssh_config(name)
+    if not new_block.strip():
+        return
+
+    existing = ssh_config_path.read_text() if ssh_config_path.exists() else ""
+    if f"openshell-{name}" in existing:
+        return
+
+    with ssh_config_path.open("a") as f:
+        if existing and not existing.endswith("\n"):
+            f.write("\n")
+        f.write(new_block)
+
+
 def settings_set(key: str, value: str) -> None:
     _run(
         ["openshell", "settings", "set", "--global", "--key", key, "--value", value, "--yes"],

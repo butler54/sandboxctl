@@ -437,6 +437,9 @@ def create_sandbox(
 
     typer.echo(f"\nSandbox '{name}' created.")
 
+    osh.update_local_ssh_config(name)
+    typer.echo("  SSH config: updated")
+
     if policy_path.exists():
         osh.policy_set(name, policy_path)
         typer.echo("  Policy re-applied (TLS directives active)")

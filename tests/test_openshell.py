@@ -17,6 +17,8 @@ from sandboxctl.openshell import (
     sandbox_exec_pipe,
     sandbox_get,
     sandbox_list,
+    sandbox_ssh_config,
+    update_local_ssh_config,
 )
 
 pytestmark = pytest.mark.integration
@@ -144,6 +146,70 @@ class TestGatewayStatus:
             assert result["gateway"] == "running"
             assert result["status"] == "Connected"
             assert result["version"] == "1.2.3"
+
+
+class TestSandboxSshConfig:
+    def test_returns_config(self) -> None:
+        with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="Host openshell-test\n  HostName 127.0.0.1\n")
+            result = sandbox_ssh_config("test")
+            cmd = mock_run.call_args[0][0]
+            assert cmd == ["openshell", "sandbox", "ssh-config", "test"]
+            assert "openshell-test" in result
+
+
+class TestUpdateLocalSshConfig:
+    def test_creates_config_file(self, tmp_path: Path) -> None:
+        with (
+            patch("sandboxctl.openshell.sandbox_ssh_config", return_value="Host openshell-test\n  HostName 127.0.0.1\n"),
+            patch("sandboxctl.openshell.Path.home", return_value=tmp_path),
+        ):
+            update_local_ssh_config("test")
+
+        config_path = tmp_path / ".config" / "openshell" / "ssh_config"
+        assert config_path.exists()
+        assert "openshell-test" in config_path.read_text()
+
+    def test_appends_to_existing(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".config" / "openshell"
+        config_dir.mkdir(parents=True)
+        config_path = config_dir / "ssh_config"
+        config_path.write_text("Host openshell-existing\n  HostName 127.0.0.1\n")
+
+        with (
+            patch("sandboxctl.openshell.sandbox_ssh_config", return_value="Host openshell-new\n  HostName 127.0.0.2\n"),
+            patch("sandboxctl.openshell.Path.home", return_value=tmp_path),
+        ):
+            update_local_ssh_config("new")
+
+        content = config_path.read_text()
+        assert "openshell-existing" in content
+        assert "openshell-new" in content
+
+    def test_skips_duplicate(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".config" / "openshell"
+        config_dir.mkdir(parents=True)
+        config_path = config_dir / "ssh_config"
+        config_path.write_text("Host openshell-test\n  HostName 127.0.0.1\n")
+
+        with (
+            patch("sandboxctl.openshell.sandbox_ssh_config") as mock_ssh_config,
+            patch("sandboxctl.openshell.Path.home", return_value=tmp_path),
+        ):
+            mock_ssh_config.return_value = "Host openshell-test\n  HostName 127.0.0.1\n"
+            update_local_ssh_config("test")
+
+        assert config_path.read_text().count("openshell-test") == 1
+
+    def test_skips_empty_output(self, tmp_path: Path) -> None:
+        with (
+            patch("sandboxctl.openshell.sandbox_ssh_config", return_value=""),
+            patch("sandboxctl.openshell.Path.home", return_value=tmp_path),
+        ):
+            update_local_ssh_config("test")
+
+        config_path = tmp_path / ".config" / "openshell" / "ssh_config"
+        assert not config_path.exists()
 
 
 class TestProviderCreate:

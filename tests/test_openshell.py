@@ -161,7 +161,10 @@ class TestSandboxSshConfig:
 class TestUpdateLocalSshConfig:
     def test_creates_config_file(self, tmp_path: Path) -> None:
         with (
-            patch("sandboxctl.openshell.sandbox_ssh_config", return_value="Host openshell-test\n  HostName 127.0.0.1\n"),
+            patch(
+                "sandboxctl.openshell.sandbox_ssh_config",
+                return_value="Host openshell-test\n  HostName 127.0.0.1\n",
+            ),
             patch("sandboxctl.openshell.Path.home", return_value=tmp_path),
         ):
             update_local_ssh_config("test")

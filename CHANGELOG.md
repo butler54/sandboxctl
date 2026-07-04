@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.7.0 (2026-07-04)
+
+### Chores
+
+- Bump github/codeql-action/upload-sarif from 4.36.2 to 4.36.3
+  ([`8c8226b`](https://github.com/butler54/sandboxctl/commit/8c8226b69f7b2014bb069f5fe81f067fd791b1f4))
+
+### Features
+
+- Add .claude-mem to backup paths and make extra paths configurable
+  ([`68a19be`](https://github.com/butler54/sandboxctl/commit/68a19be5be84f71afea76a376c9f1100b52174e9))
+
+
 ## v1.6.0 (2026-07-03)
 
 ### Features

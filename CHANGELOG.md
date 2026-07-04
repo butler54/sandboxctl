@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.7.1 (2026-07-04)
+
+### Bug Fixes
+
+- Use openshell- prefix for SSH health check and update SSH config on create
+  ([`0e28a97`](https://github.com/butler54/sandboxctl/commit/0e28a97879b3545863afc39aed2b38d041f78888))
+
+### Code Style
+
+- Fix line length in test_openshell.py
+  ([`ebef1a5`](https://github.com/butler54/sandboxctl/commit/ebef1a5c9e40a6778599a9a6f5bd90bd278ba17e))
+
+
 ## v1.7.0 (2026-07-04)
 
 ### Chores

@@ -500,6 +500,7 @@ class TestCreateSandbox:
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.create.setup_providers", return_value=["github", "vertex-claude"]),
             patch("sandboxctl.create.osh.sandbox_create"),
+            patch("sandboxctl.create.osh.update_local_ssh_config") as mock_ssh,
             patch("sandboxctl.create.osh.policy_set") as mock_policy_set,
             patch("sandboxctl.create.post_launch_setup"),
             patch("sandboxctl.create.clone_repos", return_value=[]),
@@ -508,6 +509,7 @@ class TestCreateSandbox:
             name = create_sandbox(profile, config, open_editor=False)
 
         assert name == "test"
+        mock_ssh.assert_called_once_with("test")
         mock_policy_set.assert_called_once_with("test", policy_dir / "policy.yaml")
 
     def test_ephemeral_passes_no_keep(self, tmp_path: Path) -> None:
@@ -526,6 +528,7 @@ class TestCreateSandbox:
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.create.setup_providers", return_value=["github", "anthropic-direct"]),
             patch("sandboxctl.create.osh.sandbox_create") as mock_create,
+            patch("sandboxctl.create.osh.update_local_ssh_config"),
             patch("sandboxctl.create.osh.policy_set"),
             patch("sandboxctl.create.post_launch_setup"),
             patch("sandboxctl.create.clone_repos", return_value=[]),

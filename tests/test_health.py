@@ -155,6 +155,13 @@ class TestSshConnectivity:
             mock.return_value = MagicMock(returncode=0, stdout="ok")
             assert check_ssh_connectivity("test") is True
 
+    def test_uses_openshell_prefix(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=0, stdout="ok")
+            check_ssh_connectivity("mybox")
+            cmd = mock.call_args[0][0]
+            assert "openshell-mybox" in cmd
+
     def test_unreachable(self) -> None:
         with patch("sandboxctl.health._run") as mock:
             mock.return_value = MagicMock(returncode=1, stdout="")

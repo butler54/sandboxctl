@@ -81,7 +81,8 @@ def check_ssh_connectivity(sandbox_name: str, timeout: int = 5) -> bool:
     """Check if SSH into the sandbox works."""
     try:
         # Accepted risk: StrictHostKeyChecking=no — health probe only, not data channel
-        cmd = ["ssh", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=no", sandbox_name, "echo", "ok"]
+        ssh_host = f"openshell-{sandbox_name}"
+        cmd = ["ssh", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=no", ssh_host, "echo", "ok"]
         result = _run(cmd, timeout=timeout)
         return result.returncode == 0 and "ok" in result.stdout
     except (FileNotFoundError, subprocess.TimeoutExpired):

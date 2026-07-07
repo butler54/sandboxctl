@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import base64
+import tempfile
 from pathlib import Path
 
 from sandboxctl import openshell as osh
@@ -14,6 +14,7 @@ _BACKUP_PATHS = (
     ".claude/settings.local.json",
     ".claude/projects",
     ".claude/CLAUDE.md",
+    ".claude/.credentials.json",
     ".claude-mem",
 )
 
@@ -48,37 +49,47 @@ def _rotate_backups(backup_path: Path) -> None:
 def backup_claude_context(name: str, config: SandboxctlConfig) -> Path | None:
     """Back up Claude memory and settings from a running sandbox.
 
+    Uses openshell download to transfer the tarball, avoiding base64 shell
+    argument limits that silently fail on large backups (>8MB).
     Rotates existing backups, keeping up to 10 copies.
     Returns the backup path, or None if the sandbox has no Claude context.
     """
     all_paths = list(_BACKUP_PATHS) + list(config.backup_extra_paths)
     paths = " ".join(all_paths)
-    encoded = osh.sandbox_exec_pipe(
+    remote_tar = "/tmp/claude-context-backup.tar.gz"  # noqa: S108
+
+    osh.sandbox_exec_pipe(
         name,
-        f"cd /sandbox && tar czf - {paths} 2>/dev/null | base64",
+        f"cd /sandbox && tar czf {remote_tar} {paths} 2>/dev/null; "
+        f"test -s {remote_tar} && echo 'ok' || echo 'empty'",
     )
-    if not encoded.strip():
-        return None
 
-    try:
-        data = base64.b64decode(encoded)
-    except Exception:  # noqa: BLE001
-        return None
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        local_tar = Path(tmp_dir) / "claude-context.tar.gz"
+        try:
+            osh.sandbox_download(name, remote_tar, local_tar)
+        except Exception:  # noqa: BLE001
+            return None
+        finally:
+            osh.sandbox_exec_pipe(name, f"rm -f {remote_tar}")
 
-    if len(data) < 50:
-        return None
+        if not local_tar.exists() or local_tar.stat().st_size < 50:
+            return None
 
-    backup_path = _backup_dir(name, config)
-    backup_path.mkdir(parents=True, exist_ok=True)
-    _rotate_backups(backup_path)
-    tarball = backup_path / f"{_BACKUP_NAME}.tar.gz"
-    tarball.write_bytes(data)
+        backup_path = _backup_dir(name, config)
+        backup_path.mkdir(parents=True, exist_ok=True)
+        _rotate_backups(backup_path)
+        tarball = backup_path / f"{_BACKUP_NAME}.tar.gz"
+        tarball.write_bytes(local_tar.read_bytes())
+
     return backup_path
 
 
 def restore_claude_context(name: str, config: SandboxctlConfig) -> bool:
     """Restore Claude memory and settings into a running sandbox.
 
+    Uses openshell upload to transfer the tarball, avoiding base64 shell
+    argument limits that silently fail on large backups (>8MB).
     Restores the most recent backup (claude-context.tar.gz).
     Returns True if a backup was found and restored, False otherwise.
     """
@@ -86,9 +97,10 @@ def restore_claude_context(name: str, config: SandboxctlConfig) -> bool:
     if not tarball.exists():
         return False
 
-    encoded = base64.b64encode(tarball.read_bytes()).decode()
+    remote_tar = "/tmp/claude-context-restore.tar.gz"  # noqa: S108
+    osh.sandbox_upload(name, tarball, remote_tar)
     osh.sandbox_exec_pipe(
         name,
-        f"echo {encoded} | base64 -d | tar xzf - -C /sandbox",
+        f"tar xzf {remote_tar} -C /sandbox && rm -f {remote_tar}",
     )
     return True

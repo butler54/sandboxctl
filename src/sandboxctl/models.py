@@ -42,6 +42,13 @@ class SshHostConfig(BaseModel):
     model_config = {"extra": "ignore"}
 
 
+class McpServerConfig(BaseModel):
+    """MCP server OAuth credential staging configuration."""
+
+    servers: list[str] = Field(default_factory=list)
+    model_config = {"extra": "ignore"}
+
+
 class CredentialConfig(BaseModel):
     github: bool = True
     gitlab: bool = False
@@ -49,6 +56,7 @@ class CredentialConfig(BaseModel):
     gcloud_adc: bool = False
     gws: bool = False
     ssh_key: bool = True
+    mcp: McpServerConfig = Field(default_factory=McpServerConfig)
     model_config = {"extra": "ignore"}
 
 

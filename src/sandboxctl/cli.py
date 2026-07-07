@@ -208,11 +208,53 @@ def delete_cmd(name: str = typer.Argument(help="Sandbox name.", callback=_valida
 
 
 @app.command()
-def backup(name: str = typer.Argument(help="Sandbox name.", callback=_validate_name)) -> None:
+def backup(
+    name: str | None = typer.Argument(
+        None,
+        help="Sandbox name.",
+        callback=lambda v: _validate_name(v) if v else v,
+    ),
+    all_sandboxes: bool = typer.Option(False, "--all", help="Back up all running sandboxes."),
+) -> None:
     """Back up Claude context (memory, settings) from a running sandbox."""
+    from sandboxctl import openshell as osh
     from sandboxctl.context import backup_claude_context
 
     cfg = load_config()
+
+    if all_sandboxes and name:
+        typer.echo("Cannot use --all with a sandbox name.")
+        raise typer.Exit(1)
+
+    if all_sandboxes:
+        try:
+            sandboxes = osh.sandbox_list()
+        except Exception:
+            typer.echo("Could not list sandboxes.")
+            raise typer.Exit(1) from None
+        if not sandboxes:
+            typer.echo("No running sandboxes.")
+            return
+        success = 0
+        for sb in sandboxes:
+            sname = sb["name"]
+            try:
+                path = backup_claude_context(sname, cfg)
+                if path:
+                    size_kb = sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) // 1024
+                    typer.echo(f"  {sname}: backed up ({size_kb} KB)")
+                    success += 1
+                else:
+                    typer.echo(f"  {sname}: no context found")
+            except Exception as exc:  # noqa: BLE001
+                typer.echo(f"  {sname}: failed ({exc})")
+        typer.echo(f"\n{success}/{len(sandboxes)} sandboxes backed up.")
+        return
+
+    if not name:
+        typer.echo("Provide a sandbox name or use --all.")
+        raise typer.Exit(1)
+
     path = backup_claude_context(name, cfg)
     if path:
         typer.echo(f"Backed up Claude context: {path}")
@@ -260,6 +302,58 @@ def init_cmd(name: str = typer.Argument(help="Profile name.", callback=_validate
     except FileExistsError as e:
         typer.echo(str(e))
         raise typer.Exit(1) from e
+
+
+@app.command()
+def recover(
+    name: str | None = typer.Argument(
+        None,
+        help="Sandbox name (omit to recover all).",
+        callback=lambda v: _validate_name(v) if v else v,
+    ),
+) -> None:
+    """Recover stopped sandboxes after host reboot or podman restart."""
+    from sandboxctl import openshell as osh
+    from sandboxctl.health import ContainerState, check_container_state, recover_container
+
+    if name:
+        targets = [name]
+    else:
+        try:
+            sandboxes = osh.sandbox_list()
+            targets = [sb["name"] for sb in sandboxes]
+        except Exception:
+            targets = []
+            typer.echo("Could not list sandboxes (is openshell running?).")
+            raise typer.Exit(1) from None
+
+    if not targets:
+        typer.echo("No sandboxes found.")
+        return
+
+    recovered = 0
+    skipped = 0
+    failed = 0
+    for sname in targets:
+        state = check_container_state(sname)
+        if state == ContainerState.RUNNING:
+            typer.echo(f"  {sname}: already running")
+            skipped += 1
+        elif state == ContainerState.STOPPED:
+            if recover_container(sname):
+                typer.echo(f"  {sname}: recovered")
+                recovered += 1
+            else:
+                typer.echo(f"  {sname}: recovery failed")
+                failed += 1
+        elif state == ContainerState.MISSING:
+            typer.echo(f"  {sname}: container missing (needs recreate)")
+            skipped += 1
+        else:
+            typer.echo(f"  {sname}: {state.value}")
+            skipped += 1
+
+    typer.echo(f"\n{recovered} recovered, {skipped} skipped, {failed} failed.")
 
 
 @app.command()
@@ -314,11 +408,12 @@ def restart(
 def doctor(
     name: str | None = typer.Argument(
         None,
-        help="Sandbox name (omit to check all running).",
+        help="Sandbox name (omit to check host only).",
         callback=lambda v: _validate_name(v) if v else v,
     ),
     fix: bool = typer.Option(False, "--fix", help="Re-inject credentials into running sandbox(es)."),
     no_recover: bool = typer.Option(False, "--no-recover", help="Skip auto-recovery, diagnose only."),
+    all_sandboxes: bool = typer.Option(False, "--all", help="Check/fix all running sandboxes."),
 ) -> None:
     """Diagnose sandbox health, credentials, and profile readiness."""
     from sandboxctl import openshell as osh
@@ -330,6 +425,10 @@ def doctor(
     from sandboxctl.health import diagnose as health_diagnose
 
     cfg = load_config()
+
+    if all_sandboxes and name:
+        typer.echo("Cannot use --all with a sandbox name.")
+        raise typer.Exit(1)
 
     # Section 1: Host Credentials
     typer.echo("\n--- Host Credentials ---")
@@ -344,16 +443,19 @@ def doctor(
     typer.echo("\n--- Infrastructure ---")
     if name:
         sandbox_names = [name]
-    else:
+    elif all_sandboxes:
         try:
             sandboxes = osh.sandbox_list()
             sandbox_names = [sb["name"] for sb in sandboxes]
         except Exception:
             sandbox_names = []
             typer.echo("  Could not list sandboxes.")
+    else:
+        sandbox_names = []
 
-    if not sandbox_names and not name:
-        typer.echo("  No running sandboxes found.")
+    if not sandbox_names:
+        if all_sandboxes:
+            typer.echo("  No running sandboxes found.")
     else:
         for sname in sandbox_names:
             report = health_diagnose(sname, auto_recover=not no_recover)

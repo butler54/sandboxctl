@@ -334,7 +334,8 @@ class GWSCredentialCheck(CredentialCheck):
 
     def check(self, config: SandboxctlConfig) -> CheckResult:
         client_secret = self._GWS_DIR / "client_secret.json"
-        creds_file = self._GWS_DIR / "credentials.json"
+        creds_json = self._GWS_DIR / "credentials.json"
+        creds_enc = self._GWS_DIR / "credentials.enc"
         if not client_secret.exists():
             return CheckResult(
                 passed=False,
@@ -342,33 +343,68 @@ class GWSCredentialCheck(CredentialCheck):
                 details=f"client_secret.json not found: {client_secret}",
                 fix_hint="Set up GWS CLI: https://github.com/nickmaheshwari/gws",
             )
-        if not creds_file.exists():
-            return CheckResult(
-                passed=False,
-                name=self.check_name,
-                details="credentials.json not found — GWS not authenticated",
-                fix_hint="Run: gws auth login",
-            )
-        try:
-            creds_data = json.loads(creds_file.read_text())
-            if "refresh_token" not in str(creds_data):
+        if creds_json.exists():
+            try:
+                creds_data = json.loads(creds_json.read_text())
+                if "refresh_token" not in str(creds_data):
+                    return CheckResult(
+                        passed=False,
+                        name=self.check_name,
+                        details="credentials.json missing refresh_token",
+                        fix_hint="Re-authenticate: gws auth login",
+                    )
+            except (json.JSONDecodeError, OSError) as exc:
                 return CheckResult(
                     passed=False,
                     name=self.check_name,
-                    details="credentials.json missing refresh_token",
+                    details=f"Failed to parse credentials.json: {exc}",
                     fix_hint="Re-authenticate: gws auth login",
                 )
-        except (json.JSONDecodeError, OSError) as exc:
             return CheckResult(
-                passed=False,
+                passed=True,
                 name=self.check_name,
-                details=f"Failed to parse credentials.json: {exc}",
-                fix_hint="Re-authenticate: gws auth login",
+                details="client_secret.json and credentials.json present with refresh_token",
             )
+        if creds_enc.exists():
+            try:
+                result = subprocess.run(
+                    ["gws", "auth", "export", "--unmasked"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=15,
+                )
+                if "refresh_token" in result.stdout:
+                    return CheckResult(
+                        passed=True,
+                        name=self.check_name,
+                        details="credentials.enc present, export valid",
+                    )
+                return CheckResult(
+                    passed=False,
+                    name=self.check_name,
+                    details="credentials.enc present but export missing refresh_token",
+                    fix_hint="Re-authenticate: gws auth login",
+                )
+            except FileNotFoundError:
+                return CheckResult(
+                    passed=False,
+                    name=self.check_name,
+                    details="credentials.enc present but gws CLI not found",
+                    fix_hint="Install GWS CLI to validate encrypted credentials",
+                )
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                return CheckResult(
+                    passed=False,
+                    name=self.check_name,
+                    details="credentials.enc present but export failed",
+                    fix_hint="Re-authenticate: gws auth login",
+                )
         return CheckResult(
-            passed=True,
+            passed=False,
             name=self.check_name,
-            details="client_secret.json and credentials.json present with refresh_token",
+            details="No credentials found (neither credentials.json nor credentials.enc)",
+            fix_hint="Run: gws auth login",
         )
 
     def fix(self, sandbox_name: str, config: SandboxctlConfig) -> FixResult:
@@ -637,6 +673,76 @@ def build_and_inject_ca_bundle(
 # Registry and orchestration
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 7. MCP OAuth credentials
+# ---------------------------------------------------------------------------
+
+
+class MCPOAuthCheck(CredentialCheck):
+    """Validate and inject MCP OAuth credentials from host keychain."""
+
+    @property
+    def check_name(self) -> str:
+        return "MCP OAuth"
+
+    def _get_configured_servers(self, config: SandboxctlConfig) -> list[str]:
+        """Discover MCP servers from profiles."""
+        servers: set[str] = set()
+        for profile_name in list_profiles(config):
+            try:
+                profile = load_profile(profile_name, config)
+            except Exception:  # noqa: BLE001, S112
+                continue
+            servers.update(profile.credentials.mcp.servers)
+        return sorted(servers)
+
+    def check(self, config: SandboxctlConfig) -> CheckResult:
+        from sandboxctl.mcp_credentials import extract_mcp_credentials
+
+        configured = self._get_configured_servers(config)
+        if not configured:
+            return CheckResult(
+                passed=True,
+                name=self.check_name,
+                details="No MCP servers configured in profiles",
+            )
+
+        available = extract_mcp_credentials(configured)
+        missing = [s for s in configured if s not in available]
+        if missing:
+            return CheckResult(
+                passed=False,
+                name=self.check_name,
+                details=f"Missing credentials for: {', '.join(missing)}",
+                fix_hint="Run: claude mcp login <server-name>",
+            )
+        return CheckResult(
+            passed=True,
+            name=self.check_name,
+            details=f"{len(available)} server(s) have credentials",
+        )
+
+    def fix(self, sandbox_name: str, config: SandboxctlConfig) -> FixResult:
+        from sandboxctl.mcp_credentials import stage_mcp_credentials
+
+        configured = self._get_configured_servers(config)
+        staged = stage_mcp_credentials(sandbox_name, configured or None)
+        if staged:
+            return FixResult(
+                success=True,
+                name=self.check_name,
+                details=f"Staged credentials for: {', '.join(staged)}",
+            )
+        return FixResult(
+            success=False,
+            name=self.check_name,
+            details="No MCP OAuth credentials available in host keychain",
+        )
+
+    def required_by(self, cred_config: CredentialConfig) -> bool:
+        return bool(cred_config.mcp.servers)
+
+
 ALL_CHECKS: list[CredentialCheck] = [
     GitHubPATCheck(),
     GitLabPATCheck(),
@@ -644,6 +750,7 @@ ALL_CHECKS: list[CredentialCheck] = [
     GWSCredentialCheck(),
     SSHKeyCheck(),
     CABundleCheck(),
+    MCPOAuthCheck(),
 ]
 
 

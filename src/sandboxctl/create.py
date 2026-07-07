@@ -309,6 +309,17 @@ def post_launch_setup(
             'echo "  GWS keyring backend: configured"',
         )
 
+    # Stage MCP OAuth credentials
+    mcp_servers = list(profile.credentials.mcp.servers)
+    if mcp_servers:
+        from sandboxctl.mcp_credentials import stage_mcp_credentials
+
+        staged = stage_mcp_credentials(name, mcp_servers)
+        if staged:
+            typer.echo(f"  MCP OAuth: staged ({', '.join(staged)})")
+        else:
+            typer.echo("  MCP OAuth: no credentials found in host keychain")
+
     # Verify GSD runtime
     gsd_check = osh.sandbox_exec_pipe(name, "test -d /sandbox/.claude/gsd-core && echo 'present' || echo 'missing'")
     if "present" in gsd_check:

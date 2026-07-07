@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import base64
 import tarfile
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from sandboxctl.context import (
     _BACKUP_NAME,
@@ -29,13 +28,16 @@ def _make_fake_tar() -> bytes:
 
 class TestBackupClaudeContext:
     def test_backup_creates_tarball(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock
-
         config = MagicMock(config_dir=tmp_path)
         fake_tar = _make_fake_tar()
-        encoded = base64.b64encode(fake_tar).decode()
 
-        with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value=encoded):
+        def fake_download(_name: str, _remote: str, local: Path) -> None:
+            local.write_bytes(fake_tar)
+
+        with (
+            patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value="ok"),
+            patch("sandboxctl.context.osh.sandbox_download", side_effect=fake_download),
+        ):
             result = backup_claude_context("mybox", config)
 
         assert result is not None
@@ -43,64 +45,80 @@ class TestBackupClaudeContext:
         assert tarball.exists()
         assert tarball.read_bytes() == fake_tar
 
-    def test_backup_returns_none_when_empty(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock
-
+    def test_backup_returns_none_when_download_fails(self, tmp_path: Path) -> None:
         config = MagicMock(config_dir=tmp_path)
 
-        with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value=""):
-            result = backup_claude_context("mybox", config)
-
-        assert result is None
-
-    def test_backup_returns_none_on_invalid_base64(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock
-
-        config = MagicMock(config_dir=tmp_path)
-
-        with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value="not-valid-base64!!!"):
+        with (
+            patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value="empty"),
+            patch("sandboxctl.context.osh.sandbox_download", side_effect=RuntimeError("download failed")),
+        ):
             result = backup_claude_context("mybox", config)
 
         assert result is None
 
     def test_backup_dir_structure(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock
-
         config = MagicMock(config_dir=tmp_path)
         fake_tar = _make_fake_tar()
-        encoded = base64.b64encode(fake_tar).decode()
 
-        with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value=encoded):
+        def fake_download(_name: str, _remote: str, local: Path) -> None:
+            local.write_bytes(fake_tar)
+
+        with (
+            patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value="ok"),
+            patch("sandboxctl.context.osh.sandbox_download", side_effect=fake_download),
+        ):
             result = backup_claude_context("docs", config)
 
         assert result == tmp_path / "backups" / "docs"
 
     def test_backup_includes_claude_mem(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock
-
         config = MagicMock(config_dir=tmp_path, backup_extra_paths=[])
         fake_tar = _make_fake_tar()
-        encoded = base64.b64encode(fake_tar).decode()
 
-        with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value=encoded) as mock_pipe:
+        def fake_download(_name: str, _remote: str, local: Path) -> None:
+            local.write_bytes(fake_tar)
+
+        with (
+            patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value="ok") as mock_pipe,
+            patch("sandboxctl.context.osh.sandbox_download", side_effect=fake_download),
+        ):
             backup_claude_context("mybox", config)
 
-        script = mock_pipe.call_args[0][1]
+        script = mock_pipe.call_args_list[0][0][1]
         assert ".claude-mem" in script
 
     def test_backup_includes_extra_paths(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock
-
         config = MagicMock(config_dir=tmp_path, backup_extra_paths=[".my-plugin", ".other-data"])
         fake_tar = _make_fake_tar()
-        encoded = base64.b64encode(fake_tar).decode()
 
-        with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value=encoded) as mock_pipe:
+        def fake_download(_name: str, _remote: str, local: Path) -> None:
+            local.write_bytes(fake_tar)
+
+        with (
+            patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value="ok") as mock_pipe,
+            patch("sandboxctl.context.osh.sandbox_download", side_effect=fake_download),
+        ):
             backup_claude_context("mybox", config)
 
-        script = mock_pipe.call_args[0][1]
+        script = mock_pipe.call_args_list[0][0][1]
         assert ".my-plugin" in script
         assert ".other-data" in script
+
+    def test_backup_includes_mcp_credentials(self, tmp_path: Path) -> None:
+        config = MagicMock(config_dir=tmp_path, backup_extra_paths=[])
+        fake_tar = _make_fake_tar()
+
+        def fake_download(_name: str, _remote: str, local: Path) -> None:
+            local.write_bytes(fake_tar)
+
+        with (
+            patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value="ok") as mock_pipe,
+            patch("sandboxctl.context.osh.sandbox_download", side_effect=fake_download),
+        ):
+            backup_claude_context("mybox", config)
+
+        script = mock_pipe.call_args_list[0][0][1]
+        assert ".claude/.credentials.json" in script
 
 
 class TestRotateBackups:
@@ -138,13 +156,16 @@ class TestRotateBackups:
         assert list(tmp_path.iterdir()) == []
 
     def test_multiple_backups_accumulate(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock
-
         config = MagicMock(config_dir=tmp_path)
         fake_tar = _make_fake_tar()
-        encoded = base64.b64encode(fake_tar).decode()
 
-        with patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value=encoded):
+        def fake_download(_name: str, _remote: str, local: Path) -> None:
+            local.write_bytes(fake_tar)
+
+        with (
+            patch("sandboxctl.context.osh.sandbox_exec_pipe", return_value="ok"),
+            patch("sandboxctl.context.osh.sandbox_download", side_effect=fake_download),
+        ):
             backup_claude_context("mybox", config)
             backup_claude_context("mybox", config)
             backup_claude_context("mybox", config)
@@ -157,44 +178,29 @@ class TestRotateBackups:
 
 class TestRestoreClaudeContext:
     def test_restore_uploads_and_extracts(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock
-
         config = MagicMock(config_dir=tmp_path)
         backup_dir = tmp_path / "backups" / "mybox"
         backup_dir.mkdir(parents=True)
         fake_tar = _make_fake_tar()
         (backup_dir / f"{_BACKUP_NAME}.tar.gz").write_bytes(fake_tar)
 
-        with patch("sandboxctl.context.osh.sandbox_exec_pipe") as mock_pipe:
+        with (
+            patch("sandboxctl.context.osh.sandbox_upload") as mock_upload,
+            patch("sandboxctl.context.osh.sandbox_exec_pipe") as mock_pipe,
+        ):
             result = restore_claude_context("mybox", config)
 
         assert result is True
+        mock_upload.assert_called_once()
+        upload_args = mock_upload.call_args
+        assert str(upload_args[0][1]).endswith(f"{_BACKUP_NAME}.tar.gz")
         mock_pipe.assert_called_once()
         script = mock_pipe.call_args[0][1]
-        assert "base64 -d" in script
         assert "tar xzf" in script
 
     def test_restore_returns_false_when_no_backup(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock
-
         config = MagicMock(config_dir=tmp_path)
 
         result = restore_claude_context("mybox", config)
 
         assert result is False
-
-    def test_restore_sends_correct_data(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock
-
-        config = MagicMock(config_dir=tmp_path)
-        backup_dir = tmp_path / "backups" / "mybox"
-        backup_dir.mkdir(parents=True)
-        fake_tar = _make_fake_tar()
-        (backup_dir / f"{_BACKUP_NAME}.tar.gz").write_bytes(fake_tar)
-        expected_b64 = base64.b64encode(fake_tar).decode()
-
-        with patch("sandboxctl.context.osh.sandbox_exec_pipe") as mock_pipe:
-            restore_claude_context("mybox", config)
-
-        script = mock_pipe.call_args[0][1]
-        assert expected_b64 in script

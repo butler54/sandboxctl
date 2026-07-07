@@ -20,6 +20,7 @@ from sandboxctl.doctor import (
     GitHubPATCheck,
     GitLabPATCheck,
     GWSCredentialCheck,
+    MCPOAuthCheck,
     SSHKeyCheck,
     check_host_credentials,
     fix_sandbox_credentials,
@@ -328,7 +329,48 @@ class TestGWSCredentialCheck:
         cfg = _make_config()
         result = chk.check(cfg)
         assert result.passed is False
-        assert "not found" in result.details.lower() or "not authenticated" in result.details.lower()
+        assert "no credentials" in result.details.lower()
+
+    def test_credentials_enc_valid(self, tmp_path: Path) -> None:
+        gws_dir = tmp_path / "gws"
+        gws_dir.mkdir()
+        (gws_dir / "client_secret.json").write_text('{"installed": {}}')
+        (gws_dir / "credentials.enc").write_bytes(b"encrypted-data")
+        chk = GWSCredentialCheck()
+        chk._GWS_DIR = gws_dir
+        cfg = _make_config()
+        mock_proc = MagicMock(stdout='{"refresh_token": "rt_123"}')
+        with patch("sandboxctl.doctor.subprocess.run", return_value=mock_proc):
+            result = chk.check(cfg)
+        assert result.passed is True
+        assert "credentials.enc" in result.details.lower()
+
+    def test_credentials_enc_no_refresh_token(self, tmp_path: Path) -> None:
+        gws_dir = tmp_path / "gws"
+        gws_dir.mkdir()
+        (gws_dir / "client_secret.json").write_text('{"installed": {}}')
+        (gws_dir / "credentials.enc").write_bytes(b"encrypted-data")
+        chk = GWSCredentialCheck()
+        chk._GWS_DIR = gws_dir
+        cfg = _make_config()
+        mock_proc = MagicMock(stdout='{"access_token": "at_only"}')
+        with patch("sandboxctl.doctor.subprocess.run", return_value=mock_proc):
+            result = chk.check(cfg)
+        assert result.passed is False
+        assert "refresh_token" in result.details.lower()
+
+    def test_credentials_enc_gws_not_found(self, tmp_path: Path) -> None:
+        gws_dir = tmp_path / "gws"
+        gws_dir.mkdir()
+        (gws_dir / "client_secret.json").write_text('{"installed": {}}')
+        (gws_dir / "credentials.enc").write_bytes(b"encrypted-data")
+        chk = GWSCredentialCheck()
+        chk._GWS_DIR = gws_dir
+        cfg = _make_config()
+        with patch("sandboxctl.doctor.subprocess.run", side_effect=FileNotFoundError):
+            result = chk.check(cfg)
+        assert result.passed is False
+        assert "gws cli not found" in result.details.lower()
 
     def test_required_by_checks_flag(self) -> None:
         chk = GWSCredentialCheck()
@@ -450,6 +492,29 @@ class TestCABundleCheck:
 
 
 # =========================================================================
+# TestMCPOAuthCheck
+# =========================================================================
+
+
+class TestMCPOAuthCheck:
+    def test_no_servers_configured(self) -> None:
+        cfg = _make_config()
+        chk = MCPOAuthCheck()
+        with patch("sandboxctl.doctor.list_profiles", return_value=[]):
+            result = chk.check(cfg)
+        assert result.passed is True
+        assert "no mcp servers" in result.details.lower()
+
+    def test_required_by_checks_mcp_servers(self) -> None:
+        chk = MCPOAuthCheck()
+        assert chk.required_by(CredentialConfig()) is False
+        from sandboxctl.models import McpServerConfig
+
+        cred = CredentialConfig(mcp=McpServerConfig(servers=["atlassian"]))
+        assert chk.required_by(cred) is True
+
+
+# =========================================================================
 # TestOrchestration
 # =========================================================================
 
@@ -534,6 +599,7 @@ class TestDoctorCLI:
             CheckResult(passed=True, name="GWS credentials", details="Valid"),
             CheckResult(passed=True, name="SSH key", details="Present"),
             CheckResult(passed=True, name="CA bundle", details="System defaults"),
+            CheckResult(passed=True, name="MCP OAuth", details="No servers configured"),
         ]
 
     def test_doctor_help(self) -> None:
@@ -582,16 +648,34 @@ class TestDoctorCLI:
         assert "Injected" in result.output
 
     def test_doctor_no_sandbox_name(self) -> None:
-        """Running doctor without a sandbox name lists sandboxes."""
+        """Running doctor without a name or --all shows host checks only."""
         with (
             patch("sandboxctl.cli.load_config", return_value=MagicMock()),
             patch("sandboxctl.doctor.check_host_credentials", return_value=self._mock_host_checks()),
             patch("sandboxctl.doctor.check_profile_readiness", return_value={}),
-            patch("sandboxctl.openshell.sandbox_list", return_value=[]),
         ):
             result = runner.invoke(app, ["doctor"])
         assert result.exit_code == 0
-        assert "No running sandboxes" in result.output
+        assert "Host Credentials" in result.output
+
+    def test_doctor_all_flag(self) -> None:
+        """Running doctor --all scans all running sandboxes."""
+        health_report = MagicMock(
+            healthy=True,
+            details=["Gateway: running", "Container: running"],
+            recovery_action="none",
+        )
+        sandboxes = [{"name": "box1", "created": "now", "phase": "Ready"}]
+        with (
+            patch("sandboxctl.cli.load_config", return_value=MagicMock()),
+            patch("sandboxctl.doctor.check_host_credentials", return_value=self._mock_host_checks()),
+            patch("sandboxctl.doctor.check_profile_readiness", return_value={}),
+            patch("sandboxctl.openshell.sandbox_list", return_value=sandboxes),
+            patch("sandboxctl.health.diagnose", return_value=health_report),
+        ):
+            result = runner.invoke(app, ["doctor", "--all"])
+        assert result.exit_code == 0
+        assert "box1" in result.output
 
     def test_doctor_profile_readiness(self) -> None:
         readiness = {"dev": [], "prod": ["GitHub PAT", "SSH key"]}

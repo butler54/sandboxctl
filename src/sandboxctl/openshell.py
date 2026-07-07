@@ -137,6 +137,14 @@ def sandbox_upload(name: str, local: Path, remote: str) -> None:
     )
 
 
+def sandbox_download(name: str, remote: str, local: Path) -> None:
+    _run(
+        ["openshell", "sandbox", "download", name, remote, str(local)],
+        check=True,
+        capture=False,
+    )
+
+
 def policy_set(name: str, policy_path: Path) -> None:
     _run(
         ["openshell", "policy", "set", name, "--policy", str(policy_path), "--wait"],

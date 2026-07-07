@@ -199,6 +199,35 @@ class TestUpgradeCommand:
             mock_run.assert_called_once()
 
 
+class TestRecoverCommand:
+    def test_recover_help(self) -> None:
+        result = runner.invoke(app, ["recover", "--help"])
+        assert result.exit_code == 0
+        output = _strip_ansi(result.output)
+        assert "recover" in output.lower()
+
+    def test_recover_single(self) -> None:
+        with (
+            patch("sandboxctl.health.check_container_state") as mock_state,
+            patch("sandboxctl.health.recover_container", return_value=True),
+        ):
+            from sandboxctl.health import ContainerState
+
+            mock_state.return_value = ContainerState.STOPPED
+            result = runner.invoke(app, ["recover", "mybox"])
+        assert result.exit_code == 0
+        assert "recovered" in result.output
+
+    def test_recover_already_running(self) -> None:
+        with patch("sandboxctl.health.check_container_state") as mock_state:
+            from sandboxctl.health import ContainerState
+
+            mock_state.return_value = ContainerState.RUNNING
+            result = runner.invoke(app, ["recover", "mybox"])
+        assert result.exit_code == 0
+        assert "already running" in result.output
+
+
 class TestDoctorCommand:
     def _mock_host_checks(self) -> list:
         from sandboxctl.doctor import CheckResult
@@ -210,6 +239,7 @@ class TestDoctorCommand:
             CheckResult(passed=True, name="GWS credentials", details="Valid"),
             CheckResult(passed=True, name="SSH key", details="Present"),
             CheckResult(passed=True, name="CA bundle", details="System defaults"),
+            CheckResult(passed=True, name="MCP OAuth", details="No servers configured"),
         ]
 
     def test_doctor_healthy(self) -> None:
@@ -286,6 +316,26 @@ class TestBackupCommand:
             result = runner.invoke(app, ["backup", "mybox"])
             assert result.exit_code == 0
             assert "No Claude context" in result.output
+
+    def test_backup_all(self, tmp_path: Path) -> None:
+        sandboxes = [{"name": "a", "created": "now", "phase": "Ready"}]
+        with (
+            patch("sandboxctl.openshell.sandbox_list", return_value=sandboxes),
+            patch("sandboxctl.context.backup_claude_context", return_value=tmp_path),
+        ):
+            result = runner.invoke(app, ["backup", "--all"])
+            assert result.exit_code == 0
+            assert "1/1" in result.output
+
+    def test_backup_all_with_name_rejected(self) -> None:
+        result = runner.invoke(app, ["backup", "mybox", "--all"])
+        assert result.exit_code == 1
+        assert "Cannot use --all" in result.output
+
+    def test_backup_no_args(self) -> None:
+        result = runner.invoke(app, ["backup"])
+        assert result.exit_code == 1
+        assert "Provide a sandbox name or use --all" in result.output
 
 
 class TestRestoreCommand:

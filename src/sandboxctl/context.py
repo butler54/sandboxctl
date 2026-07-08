@@ -60,8 +60,7 @@ def backup_claude_context(name: str, config: SandboxctlConfig) -> Path | None:
 
     osh.sandbox_exec_pipe(
         name,
-        f"cd /sandbox && tar czf {remote_tar} {paths} 2>/dev/null; "
-        f"test -s {remote_tar} && echo 'ok' || echo 'empty'",
+        f"cd /sandbox && tar czf {remote_tar} {paths} 2>/dev/null; test -s {remote_tar} && echo 'ok' || echo 'empty'",
     )
 
     with tempfile.TemporaryDirectory() as tmp_dir:

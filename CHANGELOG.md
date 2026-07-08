@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.8.0 (2026-07-08)
+
+### Code Style
+
+- Fix ruff format in context.py
+  ([`db607c5`](https://github.com/butler54/sandboxctl/commit/db607c5c06342d6cda4683e4543ff93f41887766))
+
+### Features
+
+- Resolve open issues #46-#50
+  ([`e12d1a8`](https://github.com/butler54/sandboxctl/commit/e12d1a87361137d6ec1ee050b44993bf6ed89a73))
+
+
 ## v1.7.1 (2026-07-04)
 
 ### Bug Fixes

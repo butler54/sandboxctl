@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.8.1 (2026-07-09)
+
+### Bug Fixes
+
+- Recover command container name prefix, podman env, and Linux support
+  ([`ce45f36`](https://github.com/butler54/sandboxctl/commit/ce45f36cba73c181e81984d8561cae313fbc244d))
+
+
 ## v1.8.0 (2026-07-08)
 
 ### Code Style

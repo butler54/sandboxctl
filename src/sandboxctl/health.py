@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from enum import Enum
+
+_CONTAINER_PREFIX = "openshell-sandbox-"
 
 
 class ContainerState(Enum):
@@ -38,15 +42,33 @@ class HealthReport:
         return self.container_state == ContainerState.RUNNING and self.ssh_reachable
 
 
-def _run(cmd: list[str], timeout: int = 10) -> subprocess.CompletedProcess[str]:
+def _podman_env() -> dict[str, str] | None:
+    """Build environment for podman commands. macOS needs CONTAINERS_MACHINE_PROVIDER."""
+    if sys.platform != "darwin":
+        return None
+    env = os.environ.copy()
+    env.setdefault("CONTAINERS_MACHINE_PROVIDER", "applehv")
+    return env
+
+
+def _run(
+    cmd: list[str],
+    timeout: int = 10,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     """Run a command with timeout, capturing output."""
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
 
 
 def check_gateway_state() -> GatewayState:
-    """Check if the podman machine / OpenShell gateway is running."""
+    """Check if the podman machine / OpenShell gateway is running.
+
+    On Linux, podman runs natively without a machine — gateway is always RUNNING.
+    """
+    if sys.platform != "darwin":
+        return GatewayState.RUNNING
     try:
-        result = _run(["podman", "machine", "info"])
+        result = _run(["podman", "machine", "info"], env=_podman_env())
         if result.returncode == 0:
             return GatewayState.RUNNING
         return GatewayState.STOPPED
@@ -58,8 +80,12 @@ def check_gateway_state() -> GatewayState:
 
 def check_container_state(sandbox_name: str) -> ContainerState:
     """Check the state of a sandbox container."""
+    container_name = f"{_CONTAINER_PREFIX}{sandbox_name}"
     try:
-        result = _run(["podman", "ps", "-a", "--filter", f"name={sandbox_name}", "--format", "{{.Status}}"])
+        result = _run(
+            ["podman", "ps", "-a", "--filter", f"name={container_name}", "--format", "{{.Status}}"],
+            env=_podman_env(),
+        )
         if result.returncode != 0:
             return ContainerState.UNKNOWN
 
@@ -90,9 +116,14 @@ def check_ssh_connectivity(sandbox_name: str, timeout: int = 5) -> bool:
 
 
 def recover_gateway() -> bool:
-    """Attempt to start the podman machine."""
+    """Attempt to start the podman machine.
+
+    On Linux, podman runs natively — no machine to start, returns True.
+    """
+    if sys.platform != "darwin":
+        return True
     try:
-        result = _run(["podman", "machine", "start"], timeout=60)
+        result = _run(["podman", "machine", "start"], timeout=60, env=_podman_env())
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
@@ -100,8 +131,9 @@ def recover_gateway() -> bool:
 
 def recover_container(sandbox_name: str) -> bool:
     """Attempt to start a stopped container (safe — no data loss)."""
+    container_name = f"{_CONTAINER_PREFIX}{sandbox_name}"
     try:
-        result = _run(["podman", "start", sandbox_name], timeout=30)
+        result = _run(["podman", "start", container_name], timeout=30, env=_podman_env())
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False

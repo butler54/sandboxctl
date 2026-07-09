@@ -6,6 +6,7 @@ import subprocess
 from unittest.mock import MagicMock, patch
 
 from sandboxctl.health import (
+    _CONTAINER_PREFIX,
     ContainerState,
     GatewayState,
     HealthReport,
@@ -19,22 +20,43 @@ from sandboxctl.health import (
 
 
 class TestGatewayState:
-    def test_running(self) -> None:
-        with patch("sandboxctl.health._run") as mock:
-            mock.return_value = MagicMock(returncode=0)
+    def test_running_on_darwin(self) -> None:
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run") as mock_run,
+        ):
+            mock_sys.platform = "darwin"
+            mock_run.return_value = MagicMock(returncode=0)
             assert check_gateway_state() == GatewayState.RUNNING
 
-    def test_stopped(self) -> None:
-        with patch("sandboxctl.health._run") as mock:
-            mock.return_value = MagicMock(returncode=1)
+    def test_stopped_on_darwin(self) -> None:
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run") as mock_run,
+        ):
+            mock_sys.platform = "darwin"
+            mock_run.return_value = MagicMock(returncode=1)
             assert check_gateway_state() == GatewayState.STOPPED
 
+    def test_always_running_on_linux(self) -> None:
+        with patch("sandboxctl.health.sys") as mock_sys:
+            mock_sys.platform = "linux"
+            assert check_gateway_state() == GatewayState.RUNNING
+
     def test_missing(self) -> None:
-        with patch("sandboxctl.health._run", side_effect=FileNotFoundError):
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run", side_effect=FileNotFoundError),
+        ):
+            mock_sys.platform = "darwin"
             assert check_gateway_state() == GatewayState.MISSING
 
     def test_timeout(self) -> None:
-        with patch("sandboxctl.health._run", side_effect=subprocess.TimeoutExpired("cmd", 10)):
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run", side_effect=subprocess.TimeoutExpired("cmd", 10)),
+        ):
+            mock_sys.platform = "darwin"
             assert check_gateway_state() == GatewayState.UNKNOWN
 
 
@@ -43,6 +65,13 @@ class TestContainerState:
         with patch("sandboxctl.health._run") as mock:
             mock.return_value = MagicMock(returncode=0, stdout="Up 2 hours")
             assert check_container_state("test") == ContainerState.RUNNING
+
+    def test_uses_prefixed_name(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=0, stdout="Up 2 hours")
+            check_container_state("mybox")
+            cmd = mock.call_args[0][0]
+            assert f"name={_CONTAINER_PREFIX}mybox" in " ".join(cmd)
 
     def test_stopped(self) -> None:
         with patch("sandboxctl.health._run") as mock:
@@ -177,17 +206,34 @@ class TestSshConnectivity:
 
 
 class TestRecoveryFunctions:
-    def test_recover_gateway_success(self) -> None:
-        with patch("sandboxctl.health._run") as mock:
-            mock.return_value = MagicMock(returncode=0)
+    def test_recover_gateway_success_on_darwin(self) -> None:
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run") as mock_run,
+        ):
+            mock_sys.platform = "darwin"
+            mock_run.return_value = MagicMock(returncode=0)
+            assert recover_gateway() is True
+
+    def test_recover_gateway_noop_on_linux(self) -> None:
+        with patch("sandboxctl.health.sys") as mock_sys:
+            mock_sys.platform = "linux"
             assert recover_gateway() is True
 
     def test_recover_gateway_failure(self) -> None:
-        with patch("sandboxctl.health._run", side_effect=FileNotFoundError):
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run", side_effect=FileNotFoundError),
+        ):
+            mock_sys.platform = "darwin"
             assert recover_gateway() is False
 
     def test_recover_gateway_timeout(self) -> None:
-        with patch("sandboxctl.health._run", side_effect=subprocess.TimeoutExpired("cmd", 60)):
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run", side_effect=subprocess.TimeoutExpired("cmd", 60)),
+        ):
+            mock_sys.platform = "darwin"
             assert recover_gateway() is False
 
     def test_recover_container_success(self) -> None:
@@ -195,6 +241,43 @@ class TestRecoveryFunctions:
             mock.return_value = MagicMock(returncode=0)
             assert recover_container("test") is True
 
+    def test_recover_container_uses_prefixed_name(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=0)
+            recover_container("mybox")
+            cmd = mock.call_args[0][0]
+            assert f"{_CONTAINER_PREFIX}mybox" in cmd
+
     def test_recover_container_failure(self) -> None:
         with patch("sandboxctl.health._run", side_effect=FileNotFoundError):
             assert recover_container("test") is False
+
+
+class TestPodmanEnv:
+    def test_darwin_sets_machine_provider(self) -> None:
+        from sandboxctl.health import _podman_env
+
+        with patch("sandboxctl.health.sys") as mock_sys:
+            mock_sys.platform = "darwin"
+            env = _podman_env()
+            assert env is not None
+            assert env["CONTAINERS_MACHINE_PROVIDER"] == "applehv"
+
+    def test_darwin_preserves_existing_provider(self) -> None:
+        from sandboxctl.health import _podman_env
+
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch.dict("os.environ", {"CONTAINERS_MACHINE_PROVIDER": "libkrun"}),
+        ):
+            mock_sys.platform = "darwin"
+            env = _podman_env()
+            assert env is not None
+            assert env["CONTAINERS_MACHINE_PROVIDER"] == "libkrun"
+
+    def test_linux_returns_none(self) -> None:
+        from sandboxctl.health import _podman_env
+
+        with patch("sandboxctl.health.sys") as mock_sys:
+            mock_sys.platform = "linux"
+            assert _podman_env() is None

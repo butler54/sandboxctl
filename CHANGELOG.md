@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.8.4 (2026-07-19)
+
+### Bug Fixes
+
+- Bootstrap GWS token_cache.json in doctor --fix
+  ([#60](https://github.com/butler54/sandboxctl/pull/60),
+  [`554fe2f`](https://github.com/butler54/sandboxctl/commit/554fe2fd7062e6c0747a8cc166a53b797390c588))
+
+
 ## v1.8.3 (2026-07-19)
 
 ### Bug Fixes

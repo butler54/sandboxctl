@@ -13,6 +13,7 @@ from sandboxctl.bundled_profiles import PROFILES
 from sandboxctl.cli import app
 from sandboxctl.setup_cmd import (
     _check_prerequisites,
+    _install_bundled_skills,
     _install_profiles,
     _setup_github_pat,
     _setup_ssh_key,
@@ -131,6 +132,33 @@ class TestInstallProfiles:
             assert dest.read_text() == original_contents[name], (
                 f"Profile {name} was modified when it should have been left unchanged"
             )
+
+
+class TestInstallBundledSkills:
+    def test_installs_bundled_skills(self, tmp_path: Path) -> None:
+        with patch("sandboxctl.setup_cmd.Path.home", return_value=tmp_path / "home"):
+            home = tmp_path / "home"
+            claude_skills = home / ".claude" / "skills"
+            # Patch Path.home so _install_bundled_skills writes to tmp
+            with patch("sandboxctl.setup_cmd.Path.home", return_value=home):
+                _install_bundled_skills()
+            assert claude_skills.exists()
+            installed = [d.name for d in claude_skills.iterdir() if d.is_dir()]
+            assert "sandbox-network-debug" in installed
+            assert "sandbox-policy-lint" in installed
+            assert (claude_skills / "sandbox-network-debug" / "SKILL.md").exists()
+            assert (claude_skills / "sandbox-policy-lint" / "SKILL.md").exists()
+
+    def test_idempotent_no_overwrite(self, tmp_path: Path) -> None:
+        home = tmp_path / "home"
+        claude_skills = home / ".claude" / "skills"
+        claude_skills.mkdir(parents=True)
+        marker = claude_skills / "sandbox-network-debug"
+        marker.mkdir()
+        (marker / "SKILL.md").write_text("user-modified content")
+        with patch("sandboxctl.setup_cmd.Path.home", return_value=home):
+            _install_bundled_skills()
+        assert (marker / "SKILL.md").read_text() == "user-modified content"
 
 
 class TestSetupSshKey:

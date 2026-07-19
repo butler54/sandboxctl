@@ -81,6 +81,28 @@ def _install_profiles(config: SandboxctlConfig) -> None:
             typer.echo(f"  Installed: {name}")
 
 
+def _install_bundled_skills() -> None:
+    typer.echo("\n--- Bundled Skills ---")
+
+    skills_dir = Path.home() / ".claude" / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+
+    bundled_root = Path(__file__).parent / "bundled_skills"
+    if not bundled_root.is_dir():
+        typer.echo("  No bundled skills available.")
+        return
+
+    for skill_src in sorted(bundled_root.iterdir()):
+        if not skill_src.is_dir() or not (skill_src / "SKILL.md").exists():
+            continue
+        dest = skills_dir / skill_src.name
+        if dest.exists():
+            typer.echo(f"  Exists: {skill_src.name}")
+        else:
+            shutil.copytree(skill_src, dest)
+            typer.echo(f"  Installed: {skill_src.name}")
+
+
 def _setup_cli_tools() -> None:
     typer.echo("\n--- CLI Tools ---")
 
@@ -252,6 +274,7 @@ def run_setup(config: SandboxctlConfig) -> None:
 
     _check_prerequisites()
     _install_profiles(config)
+    _install_bundled_skills()
     _setup_cli_tools()
     _setup_ssh_key(config)
     github_token = _setup_github_pat(config)

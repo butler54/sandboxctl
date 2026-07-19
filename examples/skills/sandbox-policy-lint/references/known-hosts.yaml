@@ -1,0 +1,73 @@
+# Hosts that MUST have tls: skip in OpenShell sandbox policies.
+# Without tls:skip, the OpenShell proxy terminates TLS and re-encrypts with
+# its own CA. Clients that verify certs (gws, npm, gcloud, git) reject the
+# proxy certificate with BadSignature / ECONNRESET errors.
+#
+# Derived from production incidents — see session history.
+
+tls_skip_required:
+  # Google OAuth — token refresh fails without tls:skip
+  - host: oauth2.googleapis.com
+    reason: "Google OAuth token refresh — clients reject proxy CA (BadSignature)"
+
+  - host: accounts.google.com
+    reason: "Google account auth — same as oauth2"
+
+  # Google Workspace APIs
+  - host: www.googleapis.com
+    reason: "GWS CLI rejects proxy CA during API calls"
+
+  - host: gmail.googleapis.com
+    reason: "Gmail API"
+
+  - host: slides.googleapis.com
+    reason: "Slides API"
+
+  - host: docs.googleapis.com
+    reason: "Docs API"
+
+  - host: sheets.googleapis.com
+    reason: "Sheets API"
+
+  - host: drive.googleapis.com
+    reason: "Drive API"
+
+  - host: calendar-json.googleapis.com
+    reason: "Calendar API"
+
+  - host: forms.googleapis.com
+    reason: "Forms API"
+
+  - host: meet.googleapis.com
+    reason: "Meet API"
+
+  - host: tasks.googleapis.com
+    reason: "Tasks API"
+
+  - host: script.googleapis.com
+    reason: "Apps Script API"
+
+  # npm — cert pinning rejects proxy CA
+  - host: registry.npmjs.org
+    reason: "npm cert pinning — ECONNRESET without tls:skip"
+
+  - host: storage.googleapis.com
+    reason: "Chrome/puppeteer downloads — cert pinning"
+
+  # Internal hosts with custom CAs
+  - host: gitlab.cee.redhat.com
+    reason: "Red Hat internal CA — proxy CA not trusted"
+
+# SSH endpoints that need nc binaries for proxy routing
+ssh_proxy_binaries:
+  required:
+    - /usr/bin/ssh
+    - /usr/bin/scp
+    - /usr/bin/nc
+    - /usr/bin/nc.openbsd
+
+# Git endpoints that need git-remote-http
+git_binaries:
+  required:
+    - /usr/bin/git
+    - /usr/lib/git-core/git-remote-http

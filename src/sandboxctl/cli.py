@@ -34,6 +34,9 @@ app = typer.Typer(
 config_app = typer.Typer(help="Manage sandboxctl configuration.")
 app.add_typer(config_app, name="config")
 
+skill_app = typer.Typer(help="Manage Claude Code skills.")
+app.add_typer(skill_app, name="skill")
+
 
 @app.callback(invoke_without_command=True)
 def main(
@@ -450,6 +453,107 @@ def restart(
     typer.echo(f"Restarting sandbox: {name}")
     osh.sandbox_delete(name)
     create_sandbox(prof, cfg, sandbox_name=name, open_editor=not no_editor)
+
+
+@skill_app.command("install")
+def skill_install(
+    git_url: str = typer.Argument(help="Git repository URL to install from."),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing skill."),
+) -> None:
+    """Install a skill from a git repository."""
+    from sandboxctl.skill import install_skill
+
+    try:
+        meta, warnings = install_skill(git_url, force=force)
+        typer.echo(f"Installed skill: {meta.name} ({meta.version or 'no version'})")
+        for warning in warnings:
+            typer.echo(f"  Warning: {warning}")
+    except ValueError as e:
+        typer.echo(f"Error: {e}")
+        raise typer.Exit(1) from None
+    except FileExistsError as e:
+        typer.echo(str(e))
+        raise typer.Exit(1) from None
+
+
+@skill_app.command("remove")
+def skill_remove(
+    name: str = typer.Argument(help="Skill name.", callback=_validate_name),
+) -> None:
+    """Remove an installed skill."""
+    from sandboxctl.skill import remove_skill
+
+    typer.confirm(f"Remove skill '{name}'?", abort=True)
+    if remove_skill(name):
+        typer.echo(f"Removed skill: {name}")
+    else:
+        typer.echo(f"Skill not found: {name}")
+        raise typer.Exit(1)
+
+
+@skill_app.command("list")
+def skill_list_cmd() -> None:
+    """List installed skills."""
+    from rich.console import Console
+
+    from sandboxctl.skill import list_skills
+
+    skills = list_skills()
+    if not skills:
+        typer.echo("No skills installed.")
+        return
+
+    table = Table(title="Installed Skills")
+    table.add_column("Name")
+    table.add_column("Version")
+    table.add_column("Description")
+
+    for skill in skills:
+        version = skill.version or "-"
+        desc = skill.description
+        if len(desc) > 60:
+            desc = desc[:57] + "..."
+        table.add_row(skill.name, version, desc)
+
+    Console().print(table)
+
+
+@skill_app.command("update")
+def skill_update(
+    name: str = typer.Argument(help="Skill name.", callback=_validate_name),
+) -> None:
+    """Update a skill via git pull."""
+    from sandboxctl.skill import update_skill
+
+    try:
+        meta = update_skill(name)
+        typer.echo(f"Updated skill: {meta.name} ({meta.version or 'no version'})")
+    except FileNotFoundError:
+        typer.echo(f"Skill not found: {name}")
+        raise typer.Exit(1) from None
+    except ValueError as e:
+        typer.echo(f"Error: {e}")
+        raise typer.Exit(1) from None
+    except subprocess.CalledProcessError:
+        typer.echo("Git pull failed")
+        raise typer.Exit(1) from None
+
+
+@skill_app.command("validate")
+def skill_validate(
+    path: str = typer.Argument(help="Path to skill directory."),
+) -> None:
+    """Validate a skill directory against the spec."""
+    from pathlib import Path
+
+    from sandboxctl.skill import validate_skill
+
+    errors = validate_skill(Path(path))
+    if errors:
+        for error in errors:
+            typer.echo(f"ERROR: {error}")
+        raise typer.Exit(1)
+    typer.echo("Skill is valid.")
 
 
 @app.command()

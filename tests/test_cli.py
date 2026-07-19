@@ -463,3 +463,81 @@ class TestOpenCommand:
         assert "--code" in output
         assert "--code-only" in output
         assert "--claude-only" in output
+
+
+class TestSkillCommands:
+    def test_skill_list_empty(self) -> None:
+        with patch("sandboxctl.skill.list_skills", return_value=[]):
+            result = runner.invoke(app, ["skill", "list"])
+            assert result.exit_code == 0
+            assert "No skills installed" in result.output
+
+    def test_skill_list_with_skills(self) -> None:
+        from sandboxctl.skill import SkillMeta
+
+        skills = [
+            SkillMeta(name="skill-a", description="First skill", version="1.0.0"),
+            SkillMeta(name="skill-b", description="Second skill with a very long description that will be truncated"),
+        ]
+        with patch("sandboxctl.skill.list_skills", return_value=skills):
+            result = runner.invoke(app, ["skill", "list"])
+            assert result.exit_code == 0
+            assert "skill-a" in result.output
+            assert "skill-b" in result.output
+            assert "1.0.0" in result.output
+
+    def test_skill_remove_not_found(self) -> None:
+        with patch("sandboxctl.skill.remove_skill", return_value=False):
+            result = runner.invoke(app, ["skill", "remove", "nonexistent"], input="y\n")
+            assert result.exit_code == 1
+            assert "not found" in result.output
+
+    def test_skill_remove_confirmed(self) -> None:
+        with patch("sandboxctl.skill.remove_skill", return_value=True):
+            result = runner.invoke(app, ["skill", "remove", "test-skill"], input="y\n")
+            assert result.exit_code == 0
+            assert "Removed skill" in result.output
+
+    def test_skill_install_success(self) -> None:
+        from sandboxctl.skill import SkillMeta
+
+        meta = SkillMeta(name="test-skill", description="Test", version="1.0.0")
+        with patch("sandboxctl.skill.install_skill", return_value=(meta, [])):
+            result = runner.invoke(app, ["skill", "install", "https://github.com/test/skill.git"])
+            assert result.exit_code == 0
+            assert "Installed skill" in result.output
+            assert "test-skill" in result.output
+
+    def test_skill_install_exists(self) -> None:
+        with patch("sandboxctl.skill.install_skill", side_effect=FileExistsError("already installed. Use --force")):
+            result = runner.invoke(app, ["skill", "install", "https://github.com/test/skill.git"])
+            assert result.exit_code == 1
+            assert "--force" in result.output
+
+    def test_skill_update_success(self) -> None:
+        from sandboxctl.skill import SkillMeta
+
+        meta = SkillMeta(name="test-skill", description="Test", version="1.1.0")
+        with patch("sandboxctl.skill.update_skill", return_value=meta):
+            result = runner.invoke(app, ["skill", "update", "test-skill"])
+            assert result.exit_code == 0
+            assert "Updated skill" in result.output
+            assert "test-skill" in result.output
+
+    def test_skill_update_not_found(self) -> None:
+        with patch("sandboxctl.skill.update_skill", side_effect=FileNotFoundError("not found")):
+            result = runner.invoke(app, ["skill", "update", "nonexistent"])
+            assert result.exit_code == 1
+            assert "not found" in result.output
+
+    def test_skill_validate_valid(self) -> None:
+        with patch("sandboxctl.skill.validate_skill", return_value=[]):
+            result = runner.invoke(app, ["skill", "validate", "/path/to/skill"])
+            assert result.exit_code == 0
+            assert "valid" in result.output
+
+    def test_skill_validate_errors(self) -> None:
+        with patch("sandboxctl.skill.validate_skill", return_value=["SKILL.md not found"]):
+            result = runner.invoke(app, ["skill", "validate", "/path/to/skill"])
+            assert result.exit_code == 1
+            assert "ERROR" in result.output

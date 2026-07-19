@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.8.3 (2026-07-19)
+
+### Bug Fixes
+
+- **15-02**: Rewrite upgrade command with installation detection
+  ([`b5d28b9`](https://github.com/butler54/sandboxctl/commit/b5d28b9f81446caf76949fcde9f204adb2e50163))
+
+### Code Style
+
+- Add missing type annotations for ruff ANN compliance
+  ([`933de05`](https://github.com/butler54/sandboxctl/commit/933de05f34d6de1a1b961ebd84bfb2bed0ffa083))
+
+
 ## v1.8.2 (2026-07-19)
 
 ### Bug Fixes

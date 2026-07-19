@@ -195,7 +195,7 @@ class TestUpgradeCommand:
         def which_side_effect(cmd: str) -> str | None:
             return "/opt/homebrew/bin/brew" if cmd == "brew" else None
 
-        def run_side_effect(cmd: list, **kwargs):  # noqa: ARG001
+        def run_side_effect(cmd: list, **kwargs: object) -> object:  # noqa: ARG001
             from unittest.mock import MagicMock
 
             mock_result = MagicMock()
@@ -220,7 +220,7 @@ class TestUpgradeCommand:
         def which_side_effect(cmd: str) -> str | None:
             return "/usr/bin/pip3" if cmd == "pip3" else None
 
-        def run_side_effect(cmd: list, **kwargs):  # noqa: ARG001
+        def run_side_effect(cmd: list, **kwargs: object) -> object:  # noqa: ARG001
             from unittest.mock import MagicMock
 
             mock_result = MagicMock()
@@ -255,7 +255,7 @@ class TestUpgradeCommand:
         def which_side_effect(cmd: str) -> str | None:
             return "/opt/homebrew/bin/brew" if cmd == "brew" else None
 
-        def run_side_effect(cmd: list, **kwargs):  # noqa: ARG001
+        def run_side_effect(cmd: list, **kwargs: object) -> object:  # noqa: ARG001
             from unittest.mock import MagicMock
 
             mock_result = MagicMock()
@@ -279,7 +279,7 @@ class TestUpgradeCommand:
         def which_side_effect(cmd: str) -> str | None:
             return "/opt/homebrew/bin/brew" if cmd == "brew" else None
 
-        def run_side_effect(cmd: list, **kwargs):  # noqa: ARG001
+        def run_side_effect(cmd: list, **kwargs: object) -> object:  # noqa: ARG001
             from unittest.mock import MagicMock
 
             mock_result = MagicMock()

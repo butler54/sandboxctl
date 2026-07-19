@@ -377,6 +377,56 @@ class TestGWSCredentialCheck:
         assert chk.required_by(CredentialConfig(gws=True)) is True
         assert chk.required_by(CredentialConfig()) is False
 
+    def test_fix_bootstraps_token_cache(self, tmp_path: Path) -> None:
+        gws_dir = tmp_path / "gws"
+        gws_dir.mkdir()
+        (gws_dir / "client_secret.json").write_text('{"installed": {}}')
+        (gws_dir / "credentials.json").write_text(
+            json.dumps({"refresh_token": "rt_123", "client_id": "cid", "client_secret": "cs"})
+        )
+        chk = GWSCredentialCheck()
+        chk._GWS_DIR = gws_dir
+        cfg = _make_config()
+        exec_calls: list[str] = []
+        with (
+            patch("sandboxctl.doctor.shutil.which", return_value=None),
+            patch("sandboxctl.doctor.osh.sandbox_exec_pipe", side_effect=lambda _n, s: exec_calls.append(s)),
+            patch("sandboxctl.doctor.osh.sandbox_upload"),
+        ):
+            result = chk.fix("test-sandbox", cfg)
+        assert result.success is True
+        assert "token cache" in result.details.lower()
+        token_cache_calls = [c for c in exec_calls if "token_cache.json" in c]
+        assert len(token_cache_calls) == 1
+        assert "oauth2.googleapis.com/token" in token_cache_calls[0]
+
+    def test_fix_token_cache_failure_non_blocking(self, tmp_path: Path) -> None:
+        gws_dir = tmp_path / "gws"
+        gws_dir.mkdir()
+        (gws_dir / "client_secret.json").write_text('{"installed": {}}')
+        (gws_dir / "credentials.json").write_text(
+            json.dumps({"refresh_token": "rt_123", "client_id": "cid", "client_secret": "cs"})
+        )
+        chk = GWSCredentialCheck()
+        chk._GWS_DIR = gws_dir
+        cfg = _make_config()
+        call_count = 0
+
+        def mock_exec(name: str, script: str) -> None:
+            nonlocal call_count
+            call_count += 1
+            if "token_cache.json" in script:
+                msg = "exec failed"
+                raise RuntimeError(msg)
+
+        with (
+            patch("sandboxctl.doctor.shutil.which", return_value=None),
+            patch("sandboxctl.doctor.osh.sandbox_exec_pipe", side_effect=mock_exec),
+            patch("sandboxctl.doctor.osh.sandbox_upload"),
+        ):
+            result = chk.fix("test-sandbox", cfg)
+        assert result.success is True
+
 
 # =========================================================================
 # TestSSHKeyCheck

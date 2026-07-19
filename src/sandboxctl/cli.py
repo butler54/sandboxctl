@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 
 import typer
 from rich.table import Table
@@ -359,10 +361,56 @@ def recover(
 @app.command()
 def upgrade() -> None:
     """Upgrade OpenShell to latest version."""
-    import subprocess
-
     typer.echo("Upgrading OpenShell...")
-    subprocess.run(["openshell", "upgrade"], check=False)
+
+    # Detect Homebrew installation
+    if shutil.which("brew"):
+        result = subprocess.run(
+            ["brew", "list", "openshell"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            typer.echo("Detected Homebrew installation. Upgrading via brew...")
+            upgrade_result = subprocess.run(["brew", "upgrade", "openshell"], check=False)
+            if upgrade_result.returncode == 0:
+                typer.echo("✓ OpenShell CLI upgraded via Homebrew.")
+                typer.echo("\nNote: If sandboxes fail to connect after upgrade, restart the gateway:")
+                typer.echo("  macOS: brew services restart openshell")
+                typer.echo("  Linux: systemctl --user restart openshell-gateway")
+            else:
+                typer.echo("✗ Homebrew upgrade failed. Check brew output above.")
+            return
+
+    # Detect pip installation
+    for pip_cmd in ["pip3", "pip"]:
+        if shutil.which(pip_cmd):
+            result = subprocess.run(
+                [pip_cmd, "show", "openshell"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                typer.echo(f"Detected pip installation. Upgrading via {pip_cmd}...")
+                upgrade_result = subprocess.run([pip_cmd, "install", "--upgrade", "openshell"], check=False)
+                if upgrade_result.returncode == 0:
+                    typer.echo("✓ OpenShell CLI upgraded via pip.")
+                    typer.echo("\nNote: If sandboxes fail to connect after upgrade, restart the gateway:")
+                    typer.echo("  macOS: brew services restart openshell")
+                    typer.echo("  Linux: systemctl --user restart openshell-gateway")
+                else:
+                    typer.echo("✗ pip upgrade failed. Check pip output above.")
+                return
+
+    # Manual fallback
+    typer.echo("No supported installation method detected for OpenShell.")
+    typer.echo("To upgrade manually, try one of:")
+    if shutil.which("brew"):
+        typer.echo("  brew install openshell")
+    typer.echo("  pip install openshell")
+    typer.echo("  curl -fsSL https://install.openshell.ai | bash")
 
 
 @app.command()

@@ -191,12 +191,114 @@ class TestInitCommand:
 
 
 class TestUpgradeCommand:
-    def test_upgrade_calls_openshell(self) -> None:
-        with patch("subprocess.run") as mock_run:
+    def test_detects_homebrew(self) -> None:
+        def which_side_effect(cmd: str) -> str | None:
+            return "/opt/homebrew/bin/brew" if cmd == "brew" else None
+
+        def run_side_effect(cmd: list, **kwargs):  # noqa: ARG001
+            from unittest.mock import MagicMock
+
+            mock_result = MagicMock()
+            if cmd == ["brew", "list", "openshell"]:
+                mock_result.returncode = 0
+            elif cmd == ["brew", "upgrade", "openshell"]:
+                mock_result.returncode = 0
+            else:
+                mock_result.returncode = 1
+            return mock_result
+
+        with (
+            patch("shutil.which", side_effect=which_side_effect),
+            patch("subprocess.run", side_effect=run_side_effect),
+        ):
             result = runner.invoke(app, ["upgrade"])
             assert result.exit_code == 0
-            assert "Upgrading" in result.output
-            mock_run.assert_called_once()
+            assert "upgraded via Homebrew" in result.output
+            assert "restart" in result.output
+
+    def test_fallback_to_pip(self) -> None:
+        def which_side_effect(cmd: str) -> str | None:
+            return "/usr/bin/pip3" if cmd == "pip3" else None
+
+        def run_side_effect(cmd: list, **kwargs):  # noqa: ARG001
+            from unittest.mock import MagicMock
+
+            mock_result = MagicMock()
+            if cmd == ["pip3", "show", "openshell"]:
+                mock_result.returncode = 0
+            elif cmd == ["pip3", "install", "--upgrade", "openshell"]:
+                mock_result.returncode = 0
+            else:
+                mock_result.returncode = 1
+            return mock_result
+
+        with (
+            patch("shutil.which", side_effect=which_side_effect),
+            patch("subprocess.run", side_effect=run_side_effect),
+        ):
+            result = runner.invoke(app, ["upgrade"])
+            assert result.exit_code == 0
+            assert "upgraded via pip" in result.output
+
+    def test_manual_fallback(self) -> None:
+        with (
+            patch("shutil.which", return_value=None),
+            patch("subprocess.run") as mock_run,
+        ):
+            result = runner.invoke(app, ["upgrade"])
+            assert result.exit_code == 0
+            assert "No supported installation method" in result.output
+            assert "curl" in result.output
+            mock_run.assert_not_called()
+
+    def test_brew_upgrade_failure(self) -> None:
+        def which_side_effect(cmd: str) -> str | None:
+            return "/opt/homebrew/bin/brew" if cmd == "brew" else None
+
+        def run_side_effect(cmd: list, **kwargs):  # noqa: ARG001
+            from unittest.mock import MagicMock
+
+            mock_result = MagicMock()
+            if cmd == ["brew", "list", "openshell"]:
+                mock_result.returncode = 0
+            elif cmd == ["brew", "upgrade", "openshell"]:
+                mock_result.returncode = 1
+            else:
+                mock_result.returncode = 1
+            return mock_result
+
+        with (
+            patch("shutil.which", side_effect=which_side_effect),
+            patch("subprocess.run", side_effect=run_side_effect),
+        ):
+            result = runner.invoke(app, ["upgrade"])
+            assert result.exit_code == 0
+            assert "failed" in result.output
+
+    def test_gateway_advisory_after_success(self) -> None:
+        def which_side_effect(cmd: str) -> str | None:
+            return "/opt/homebrew/bin/brew" if cmd == "brew" else None
+
+        def run_side_effect(cmd: list, **kwargs):  # noqa: ARG001
+            from unittest.mock import MagicMock
+
+            mock_result = MagicMock()
+            if cmd == ["brew", "list", "openshell"]:
+                mock_result.returncode = 0
+            elif cmd == ["brew", "upgrade", "openshell"]:
+                mock_result.returncode = 0
+            else:
+                mock_result.returncode = 1
+            return mock_result
+
+        with (
+            patch("shutil.which", side_effect=which_side_effect),
+            patch("subprocess.run", side_effect=run_side_effect),
+        ):
+            result = runner.invoke(app, ["upgrade"])
+            assert result.exit_code == 0
+            assert "restart" in result.output
+            assert "openshell" in result.output
 
 
 class TestRecoverCommand:

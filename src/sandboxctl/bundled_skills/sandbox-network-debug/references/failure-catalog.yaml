@@ -1,0 +1,80 @@
+# OpenShell sandbox networking failure catalog
+# Derived from production incidents — July 2026
+
+failures:
+
+  - id: proxy-403-endpoint
+    symptom: 'nc: Proxy error: "HTTP/1.1 403 Forbidden"'
+    detail_pattern: "declared endpoint check failed"
+    layer: proxy-policy
+    cause: Host:port not in any network_policies section, or calling binary not in allowed binaries
+    diagnostic: |
+      openshell policy get --full <SANDBOX> | grep "<HOST>"
+    fix: Add host:port + binaries to policy YAML, then hot-reload
+    hot_reloadable: true
+    incident: GitHub 403 when curl not in github_ssh_over_https binaries
+
+  - id: proxy-403-ssrf-ips
+    symptom: 'nc: Proxy error: "HTTP/1.1 403 Forbidden"'
+    detail_pattern: "allowed_ips check failed"
+    layer: proxy-ssrf
+    cause: Host resolves to private or IPv6 IP not in allowed_ips ranges
+    diagnostic: |
+      host <HOSTNAME>
+      dig AAAA <HOSTNAME>
+    fix: Add IPv6 CIDR (e.g. 2400::/12) or private ranges to allowed_ips in policy endpoint
+    hot_reloadable: true
+    incident: user-jump.int.apac-tech-lab.net resolved to 2401:5aa1:20:102::87 (IPv6), only IPv4 ranges in allowed_ips
+
+  - id: tls-cert-verification
+    symptom: "server certificate verification failed. CAfile: /sandbox/.ca-bundle.pem"
+    layer: tls
+    cause: OpenShell proxy CA or custom CAs missing from /sandbox/.ca-bundle.pem — lost on every container restart
+    diagnostic: |
+      openshell sandbox exec --name <SANDBOX> -- bash -c 'grep -c "BEGIN CERTIFICATE" /sandbox/.ca-bundle.pem'
+    fix: sandboxctl doctor --fix <SANDBOX> (rebuilds CA bundle)
+    hot_reloadable: true
+    incident: git push to GitHub failed after container restart; also GitLab clone failed when RH internal CAs missing
+
+  - id: ssrf-endpoint-missing
+    symptom: 'CONNECT <host>:<port> blocked: declared endpoint check failed'
+    layer: proxy-policy
+    cause: Host:port not declared in any network_policies endpoint
+    diagnostic: |
+      openshell policy get --full <SANDBOX> | grep -c "<HOST>"
+    fix: Add endpoint to policy YAML under appropriate section
+    hot_reloadable: true
+    incident: confidentialcontainers.org not in coco policy
+
+  - id: dns-broken
+    symptom: "communications error to 10.89.0.1#53: connection refused"
+    layer: dns
+    cause: aardvark-dns process not bound to 10.89.0.1 after podman machine restart
+    diagnostic: |
+      CONTAINERS_MACHINE_PROVIDER=applehv podman machine ssh -- 'pgrep -a aardvark; ss -tlnp | grep 53'
+    fix: Cycle containers or recreate podman machine. Does NOT affect proxy-routed traffic (HTTPS, SSH via ProxyCommand)
+    hot_reloadable: n/a
+    incident: DNS consistently broken after podman machine stop/start; aardvark-dns runs but fails to bind
+
+  - id: gateway-no-podman
+    symptom: "connection error: .../podman.sock: No such file or directory"
+    layer: gateway
+    cause: Gateway missing CONTAINERS_MACHINE_PROVIDER=applehv in environment
+    diagnostic: |
+      cat ~/.config/openshell/gateway.env
+      cat /opt/homebrew/var/log/openshell/openshell-gateway.err.log
+    fix: |
+      echo 'CONTAINERS_MACHINE_PROVIDER=applehv' >> ~/.config/openshell/gateway.env
+      brew services restart openshell
+    hot_reloadable: true
+    incident: Gateway couldn't find podman after CONTAINERS_MACHINE_PROVIDER was added to zshrc but not gateway.env
+
+  - id: landlock-opt
+    symptom: "Permission denied" on /opt/gsd-core, /opt/playwright, /opt/bun, /opt/claude-mem
+    layer: landlock
+    cause: /opt not in filesystem_policy.read_only list
+    diagnostic: |
+      grep -A10 "read_only:" <POLICY_FILE>
+    fix: Add "- /opt" to read_only list — requires sandbox recreation (landlock is set at creation time)
+    hot_reloadable: false
+    incident: GSD runtime at /opt/gsd-core inaccessible via symlink from /sandbox/.claude/gsd-core; Claude Code reported "GSD core runtime isn't installed"

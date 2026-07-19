@@ -1,0 +1,136 @@
+# Diagnostic commands for OpenShell sandbox networking
+# All commands are read-only / non-destructive unless marked [FIX]
+
+connectivity_test:
+  raw_connect:
+    description: Test if the OpenShell proxy allows a CONNECT tunnel to a host:port
+    command: |
+      openshell sandbox exec --name <SANDBOX> -- bash -c \
+        'printf "CONNECT <HOST>:<PORT> HTTP/1.1\r\nHost: <HOST>:<PORT>\r\n\r\n" | nc -w 10 10.200.0.1 3128'
+    interpret:
+      "200 Connection Established": Proxy allows — problem is upstream (TLS, auth, destination)
+      "403 Forbidden": Proxy denies — read JSON body for detail field
+      "Connection refused": Supervisor proxy not running
+      "Hangs": DNS resolution failing inside supervisor
+
+  https_test:
+    description: Test full HTTPS through the proxy with CA verification
+    command: |
+      openshell sandbox exec --name <SANDBOX> -- bash -c \
+        'curl -sv --cacert /sandbox/.ca-bundle.pem https://<HOST>/ 2>&1 | tail -20'
+
+  git_test:
+    description: Test git access through the proxy
+    command: |
+      openshell sandbox exec --name <SANDBOX> -- bash -c \
+        'GIT_SSL_CAINFO=/sandbox/.ca-bundle.pem git ls-remote https://<HOST>/<REPO>.git HEAD'
+
+  ssh_test:
+    description: Test SSH through the proxy (uses ProxyCommand in .ssh/config)
+    command: |
+      openshell sandbox exec --name <SANDBOX> -- bash -c \
+        'ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no <HOST> echo "ssh works"'
+
+ca_bundle:
+  inspect:
+    description: Count certificates and check for OpenShell CA presence
+    command: |
+      openshell sandbox exec --name <SANDBOX> -- bash -c \
+        'grep -c "BEGIN CERTIFICATE" /sandbox/.ca-bundle.pem; echo "OpenShell CA:"; grep -c "OpenShell" /sandbox/.ca-bundle.pem'
+
+  rebuild_fix:
+    description: "[FIX] Rebuild CA bundle with OpenShell CAs"
+    command: |
+      openshell sandbox exec --name <SANDBOX> -- bash -c \
+        'cat /etc/openshell-tls/ca-bundle.pem > /sandbox/.ca-bundle.pem; cat /etc/openshell-tls/openshell-ca.pem >> /sandbox/.ca-bundle.pem'
+
+  append_custom_fix:
+    description: "[FIX] Upload and append custom CAs (e.g. Red Hat internal)"
+    command: |
+      openshell sandbox upload <SANDBOX> <LOCAL_CA_FILE> /sandbox/custom-ca-tmp
+      openshell sandbox exec --name <SANDBOX> -- bash -c \
+        'cat /sandbox/custom-ca-tmp/* >> /sandbox/.ca-bundle.pem; rm -rf /sandbox/custom-ca-tmp'
+
+  doctor_fix:
+    description: "[FIX] Rebuild CA bundle via sandboxctl doctor"
+    command: |
+      sandboxctl doctor --fix <SANDBOX>
+
+policy:
+  get_active:
+    description: Show the full active policy on a sandbox
+    command: |
+      openshell policy get --full <SANDBOX>
+
+  search_host:
+    description: Check if a host is in the active policy
+    command: |
+      openshell policy get --full <SANDBOX> | grep -A5 "<HOST>"
+
+  list_versions:
+    description: Show policy version history
+    command: |
+      openshell policy list <SANDBOX>
+
+  hot_reload_fix:
+    description: "[FIX] Apply updated policy to a running sandbox"
+    command: |
+      openshell policy set --policy <POLICY_FILE> --wait <SANDBOX>
+
+infrastructure:
+  podman_machine:
+    description: Check podman machine status
+    command: |
+      CONTAINERS_MACHINE_PROVIDER=applehv podman machine list
+
+  podman_socket:
+    description: Check podman socket symlink and target
+    command: |
+      ls -la ~/.local/share/containers/podman/machine/podman.sock
+      # Follow the symlink target — verify it exists
+
+  container_state:
+    description: Check all sandbox container states
+    command: |
+      CONTAINERS_MACHINE_PROVIDER=applehv podman ps -a --format '{{.Names}} {{.Status}}' | grep openshell
+
+  gateway_logs:
+    description: Check OpenShell gateway error log
+    command: |
+      tail -20 /opt/homebrew/var/log/openshell/openshell-gateway.err.log
+
+  gateway_env:
+    description: Check gateway environment configuration
+    command: |
+      cat ~/.config/openshell/gateway.env
+
+  supervisor_logs:
+    description: Check supervisor logs inside a sandbox container
+    command: |
+      CONTAINERS_MACHINE_PROVIDER=applehv podman logs --tail 30 openshell-sandbox-<NAME>
+
+  dns_test:
+    description: Test container-level DNS resolution (informational — proxy handles DNS for HTTPS/SSH)
+    command: |
+      openshell sandbox exec --name <SANDBOX> -- nslookup github.com
+
+  aardvark_dns:
+    description: Check DNS server status inside podman VM
+    command: |
+      CONTAINERS_MACHINE_PROVIDER=applehv podman machine ssh -- 'pgrep -a aardvark; ss -tlnp | grep 53'
+
+recovery:
+  recover_all:
+    description: "[FIX] Recover all stopped sandboxes after reboot"
+    command: |
+      sandboxctl recover
+
+  restart_gateway:
+    description: "[FIX] Restart the OpenShell gateway"
+    command: |
+      brew services restart openshell
+
+  fix_all_credentials:
+    description: "[FIX] Re-inject credentials and rebuild CA bundles for all sandboxes"
+    command: |
+      sandboxctl doctor --fix --all

@@ -56,7 +56,7 @@ def backup_claude_context(name: str, config: SandboxctlConfig) -> Path | None:
     """
     all_paths = list(_BACKUP_PATHS) + list(config.backup_extra_paths)
     paths = " ".join(all_paths)
-    remote_tar = "/tmp/claude-context-backup.tar.gz"  # noqa: S108
+    remote_tar = "/sandbox/claude-context-backup.tar.gz"  # noqa: S108
 
     osh.sandbox_exec_pipe(
         name,
@@ -96,7 +96,7 @@ def restore_claude_context(name: str, config: SandboxctlConfig) -> bool:
     if not tarball.exists():
         return False
 
-    remote_tar = "/tmp/claude-context-restore.tar.gz"  # noqa: S108
+    remote_tar = "/sandbox/claude-context-restore.tar.gz"  # noqa: S108
     osh.sandbox_upload(name, tarball, remote_tar)
     osh.sandbox_exec_pipe(
         name,

@@ -18,18 +18,30 @@ from sandboxctl.skill import (
 )
 
 
-def test_parse_skill_frontmatter_sandbox_network_debug() -> None:
-    """Parse the real sandbox-network-debug SKILL.md."""
-    skill_path = Path("/sandbox/skills_external/sandbox-network-debug/SKILL.md")
-    meta = parse_skill_frontmatter(skill_path)
+def test_parse_skill_frontmatter_network_debug_style(tmp_path: Path) -> None:
+    """Parse a SKILL.md matching the sandbox-network-debug format."""
+    skill_md = tmp_path / "SKILL.md"
+    skill_md.write_text(
+        "---\n"
+        "name: sandbox-network-debug\n"
+        "description: Diagnose and fix OpenShell sandbox networking failures\n"
+        "---\n\n# sandbox-network-debug\n\nInstructions here.\n"
+    )
+    meta = parse_skill_frontmatter(skill_md)
     assert meta.name == "sandbox-network-debug"
     assert meta.description.startswith("Diagnose and fix")
 
 
-def test_parse_skill_frontmatter_sandbox_policy_lint() -> None:
-    """Parse the real sandbox-policy-lint SKILL.md."""
-    skill_path = Path("/sandbox/skills_external/sandbox-policy-lint/SKILL.md")
-    meta = parse_skill_frontmatter(skill_path)
+def test_parse_skill_frontmatter_policy_lint_style(tmp_path: Path) -> None:
+    """Parse a SKILL.md matching the sandbox-policy-lint format."""
+    skill_md = tmp_path / "SKILL.md"
+    skill_md.write_text(
+        "---\n"
+        "name: sandbox-policy-lint\n"
+        "description: Lint OpenShell sandbox network policies\n"
+        "---\n\n# sandbox-policy-lint\n\nLinting instructions.\n"
+    )
+    meta = parse_skill_frontmatter(skill_md)
     assert meta.name == "sandbox-policy-lint"
 
 

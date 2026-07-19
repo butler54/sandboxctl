@@ -70,11 +70,11 @@ failures:
     incident: Gateway couldn't find podman after CONTAINERS_MACHINE_PROVIDER was added to zshrc but not gateway.env
 
   - id: landlock-opt
-    symptom: "Permission denied" on /opt/gsd-core, /opt/playwright, /opt/bun, /opt/claude-mem
+    symptom: '"Permission denied" on /opt/gsd-core, /opt/playwright, /opt/bun, /opt/claude-mem'
     layer: landlock
     cause: /opt not in filesystem_policy.read_only list
     diagnostic: |
       grep -A10 "read_only:" <POLICY_FILE>
-    fix: Add "- /opt" to read_only list — requires sandbox recreation (landlock is set at creation time)
+    fix: 'Add "- /opt" to read_only list — requires sandbox recreation (landlock is set at creation time)'
     hot_reloadable: false
     incident: GSD runtime at /opt/gsd-core inaccessible via symlink from /sandbox/.claude/gsd-core; Claude Code reported "GSD core runtime isn't installed"

@@ -15,6 +15,7 @@ from sandboxctl.setup_cmd import (
     _check_prerequisites,
     _install_bundled_skills,
     _install_profiles,
+    _install_shell_completion,
     _setup_github_pat,
     _setup_ssh_key,
 )
@@ -132,6 +133,30 @@ class TestInstallProfiles:
             assert dest.read_text() == original_contents[name], (
                 f"Profile {name} was modified when it should have been left unchanged"
             )
+
+
+class TestInstallShellCompletion:
+    def test_installs_completion(self) -> None:
+        mock_result = MagicMock(returncode=0, stderr="")
+        with (
+            patch.dict("os.environ", {"SHELL": "/bin/zsh"}),
+            patch("sandboxctl.setup_cmd.subprocess.run", return_value=mock_result) as mock_run,
+        ):
+            _install_shell_completion()
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        assert args == ["sandboxctl", "--install-completion", "zsh"]
+
+    def test_skips_when_no_shell(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            _install_shell_completion()
+
+    def test_handles_missing_binary(self) -> None:
+        with (
+            patch.dict("os.environ", {"SHELL": "/bin/bash"}),
+            patch("sandboxctl.setup_cmd.subprocess.run", side_effect=FileNotFoundError),
+        ):
+            _install_shell_completion()
 
 
 class TestInstallBundledSkills:

@@ -11,8 +11,10 @@ Safe, isolated sandboxes for using LLMs with minimal guardrails to maximize deve
 - **Profile system** -- define reusable sandbox configurations (repos, extensions, settings) as declarative profiles.
 - **Cross-platform credentials** -- OS keychain integration for GitHub and GitLab tokens on macOS and Linux.
 - **Scoped Git tokens** -- per-sandbox token injection so credentials never leak across projects.
-- **Health checks and auto-recovery** -- `doctor` and `validate` commands detect drift and repair common issues automatically.
-- **CLI lifecycle management** -- create, list, inspect, delete, and upgrade sandboxes from a single tool.
+- **Health checks and auto-recovery** -- `doctor` and `recover` commands detect drift and repair common issues automatically.
+- **Claude context management** -- backup and restore Claude Code memory, settings, and projects across sandbox lifecycle.
+- **Bundled skills** -- ships sandbox-specific Claude Code skills (network debugging, policy linting) installed automatically during setup.
+- **CLI lifecycle management** -- create, open, list, backup, restore, delete, and upgrade sandboxes from a single tool.
 
 ## Prerequisites
 
@@ -47,11 +49,10 @@ make dev
 ## Quickstart
 
 ```bash
-# 1. Create the default configuration file
-sandboxctl config init
+# 1. Run first-time setup (prerequisites, SSH key, credentials, providers, shell completion)
+sandboxctl setup
 
-# 2. Edit the config with your identity and preferences
-#    (see Configuration section below)
+# 2. Review and customize your config
 $EDITOR "$(sandboxctl config path)"
 
 # 3. Create a new profile skeleton
@@ -60,10 +61,10 @@ sandboxctl init my-project
 # 4. Edit the profile to add repos, extensions, and settings
 $EDITOR ~/.config/sandboxctl/profiles/my-project.toml
 
-# 5. Create a sandbox from the profile (planned)
-sandboxctl create my-project
+# 5. Create a sandbox from the profile
+sandboxctl create --profile my-project
 
-# 6. Open the sandbox in VS Code (planned)
+# 6. Open the sandbox in VS Code + Claude Code
 sandboxctl open my-project
 ```
 
@@ -110,23 +111,59 @@ configuration.
 
 ## Commands
 
+### Lifecycle
+
 | Command | Description |
 |---|---|
-| `sandboxctl --version` | Show version and exit |
+| `sandboxctl create --profile <name>` | Create a sandbox from a profile |
+| `sandboxctl open <name>` | Open a sandbox in VS Code, Claude Code, or shell |
+| `sandboxctl restart <name>` | Delete and recreate a sandbox (with data loss warning) |
+| `sandboxctl delete <name>` | Delete a sandbox |
+
+### Inspection
+
+| Command | Description |
+|---|---|
 | `sandboxctl list` | List profiles and running sandboxes |
 | `sandboxctl status` | Show gateway and sandbox status |
-| `sandboxctl init <name>` | Create a new profile skeleton |
-| `sandboxctl delete <name>` | Delete a sandbox |
 | `sandboxctl validate <name>` | Run validation tests inside a sandbox |
-| `sandboxctl doctor <name>` | Diagnose and recover sandbox issues (`--no-recover` to skip recovery) |
-| `sandboxctl upgrade` | Upgrade OpenShell to latest version |
+
+### Health & Recovery
+
+| Command | Description |
+|---|---|
+| `sandboxctl doctor [name]` | Diagnose sandbox health, credentials, and profile readiness |
+| `sandboxctl doctor --fix [name]` | Re-inject credentials and CA bundles into running sandboxes |
+| `sandboxctl recover [name]` | Recover stopped sandboxes after host reboot or podman restart |
+
+### Context Management
+
+| Command | Description |
+|---|---|
+| `sandboxctl backup [name]` | Back up Claude context (memory, settings) from a sandbox |
+| `sandboxctl restore <name>` | Restore Claude context into a sandbox |
+
+### Setup & Maintenance
+
+| Command | Description |
+|---|---|
+| `sandboxctl setup` | First-time setup: prerequisites, SSH key, credentials, providers, shell completion, bundled skills |
+| `sandboxctl upgrade` | Upgrade OpenShell (detects Homebrew/pip, advises gateway restart) |
+| `sandboxctl init <name>` | Create a new profile skeleton |
 | `sandboxctl config init` | Create default configuration file |
 | `sandboxctl config show` | Show current configuration |
 | `sandboxctl config path` | Print config file path |
-| `sandboxctl create <name>` | Create a sandbox from a profile (planned) |
-| `sandboxctl open <name>` | Open a sandbox in VS Code (planned) |
-| `sandboxctl setup` | Initial setup and credential configuration (planned) |
-| `sandboxctl restart <name>` | Restart a sandbox (planned) |
+| `sandboxctl --version` | Show version and exit |
+
+### Shell Completion
+
+Shell completion is installed automatically during `sandboxctl setup`. To install or update manually:
+
+```bash
+sandboxctl --install-completion
+```
+
+Supports bash, zsh, fish, and PowerShell.
 
 ## Development
 

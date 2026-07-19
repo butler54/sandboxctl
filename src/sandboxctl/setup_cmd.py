@@ -81,6 +81,31 @@ def _install_profiles(config: SandboxctlConfig) -> None:
             typer.echo(f"  Installed: {name}")
 
 
+def _install_shell_completion() -> None:
+    typer.echo("\n--- Shell Completion ---")
+
+    shell = os.environ.get("SHELL", "")
+    if not shell:
+        typer.echo("  Skipped: could not detect shell")
+        return
+
+    shell_name = Path(shell).name
+    try:
+        result = subprocess.run(
+            ["sandboxctl", "--install-completion", shell_name],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            typer.echo(f"  Installed: {shell_name} completion")
+        else:
+            typer.echo(f"  Skipped: {shell_name} ({result.stderr.strip() or 'already installed or unsupported'})")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        typer.echo("  Skipped: sandboxctl not found on PATH (install completion manually with --install-completion)")
+
+
 def _install_bundled_skills() -> None:
     typer.echo("\n--- Bundled Skills ---")
 
@@ -275,6 +300,7 @@ def run_setup(config: SandboxctlConfig) -> None:
     _check_prerequisites()
     _install_profiles(config)
     _install_bundled_skills()
+    _install_shell_completion()
     _setup_cli_tools()
     _setup_ssh_key(config)
     github_token = _setup_github_pat(config)

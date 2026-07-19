@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import subprocess
-import tempfile
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
 from sandboxctl.skill import (
-    SkillHooks,
-    SkillMeta,
     get_skills_dir,
     install_skill,
     list_skills,
@@ -301,7 +297,7 @@ def test_install_skill_no_skill_md(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(subprocess, "run", mock_run)
 
-    with pytest.raises(ValueError, match="Multi-skill repository"):
+    with pytest.raises(ValueError, match="no SKILL.md"):
         install_skill("https://github.com/test/no-skill.git", skills_dir=skills_dir)
 
 

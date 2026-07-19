@@ -457,10 +457,11 @@ class GWSCredentialCheck(CredentialCheck):
                     "grep -q GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND /sandbox/.bashrc 2>/dev/null || "
                     'echo "export GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file" >> /sandbox/.bashrc',
                 )
+                self._bootstrap_token_cache(sandbox_name)
                 return FixResult(
                     success=True,
                     name=self.check_name,
-                    details="GWS client_secret + fresh credentials exported and uploaded",
+                    details="GWS client_secret + fresh credentials exported and uploaded + token cache bootstrapped",
                 )
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 pass
@@ -478,10 +479,11 @@ class GWSCredentialCheck(CredentialCheck):
                 "grep -q GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND /sandbox/.bashrc 2>/dev/null || "
                 'echo "export GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file" >> /sandbox/.bashrc',
             )
+            self._bootstrap_token_cache(sandbox_name)
             return FixResult(
                 success=True,
                 name=self.check_name,
-                details="GWS client_secret + existing credentials.json uploaded",
+                details="GWS client_secret + existing credentials.json uploaded + token cache bootstrapped",
             )
 
         return FixResult(
@@ -489,6 +491,52 @@ class GWSCredentialCheck(CredentialCheck):
             name=self.check_name,
             details="client_secret uploaded but no credentials available (gws CLI not found)",
         )
+
+    @staticmethod
+    def _bootstrap_token_cache(sandbox_name: str) -> None:
+        """Bootstrap token_cache.json inside the sandbox via headless OAuth2 token exchange.
+
+        gws auth login requires a browser redirect, which sandboxes can't provide.
+        This exchanges the refresh_token from credentials.json for an access_token
+        and writes token_cache.json so gws auth status reports token_cache_exists: true.
+        """
+        script = (
+            'python3 -c "'
+            "import json, urllib.request, urllib.parse, sys\\n"
+            "creds_path = '/sandbox/.config/gws/credentials.json'\\n"
+            "cache_path = '/sandbox/.config/gws/token_cache.json'\\n"
+            "try:\\n"
+            "    creds = json.load(open(creds_path))\\n"
+            "    rt = creds.get('refresh_token', '')\\n"
+            "    cid = creds.get('client_id', '')\\n"
+            "    cs = creds.get('client_secret', '')\\n"
+            "    if not all([rt, cid, cs]):\\n"
+            "        print('skip: missing fields')\\n"
+            "        sys.exit(0)\\n"
+            "    data = urllib.parse.urlencode({\\n"
+            "        'client_id': cid, 'client_secret': cs,\\n"
+            "        'refresh_token': rt, 'grant_type': 'refresh_token',\\n"
+            "    }).encode()\\n"
+            "    req = urllib.request.Request('https://oauth2.googleapis.com/token', data)\\n"
+            "    resp = json.load(urllib.request.urlopen(req, timeout=15))\\n"
+            "    cache = {\\n"
+            "        'access_token': resp['access_token'],\\n"
+            "        'token_type': resp.get('token_type', 'Bearer'),\\n"
+            "        'expires_in': resp.get('expires_in', 3600),\\n"
+            "        'scope': resp.get('scope', ''),\\n"
+            "        'refresh_token': rt,\\n"
+            "    }\\n"
+            "    with open(cache_path, 'w') as f:\\n"
+            "        json.dump(cache, f)\\n"
+            "    print('token_cache.json created')\\n"
+            "except Exception as e:\\n"
+            "    print(f'token_cache bootstrap skipped: {e}')\\n"
+            '"'
+        )
+        try:
+            osh.sandbox_exec_pipe(sandbox_name, script)
+        except Exception:  # noqa: BLE001, S110
+            pass
 
     def required_by(self, cred_config: CredentialConfig) -> bool:
         return cred_config.gws

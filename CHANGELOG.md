@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.8.2 (2026-07-19)
+
+### Bug Fixes
+
+- **15-01**: Write backup/restore tarballs to /sandbox/ instead of /tmp/
+  ([`ccfa842`](https://github.com/butler54/sandboxctl/commit/ccfa842c712206f4ef0d44e8d9bb9fb0b900404d))
+
+
 ## v1.8.1 (2026-07-09)
 
 ### Bug Fixes

@@ -2,6 +2,36 @@
 
 <!-- version list -->
 
+## v1.9.0 (2026-07-19)
+
+### Bug Fixes
+
+- Quote YAML values with embedded double-quotes in failure-catalog
+  ([`684a93b`](https://github.com/butler54/sandboxctl/commit/684a93bc68910d0c84f642db351fec84425a4bf2))
+
+### Chores
+
+- Bump astral-sh/setup-uv from 8.2.0 to 8.3.2
+  ([`7a0ede2`](https://github.com/butler54/sandboxctl/commit/7a0ede254f19ad2359432415c7191ed32af669a4))
+
+- Bump github/codeql-action/analyze from 4.36.2 to 4.37.0
+  ([`68beafd`](https://github.com/butler54/sandboxctl/commit/68beafd8b1b4966bf9ab75fbbe2bb7c0cfd6eb13))
+
+- Bump github/codeql-action/init from 4.36.2 to 4.37.0
+  ([`8ae0737`](https://github.com/butler54/sandboxctl/commit/8ae073726e3d2e4b3bf2d23a9851a58eb69fd187))
+
+- Bump github/codeql-action/upload-sarif from 4.36.3 to 4.37.0
+  ([`5fdc776`](https://github.com/butler54/sandboxctl/commit/5fdc77615eff1f2b20d9d8fda538f6bec4ceb514))
+
+- Bump step-security/harden-runner from 2.19.4 to 2.20.0
+  ([`4664872`](https://github.com/butler54/sandboxctl/commit/466487283345f18fba5c33dcd93e83934fe90c3a))
+
+### Features
+
+- Bundle sandboxctl skills and auto-install during setup
+  ([`c36d618`](https://github.com/butler54/sandboxctl/commit/c36d6184ca41c58b151a617c83047bf03e72209c))
+
+
 ## v1.8.4 (2026-07-19)
 
 ### Bug Fixes

@@ -138,6 +138,38 @@ def resolve_build_context(
     return build_ctx, build_ctx
 
 
+def _ensure_vertex_provider_yaml(config_dir: Path) -> Path:
+    """Ensure Vertex provider profile YAML exists with tls:skip on OAuth endpoints.
+
+    This overrides OpenShell's auto-generated provider policy which includes
+    oauth2.googleapis.com and accounts.google.com WITHOUT tls:skip, causing
+    BadSignature errors when Google rejects the proxy certificate.
+    """
+    providers_dir = config_dir / "providers"
+    providers_dir.mkdir(parents=True, exist_ok=True)
+
+    yaml_path = providers_dir / "vertex-claude.yaml"
+    if not yaml_path.exists():
+        yaml_content = """\
+_provider_vertex_claude:
+  endpoints:
+    - host: oauth2.googleapis.com
+      port: 443
+      protocol: rest
+      tls: skip
+      enforcement: enforce
+      access: read-write
+    - host: accounts.google.com
+      port: 443
+      protocol: rest
+      tls: skip
+      enforcement: enforce
+      access: read-write
+"""
+        yaml_path.write_text(yaml_content)
+    return yaml_path
+
+
 def setup_providers(config: SandboxctlConfig) -> list[str]:
     """Register providers with OpenShell. Returns list of provider names to attach."""
     providers = ["github"]
@@ -151,10 +183,9 @@ def setup_providers(config: SandboxctlConfig) -> list[str]:
         )
         providers.append("vertex-claude")
 
-        # Import a full provider profile YAML if user has one
-        profile_yaml = config.config_dir / "providers" / "vertex-claude.yaml"
-        if profile_yaml.exists():
-            osh.provider_profile_import(profile_yaml)
+        # Ensure provider profile YAML exists with tls:skip on OAuth endpoints (fixes #69)
+        yaml_path = _ensure_vertex_provider_yaml(config.config_dir)
+        osh.provider_profile_import(yaml_path)
     else:
         api_key = get_credential(config.keychain_github, "anthropic-api-key") or ""
         if api_key:

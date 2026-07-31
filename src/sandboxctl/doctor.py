@@ -700,7 +700,8 @@ def build_and_inject_ca_bundle(
         "export GIT_SSL_CAINFO=/sandbox/.ca-bundle.pem\n"
         "export SSL_CERT_FILE=/sandbox/.ca-bundle.pem\n"
         "export CURL_CA_BUNDLE=/sandbox/.ca-bundle.pem\n"
-        "export REQUESTS_CA_BUNDLE=/sandbox/.ca-bundle.pem"
+        "export REQUESTS_CA_BUNDLE=/sandbox/.ca-bundle.pem\n"
+        "export GH_SSL_CAINFO=/sandbox/.ca-bundle.pem"
     )
     script_parts.append(
         f'grep -q GIT_SSL_CAINFO /sandbox/.bashrc 2>/dev/null || echo "{env_block}" >> /sandbox/.bashrc'

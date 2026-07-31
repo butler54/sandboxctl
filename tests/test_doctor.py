@@ -540,6 +540,17 @@ class TestCABundleCheck:
         assert chk.required_by(CredentialConfig()) is True
         assert chk.required_by(CredentialConfig(github=False, ssh_key=False)) is True
 
+    def test_ca_fix_includes_gh_ssl_cainfo(self, tmp_path: Path) -> None:
+        ca = tmp_path / "custom-ca.pem"
+        ca.write_text("-----BEGIN CERTIFICATE-----\n...")
+        cfg = _make_config(ca_paths=[ca])
+        chk = CABundleCheck()
+        with patch("sandboxctl.doctor.osh.sandbox_exec_pipe") as mock_pipe:
+            result = chk.fix("mybox", cfg)
+        assert result.success is True
+        script = mock_pipe.call_args[0][1]
+        assert "GH_SSL_CAINFO=/sandbox/.ca-bundle.pem" in script
+
 
 # =========================================================================
 # TestMCPOAuthCheck

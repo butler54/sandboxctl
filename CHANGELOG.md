@@ -2,6 +2,23 @@
 
 <!-- version list -->
 
+## v1.9.2 (2026-07-31)
+
+### Bug Fixes
+
+- Work around CodeQL false positive on hostname string assertions
+  ([`5841327`](https://github.com/butler54/sandboxctl/commit/5841327eb9332788d9da1765a535704266e5a1ac))
+
+- **17-02**: Add tls:skip to Vertex provider YAML for OAuth endpoints
+  ([#69](https://github.com/butler54/sandboxctl/pull/69),
+  [`dc29771`](https://github.com/butler54/sandboxctl/commit/dc29771eca8170f3882f55547249c301944d8304))
+
+### Chores
+
+- Align codeql-action/init to v4.37.3 to match analyze
+  ([`4244879`](https://github.com/butler54/sandboxctl/commit/4244879302f98ff616d388f7ea8b5ebfdb472aff))
+
+
 ## v1.9.1 (2026-07-31)
 
 ### Bug Fixes

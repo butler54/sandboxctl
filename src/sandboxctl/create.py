@@ -210,7 +210,8 @@ def post_launch_setup(
         'echo "export GIT_SSL_CAINFO=/sandbox/.ca-bundle.pem\n'
         "export SSL_CERT_FILE=/sandbox/.ca-bundle.pem\n"
         "export CURL_CA_BUNDLE=/sandbox/.ca-bundle.pem\n"
-        'export REQUESTS_CA_BUNDLE=/sandbox/.ca-bundle.pem" >> /sandbox/.bashrc; '
+        "export REQUESTS_CA_BUNDLE=/sandbox/.ca-bundle.pem\n"
+        'export GH_SSL_CAINFO=/sandbox/.ca-bundle.pem" >> /sandbox/.bashrc; '
         'echo "CA env vars: configured"',
     )
 

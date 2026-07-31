@@ -362,6 +362,23 @@ class TestPostLaunchSetup:
         assert len(gitlab_calls) == 1
         assert gitlab_calls[0][0][1] == "testuser"
 
+    def test_ca_env_vars_include_gh_ssl_cainfo(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test")
+
+        with (
+            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        ca_calls = [c for c in mock_pipe.call_args_list if "GIT_SSL_CAINFO" in str(c)]
+        assert len(ca_calls) == 1
+        script = ca_calls[0][0][1]
+        assert "GH_SSL_CAINFO=/sandbox/.ca-bundle.pem" in script
+
     def test_gws_credentials_exported_when_gws_installed(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)
         profile = Profile(name="test")

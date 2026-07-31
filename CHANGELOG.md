@@ -2,6 +2,36 @@
 
 <!-- version list -->
 
+## v1.9.1 (2026-07-31)
+
+### Bug Fixes
+
+- Add GH_SSL_CAINFO to CA bundle env vars ([#68](https://github.com/butler54/sandboxctl/pull/68),
+  [`f9fa2b7`](https://github.com/butler54/sandboxctl/commit/f9fa2b72ee9fb0e104f80424474c58ec5825631d))
+
+### Chores
+
+- Bump astral-sh/setup-uv from 8.3.2 to 9.0.0
+  ([`d731bcb`](https://github.com/butler54/sandboxctl/commit/d731bcb1584e128ff3af75ce979f9b78de0cdf2b))
+
+- Bump github/codeql-action/analyze from 4.37.0 to 4.37.3
+  ([`8619f22`](https://github.com/butler54/sandboxctl/commit/8619f22f834b65a41ceebcec4754af958194ba82))
+
+- Bump github/codeql-action/upload-sarif from 4.37.0 to 4.37.3
+  ([`998c201`](https://github.com/butler54/sandboxctl/commit/998c20128a01b7b9476f6830f3cd8a2faf1833f7))
+
+- Bump ossf/scorecard-action from 2.4.3 to 2.4.4
+  ([`17fa6c5`](https://github.com/butler54/sandboxctl/commit/17fa6c53b94f39059c749037bcbbacd3bf19581f))
+
+- Bump python-semantic-release/python-semantic-release
+  ([`cbc2f29`](https://github.com/butler54/sandboxctl/commit/cbc2f29e0abba8dfda049e4d13a02efd973f481c))
+
+### Documentation
+
+- Update README for v1.9, add shell completion to setup
+  ([`722365b`](https://github.com/butler54/sandboxctl/commit/722365b9e7720c478647f30ec542c04294729e0c))
+
+
 ## v1.9.0 (2026-07-19)
 
 ### Bug Fixes

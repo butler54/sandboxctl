@@ -17,6 +17,7 @@ from sandboxctl.setup_cmd import (
     _install_profiles,
     _install_shell_completion,
     _setup_github_pat,
+    _setup_providers,
     _setup_ssh_key,
 )
 
@@ -285,3 +286,31 @@ class TestBundledProfiles:
         for name, content in PROFILES.items():
             parsed = tomllib.loads(content)
             assert isinstance(parsed, dict), f"Profile '{name}' did not parse to a dict"
+
+
+class TestSetupProviders:
+    def test_vertex_provider_yaml_generated(self, tmp_path: Path) -> None:
+        """Test that Vertex provider YAML is generated with tls:skip on OAuth endpoints."""
+        config = MagicMock(
+            config_dir=tmp_path,
+            providers=MagicMock(vertex_project_id="my-test-project"),
+        )
+
+        with (
+            patch("sandboxctl.setup_cmd.settings_set"),
+            patch("sandboxctl.setup_cmd.provider_create"),
+            patch("sandboxctl.setup_cmd.provider_profile_import") as mock_import,
+        ):
+            _setup_providers(config, None)
+
+        # Verify provider_profile_import was called
+        mock_import.assert_called_once()
+        yaml_path = mock_import.call_args[0][0]
+
+        # Verify the YAML file exists and contains required content
+        assert yaml_path.exists()
+        yaml_content = yaml_path.read_text()
+        assert "tls: skip" in yaml_content
+        assert "oauth2.googleapis.com" in yaml_content
+        assert "accounts.google.com" in yaml_content
+        assert "_provider_vertex_claude:" in yaml_content

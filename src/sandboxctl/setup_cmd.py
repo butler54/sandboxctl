@@ -11,7 +11,13 @@ import typer
 
 from sandboxctl.config import SandboxctlConfig, ensure_config_dir, find_vscode_bin
 from sandboxctl.credentials import get_credential, store_credential
-from sandboxctl.openshell import gateway_status, provider_create, provider_delete, settings_set
+from sandboxctl.openshell import (
+    gateway_status,
+    provider_create,
+    provider_delete,
+    provider_profile_import,
+    settings_set,
+)
 from sandboxctl.profile import list_profiles, load_profile
 
 
@@ -269,6 +275,37 @@ def _setup_gitlab_pats(config: SandboxctlConfig) -> dict[str, str | None]:
     return tokens
 
 
+def _write_vertex_provider_yaml(config_dir: Path) -> Path:
+    """Write Vertex provider profile YAML with tls:skip on OAuth endpoints.
+
+    This overrides OpenShell's auto-generated provider policy which includes
+    oauth2.googleapis.com and accounts.google.com WITHOUT tls:skip, causing
+    BadSignature errors when Google rejects the proxy certificate.
+    """
+    providers_dir = config_dir / "providers"
+    providers_dir.mkdir(parents=True, exist_ok=True)
+
+    yaml_path = providers_dir / "vertex-claude.yaml"
+    yaml_content = """\
+_provider_vertex_claude:
+  endpoints:
+    - host: oauth2.googleapis.com
+      port: 443
+      protocol: rest
+      tls: skip
+      enforcement: enforce
+      access: read-write
+    - host: accounts.google.com
+      port: 443
+      protocol: rest
+      tls: skip
+      enforcement: enforce
+      access: read-write
+"""
+    yaml_path.write_text(yaml_content)
+    return yaml_path
+
+
 def _setup_providers(config: SandboxctlConfig, github_token: str | None) -> None:
     typer.echo("\n--- Providers ---")
 
@@ -281,7 +318,11 @@ def _setup_providers(config: SandboxctlConfig, github_token: str | None) -> None
             "vertex-claude",
             f"ANTHROPIC_VERTEX_PROJECT_ID={config.providers.vertex_project_id}",
         )
+        # Import provider profile YAML with tls:skip on OAuth endpoints (fixes #69)
+        yaml_path = _write_vertex_provider_yaml(config.config_dir)
+        provider_profile_import(yaml_path)
         typer.echo(f"  vertex-claude: configured (project: {config.providers.vertex_project_id})")
+        typer.echo("  vertex-claude: OAuth TLS policy applied")
 
     if github_token:
         provider_delete("github")

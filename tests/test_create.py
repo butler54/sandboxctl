@@ -220,10 +220,20 @@ class TestGenerateProviderYaml:
         with (
             patch("sandboxctl.create.osh.settings_set"),
             patch("sandboxctl.create.osh.provider_create") as mock_create,
+            patch("sandboxctl.create.osh.provider_profile_import") as mock_import,
         ):
             providers = setup_providers(config)
         assert "vertex-claude" in providers
         mock_create.assert_called_once_with("vertex-claude", "vertex-claude", "ANTHROPIC_VERTEX_PROJECT_ID=my-project")
+
+        # Verify provider profile YAML is generated and imported with tls:skip
+        mock_import.assert_called_once()
+        yaml_path = mock_import.call_args[0][0]
+        assert yaml_path.exists()
+        yaml_content = yaml_path.read_text()
+        assert "tls: skip" in yaml_content
+        assert "oauth2.googleapis.com" in yaml_content
+        assert "accounts.google.com" in yaml_content
 
     def test_anthropic_direct_provider(self, tmp_path: Path) -> None:
         config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)

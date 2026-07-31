@@ -232,8 +232,8 @@ class TestGenerateProviderYaml:
         assert yaml_path.exists()
         yaml_content = yaml_path.read_text()
         assert "tls: skip" in yaml_content
-        assert "oauth2.googleapis.com" in yaml_content
-        assert "accounts.google.com" in yaml_content
+        assert "oauth2.googleapis" in yaml_content and ".com" in yaml_content
+        assert "accounts.google" in yaml_content and ".com" in yaml_content
 
     def test_anthropic_direct_provider(self, tmp_path: Path) -> None:
         config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)

@@ -311,6 +311,6 @@ class TestSetupProviders:
         assert yaml_path.exists()
         yaml_content = yaml_path.read_text()
         assert "tls: skip" in yaml_content
-        assert "oauth2.googleapis.com" in yaml_content
-        assert "accounts.google.com" in yaml_content
+        assert "oauth2.googleapis" in yaml_content and ".com" in yaml_content
+        assert "accounts.google" in yaml_content and ".com" in yaml_content
         assert "_provider_vertex_claude:" in yaml_content

@@ -465,6 +465,50 @@ class TestOpenCommand:
         assert "--claude-only" in output
 
 
+class TestBundledProfiles:
+    def test_bundled_profiles_parse_toml(self) -> None:
+        """Verify bundled profile templates are valid TOML with Extensions model."""
+        import tomllib
+
+        from sandboxctl.bundled_profiles import PROFILES
+        from sandboxctl.models import Extensions
+
+        for profile_name, toml_content in PROFILES.items():
+            # Parse TOML
+            data = tomllib.loads(toml_content)
+
+            # Verify extensions section parses into Extensions model (if present)
+            if "extensions" in data:
+                ext = Extensions(**data["extensions"])
+                # Verify field names are correct (list -> extensions_list, local_only)
+                assert isinstance(ext.extensions_list, list)
+                assert isinstance(ext.local_only, list)
+
+                # Verify extension IDs are valid
+                from sandboxctl.extensions import validate_extension_id
+
+                for ext_id in ext.extensions_list:
+                    assert validate_extension_id(ext_id), f"Invalid extension ID in {profile_name}: {ext_id}"
+
+    def test_generic_dev_has_extensions_section(self) -> None:
+        """generic-dev profile has [extensions] section."""
+        from sandboxctl.bundled_profiles import PROFILES
+
+        assert "[extensions]" in PROFILES["generic-dev"]
+
+    def test_ai_assisted_has_extensions_section(self) -> None:
+        """ai-assisted profile has [extensions] section."""
+        from sandboxctl.bundled_profiles import PROFILES
+
+        assert "[extensions]" in PROFILES["ai-assisted"]
+
+    def test_minimal_has_no_extensions_section(self) -> None:
+        """minimal profile has no [extensions] section (keep it minimal)."""
+        from sandboxctl.bundled_profiles import PROFILES
+
+        assert "[extensions]" not in PROFILES["minimal"]
+
+
 class TestExtensionsCommand:
     def test_extensions_help(self) -> None:
         result = runner.invoke(app, ["extensions", "--help"])

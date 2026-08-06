@@ -29,6 +29,7 @@ class WorkspaceConfig(BaseModel):
 
     theme: str = ""
     zoom: int = -1
+    terminal_app: str = ""  # "iTerm", "Terminal", or "" (auto-detect)
 
     model_config = {"extra": "ignore"}
 

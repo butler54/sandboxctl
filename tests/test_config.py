@@ -131,11 +131,11 @@ class TestFindTerminalApp:
         from unittest.mock import patch
         from sandboxctl.config import find_terminal_app
 
-        def exists_side_effect(self: Path) -> bool:
+        def exists_side_effect(path_self: Path) -> bool:
             # iTerm.app missing, Terminal.app present
-            return str(self).endswith("Terminal.app")
+            return str(path_self).endswith("Terminal.app")
 
-        with patch("pathlib.Path.exists", side_effect=exists_side_effect):
+        with patch("pathlib.Path.exists", new=exists_side_effect):
             result = find_terminal_app()
             assert result == "Terminal"
 

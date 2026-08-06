@@ -234,3 +234,22 @@ def find_vscode_bin() -> Path | None:
     if mac_path.exists():
         return mac_path
     return None
+
+
+def find_terminal_app() -> str | None:
+    """Find terminal app on macOS: iTerm2 first, then Terminal.app, then None.
+
+    Returns the app name suitable for osascript ("iTerm" or "Terminal"), NOT a full path.
+    User can override via config [workspace] terminal_app field.
+    """
+    # Check for iTerm2 (better UX: tabs, scripting)
+    iterm_path = Path("/Applications/iTerm.app")
+    if iterm_path.exists():
+        return "iTerm"
+
+    # Fall back to built-in Terminal.app
+    terminal_path = Path("/System/Applications/Utilities/Terminal.app")
+    if terminal_path.exists():
+        return "Terminal"
+
+    return None  # Neither found — caller prints manual command

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
+from dataclasses import dataclass, field
+from pathlib import Path
+
 import re
 
 from sandboxctl.models import Extensions
@@ -95,3 +99,64 @@ def classify_remote_extensions(ext: Extensions) -> list[str]:
         remote.append(ext_id)
 
     return remote
+
+
+@dataclass
+class InstallReport:
+    """Result of install_extensions operation."""
+
+    installed: list[str] = field(default_factory=list)
+    skipped_invalid: list[str] = field(default_factory=list)
+    failed: list[tuple[str, str]] = field(default_factory=list)
+
+
+def install_extensions(sandbox_name: str, ext_ids: list[str], vscode_bin: Path) -> InstallReport:
+    """Install VS Code extensions into a sandbox via host code CLI.
+
+    Runs one subprocess per extension ID:
+    code --remote ssh-remote+openshell-<name> --install-extension <id>
+
+    IDs are validated; invalid IDs skip subprocess and are recorded in skipped_invalid.
+    Non-zero returncode is recorded in failed; the loop continues (warn-and-continue).
+    The command is idempotent (code CLI no-ops if already installed).
+
+    Args:
+        sandbox_name: The sandbox name (for ssh-remote+openshell-<name>)
+        ext_ids: List of extension IDs to install
+        vscode_bin: Path to the code CLI binary
+
+    Returns:
+        InstallReport with installed, skipped_invalid, and failed lists
+    """
+    report = InstallReport()
+
+    for ext_id in ext_ids:
+        # Validate ID (security: never reach subprocess if invalid)
+        if not validate_extension_id(ext_id):
+            report.skipped_invalid.append(ext_id)
+            continue
+
+        print(f"Installing {ext_id}...")
+
+        # Invoke code CLI with list args (never shell=True)
+        result = subprocess.run(
+            [
+                str(vscode_bin),
+                "--remote",
+                f"ssh-remote+openshell-{sandbox_name}",
+                "--install-extension",
+                ext_id,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode == 0:
+            report.installed.append(ext_id)
+        else:
+            # Capture failure but continue (warn-and-continue)
+            error_msg = result.stderr.strip() or result.stdout.strip() or "Unknown error"
+            report.failed.append((ext_id, error_msg))
+
+    return report

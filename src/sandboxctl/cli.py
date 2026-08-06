@@ -34,6 +34,9 @@ app = typer.Typer(
 config_app = typer.Typer(help="Manage sandboxctl configuration.")
 app.add_typer(config_app, name="config")
 
+extensions_app = typer.Typer(help="Manage sandbox VS Code extensions.")
+app.add_typer(extensions_app, name="extensions")
+
 
 @app.callback(invoke_without_command=True)
 def main(
@@ -545,3 +548,50 @@ def doctor(
     else:
         failed = [r.name for r in host_results if not r.passed]
         typer.echo(f"\nHost credentials: {len(failed)} check(s) failed.")
+
+
+@extensions_app.command("install")
+def extensions_install(
+    name: str = typer.Argument(help="Sandbox name.", callback=_validate_name),
+) -> None:
+    """Install VS Code extensions into a sandbox from its profile."""
+    from sandboxctl.config import find_vscode_bin
+    from sandboxctl.extensions import classify_remote_extensions, install_extensions
+    from sandboxctl.profile import load_profile
+
+    cfg = load_config()
+
+    # Load profile (fail if missing)
+    try:
+        profile = load_profile(name, cfg)
+    except FileNotFoundError:
+        typer.echo(f"Profile not found: {name}")
+        raise typer.Exit(1) from None
+
+    # Find VS Code CLI (fail if missing)
+    vscode_bin = find_vscode_bin()
+    if vscode_bin is None:
+        typer.echo("VS Code CLI not found. Install VS Code or ensure 'code' is in PATH.")
+        raise typer.Exit(1)
+
+    # Classify remote extensions
+    remote = classify_remote_extensions(profile.extensions)
+
+    if not remote:
+        typer.echo("No remote extensions to install.")
+        return
+
+    # Install extensions
+    typer.echo(f"Installing {len(remote)} extension(s) into sandbox '{name}'...")
+    report = install_extensions(name, remote, vscode_bin)
+
+    # Print summary
+    installed_count = len(report.installed)
+    skipped_count = len(report.skipped_invalid)
+    failed_count = len(report.failed)
+    typer.echo(f"\nExtensions: {installed_count} installed, {skipped_count} skipped (invalid), {failed_count} failed")
+
+    if report.failed:
+        typer.echo("\nFailed extensions:")
+        for ext_id, error in report.failed:
+            typer.echo(f"  {ext_id}: {error}")

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from sandboxctl.config import load_config
-from sandboxctl.extensions import classify_remote_extensions, is_denylisted, validate_extension_id
+from sandboxctl.extensions import classify_remote_extensions, install_extensions, is_denylisted, validate_extension_id
 from sandboxctl.models import Extensions
 from sandboxctl.profile import load_profile
 
@@ -122,3 +123,93 @@ def test_classify_full_behavior():
     remote_set = classify_remote_extensions(ext)
     # Should only contain ms-python.python and github.copilot
     assert remote_set == ["ms-python.python", "github.copilot"]
+
+
+# Task 3: Install helper tests
+
+
+def test_install_extensions_uses_correct_subprocess_args():
+    """install_extensions invokes code CLI with correct list args."""
+    with patch("sandboxctl.extensions.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        vscode_bin = Path("/usr/bin/code")
+
+        install_extensions("mybox", ["ms-python.python"], vscode_bin)
+
+        # Verify subprocess.run was called with correct args
+        mock_run.assert_called_once()
+        args, kwargs = mock_run.call_args
+        assert args[0] == [
+            str(vscode_bin),
+            "--remote",
+            "ssh-remote+openshell-mybox",
+            "--install-extension",
+            "ms-python.python",
+        ]
+        # Verify shell=True is never used
+        assert kwargs.get("shell") is not True
+
+
+def test_install_extensions_never_uses_shell():
+    """install_extensions never passes shell=True to subprocess."""
+    with patch("sandboxctl.extensions.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        vscode_bin = Path("/usr/bin/code")
+
+        install_extensions("mybox", ["ms-python.python"], vscode_bin)
+
+        # Verify shell keyword is not True
+        _, kwargs = mock_run.call_args
+        assert "shell" not in kwargs or kwargs["shell"] is False
+
+
+def test_install_extensions_captures_failures():
+    """install_extensions captures non-zero returncode and continues."""
+    with patch("sandboxctl.extensions.subprocess.run") as mock_run:
+        # First call fails, second succeeds
+        mock_run.side_effect = [
+            MagicMock(returncode=1, stdout="", stderr="Extension not found"),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+        vscode_bin = Path("/usr/bin/code")
+
+        report = install_extensions("mybox", ["bad.extension", "ms-python.python"], vscode_bin)
+
+        # Verify both were attempted
+        assert mock_run.call_count == 2
+        # Verify failure captured
+        assert len(report.failed) == 1
+        assert report.failed[0][0] == "bad.extension"
+        assert "Extension not found" in report.failed[0][1]
+        # Verify success captured
+        assert "ms-python.python" in report.installed
+
+
+def test_install_extensions_skips_invalid_ids():
+    """install_extensions skips invalid IDs and records them."""
+    with patch("sandboxctl.extensions.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        vscode_bin = Path("/usr/bin/code")
+
+        report = install_extensions("mybox", ["-badid", "ms-python.python"], vscode_bin)
+
+        # Verify only valid ID was processed
+        assert mock_run.call_count == 1
+        # Verify invalid ID was skipped
+        assert "-badid" in report.skipped_invalid
+        assert "ms-python.python" in report.installed
+
+
+def test_install_extensions_empty_list():
+    """install_extensions with empty list invokes no subprocess."""
+    with patch("sandboxctl.extensions.subprocess.run") as mock_run:
+        vscode_bin = Path("/usr/bin/code")
+
+        report = install_extensions("mybox", [], vscode_bin)
+
+        # Verify no subprocess calls
+        mock_run.assert_not_called()
+        # Verify empty report
+        assert len(report.installed) == 0
+        assert len(report.skipped_invalid) == 0
+        assert len(report.failed) == 0

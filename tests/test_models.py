@@ -68,3 +68,28 @@ class TestSandboxConfigImage:
     def test_image_and_custom_containerfile_fails(self) -> None:
         with pytest.raises(ValidationError, match="mutually exclusive"):
             SandboxConfig(image="ghcr.io/org/sandbox:latest", containerfile="Custom.containerfile")
+
+
+class TestWorkspaceConfigTerminalApp:
+    """Tests for WorkspaceConfig.terminal_app field."""
+
+    def test_terminal_app_default_empty(self) -> None:
+        """Default terminal_app is empty string (auto-detect)."""
+        from sandboxctl.models import WorkspaceConfig
+
+        wc = WorkspaceConfig()
+        assert wc.terminal_app == ""
+
+    def test_terminal_app_accepts_iterm(self) -> None:
+        """Accepts 'iTerm' as terminal_app."""
+        from sandboxctl.models import WorkspaceConfig
+
+        wc = WorkspaceConfig(terminal_app="iTerm")
+        assert wc.terminal_app == "iTerm"
+
+    def test_terminal_app_accepts_terminal(self) -> None:
+        """Accepts 'Terminal' as terminal_app."""
+        from sandboxctl.models import WorkspaceConfig
+
+        wc = WorkspaceConfig(terminal_app="Terminal")
+        assert wc.terminal_app == "Terminal"

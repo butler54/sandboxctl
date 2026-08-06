@@ -143,6 +143,72 @@ class TestClaudeContinueHardening:
         mock_exec.assert_not_called()
 
 
+class TestKeepaliveWiring:
+    """Tests for ensure_ssh_keepalive() wiring into open_sandbox()."""
+
+    def test_open_calls_ensure_keepalive_before_vscode(self) -> None:
+        """open_sandbox calls ensure_ssh_keepalive before launching VS Code."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.open_cmd.subprocess.run"),
+            patch("sandboxctl.open_cmd.osh.ensure_ssh_keepalive") as mock_keepalive,
+        ):
+            open_sandbox("mybox", config, mode="code")
+
+        mock_keepalive.assert_called_once()
+
+    def test_open_calls_ensure_keepalive_in_both_mode(self) -> None:
+        """open_sandbox calls ensure_ssh_keepalive in both mode."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+        profile = MagicMock()
+        profile.workspace.terminal_app = "iTerm"
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.open_cmd.subprocess.run"),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.open_cmd.spawn_terminal_with_claude"),
+            patch("sandboxctl.open_cmd.osh.ensure_ssh_keepalive") as mock_keepalive,
+        ):
+            open_sandbox("mybox", config, mode="both")
+
+        mock_keepalive.assert_called_once()
+
+    def test_diagnose_still_runs_before_keepalive(self) -> None:
+        """Diagnose with auto_recover=True runs before ensure_ssh_keepalive (layer 2 before layer 1)."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        mock_calls = []
+
+        def track_diagnose(*args, **kwargs):
+            mock_calls.append("diagnose")
+            return report
+
+        def track_keepalive():
+            mock_calls.append("keepalive")
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", side_effect=track_diagnose),
+            patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.open_cmd.subprocess.run"),
+            patch("sandboxctl.open_cmd.osh.ensure_ssh_keepalive", side_effect=track_keepalive),
+        ):
+            open_sandbox("mybox", config, mode="code")
+
+        # Diagnose runs first (layer 2: container recovery), then keepalive (layer 1: SSH resilience)
+        assert mock_calls == ["diagnose", "keepalive"]
+
+
 class TestTerminalSpawn:
     """Tests for spawn_terminal_with_claude() and external terminal launching."""
 

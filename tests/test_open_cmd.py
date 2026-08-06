@@ -294,3 +294,135 @@ class TestTerminalSpawn:
         mock_find.assert_called_once()
         # Spawned with auto-detected terminal
         mock_spawn.assert_called_once_with("mybox", "Terminal")
+
+
+class TestExtensionInstallHook:
+    """Tests for extension installation in open_sandbox() before GUI launch (Task 1 - Phase 20)."""
+
+    def test_install_before_gui_launch(self) -> None:
+        """install_extensions is called BEFORE workspace GUI subprocess.run."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+        profile = MagicMock()
+        profile.extensions.extensions_list = ["ms-python.python"]
+        profile.extensions.local_only = []
+
+        mock_calls: list[str] = []
+
+        def track_install(*args: object, **kwargs: object) -> MagicMock:
+            mock_calls.append("install")
+            return MagicMock(installed=["ms-python.python"], skipped_invalid=[], failed=[])
+
+        def track_launch(*args: object, **kwargs: object) -> int:
+            mock_calls.append("launch")
+            return 0
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.open_cmd.classify_remote_extensions", return_value=["ms-python.python"]),
+            patch("sandboxctl.open_cmd.install_extensions", side_effect=track_install),
+            patch("sandboxctl.open_cmd.subprocess.run", side_effect=track_launch),
+        ):
+            open_sandbox("mybox", config, mode="code")
+
+        # Assert call order: install before launch
+        assert mock_calls == ["install", "launch"]
+
+    def test_empty_extensions_skips_install(self) -> None:
+        """Empty extensions list does not call install_extensions, but GUI still launches."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+        profile = MagicMock()
+        profile.extensions.extensions_list = []
+        profile.extensions.local_only = []
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.open_cmd.classify_remote_extensions", return_value=[]),
+            patch("sandboxctl.open_cmd.install_extensions") as mock_install,
+            patch("sandboxctl.open_cmd.subprocess.run") as mock_run,
+        ):
+            open_sandbox("mybox", config, mode="code")
+
+        # install_extensions NOT called
+        mock_install.assert_not_called()
+        # GUI launch still runs
+        mock_run.assert_called_once()
+
+    def test_profile_not_found_swallows_error(self) -> None:
+        """Profile FileNotFoundError is swallowed and GUI launch still runs."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.install_extensions") as mock_install,
+            patch("sandboxctl.open_cmd.subprocess.run") as mock_run,
+        ):
+            open_sandbox("mybox", config, mode="code")
+
+        # install_extensions NOT called
+        mock_install.assert_not_called()
+        # GUI launch still runs
+        mock_run.assert_called_once()
+
+    def test_install_failures_do_not_raise(self) -> None:
+        """install_extensions report with failed list does not raise, GUI launch proceeds."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+        profile = MagicMock()
+        profile.extensions.extensions_list = ["ms-python.python", "bad.extension"]
+        profile.extensions.local_only = []
+
+        install_report = MagicMock(
+            installed=["ms-python.python"],
+            skipped_invalid=[],
+            failed=[("bad.extension", "Not found")],
+        )
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.open_cmd.classify_remote_extensions", return_value=["ms-python.python", "bad.extension"]),
+            patch("sandboxctl.open_cmd.install_extensions", return_value=install_report),
+            patch("sandboxctl.open_cmd.subprocess.run") as mock_run,
+        ):
+            open_sandbox("mybox", config, mode="code")
+
+        # GUI launch still runs even with failures
+        mock_run.assert_called_once()
+
+    def test_install_hook_calls_classify_remote(self) -> None:
+        """Install hook calls classify_remote_extensions with profile.extensions."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+        profile = MagicMock()
+        profile.extensions.extensions_list = ["ms-python.python"]
+        profile.extensions.local_only = []
+
+        install_report = MagicMock(installed=[], skipped_invalid=[], failed=[])
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.open_cmd.classify_remote_extensions") as mock_classify,
+            patch("sandboxctl.open_cmd.install_extensions", return_value=install_report),
+            patch("sandboxctl.open_cmd.subprocess.run"),
+        ):
+            mock_classify.return_value = []
+            open_sandbox("mybox", config, mode="code")
+
+        # classify_remote_extensions called with profile.extensions
+        mock_classify.assert_called_once_with(profile.extensions)

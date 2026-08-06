@@ -2,6 +2,63 @@
 
 <!-- version list -->
 
+## v1.10.0 (2026-08-06)
+
+### Code Style
+
+- **19**: Satisfy ruff lint on phase 19 test files
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+### Features
+
+- **19**: VS Code integration — decoupled launch, SSH auto-reconnect, workspace settings
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+- **19-01**: Implement spawn_terminal_with_claude and refactor open_sandbox for decoupled launch
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+- **19-01**: Implement terminal app detection and WorkspaceConfig.terminal_app
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+- **19-02**: Implement ensure_ssh_keepalive for SSH resilience
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+- **19-02**: Wire SSH keepalive into open_sandbox
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+- **19-03**: Extend generate_workspace with Remote-SSH settings + extension recommendations
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+### Testing
+
+- **19-01**: Add failing tests for spawn_terminal_with_claude and open_sandbox refactor
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+- **19-01**: Add failing tests for terminal detection and WorkspaceConfig.terminal_app
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+- **19-02**: Add failing tests for ensure_ssh_keepalive idempotency
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+- **19-02**: Add failing tests for keepalive wiring in open_sandbox
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+- **19-03**: Add failing tests for Remote-SSH settings + extensions.recommendations
+  ([#83](https://github.com/butler54/sandboxctl/pull/83),
+  [`8f6a4b5`](https://github.com/butler54/sandboxctl/commit/8f6a4b50abb1451f9f0e9e2f414d9caae13d4d05))
+
+
 ## v1.9.2 (2026-07-31)
 
 ### Bug Fixes

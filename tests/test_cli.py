@@ -463,3 +463,85 @@ class TestOpenCommand:
         assert "--code" in output
         assert "--code-only" in output
         assert "--claude-only" in output
+
+
+class TestExtensionsCommand:
+    def test_extensions_help(self) -> None:
+        result = runner.invoke(app, ["extensions", "--help"])
+        assert result.exit_code == 0
+        assert "extensions" in result.output.lower()
+
+    def test_extensions_install_help(self) -> None:
+        result = runner.invoke(app, ["extensions", "install", "--help"])
+        assert result.exit_code == 0
+        assert "install" in result.output.lower()
+
+    def test_extensions_install_missing_profile(self) -> None:
+        cfg = MagicMock()
+        with (
+            patch("sandboxctl.cli.load_config", return_value=cfg),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+        ):
+            result = runner.invoke(app, ["extensions", "install", "mybox"])
+            assert result.exit_code == 1
+            assert "not found" in result.output.lower()
+
+    def test_extensions_install_no_vscode(self) -> None:
+        cfg = MagicMock()
+        profile = MagicMock()
+        with (
+            patch("sandboxctl.cli.load_config", return_value=cfg),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.config.find_vscode_bin", return_value=None),
+        ):
+            result = runner.invoke(app, ["extensions", "install", "mybox"])
+            assert result.exit_code == 1
+            assert "code" in result.output.lower() or "vscode" in result.output.lower()
+
+    def test_extensions_install_success(self) -> None:
+        from pathlib import Path
+
+        from sandboxctl.extensions import InstallReport
+        from sandboxctl.models import Extensions
+
+        cfg = MagicMock()
+        profile = MagicMock()
+        ext_list = ["ms-python.python", "rust-lang.rust-analyzer"]
+        profile.extensions = Extensions(extensions_list=ext_list)
+        vscode_bin = Path("/usr/bin/code")
+        report = InstallReport(installed=ext_list)
+
+        with (
+            patch("sandboxctl.cli.load_config", return_value=cfg),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.config.find_vscode_bin", return_value=vscode_bin),
+            patch("sandboxctl.extensions.classify_remote_extensions", return_value=ext_list),
+            patch("sandboxctl.extensions.install_extensions", return_value=report) as mock_install,
+        ):
+            result = runner.invoke(app, ["extensions", "install", "mybox"])
+            assert result.exit_code == 0
+            mock_install.assert_called_once_with("mybox", ext_list, vscode_bin)
+            assert "2" in result.output  # 2 installed
+
+    def test_extensions_install_failures_exit_zero(self) -> None:
+        from pathlib import Path
+
+        from sandboxctl.extensions import InstallReport
+        from sandboxctl.models import Extensions
+
+        cfg = MagicMock()
+        profile = MagicMock()
+        profile.extensions = Extensions(extensions_list=["valid.ext"])
+        vscode_bin = Path("/usr/bin/code")
+        report = InstallReport(installed=[], failed=[("valid.ext", "network error")])
+
+        with (
+            patch("sandboxctl.cli.load_config", return_value=cfg),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.config.find_vscode_bin", return_value=vscode_bin),
+            patch("sandboxctl.extensions.classify_remote_extensions", return_value=["valid.ext"]),
+            patch("sandboxctl.extensions.install_extensions", return_value=report),
+        ):
+            result = runner.invoke(app, ["extensions", "install", "mybox"])
+            assert result.exit_code == 0  # warn-and-continue
+            assert "1" in result.output  # 1 failed

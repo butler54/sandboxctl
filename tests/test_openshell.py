@@ -9,6 +9,7 @@ import pytest
 
 from sandboxctl.openshell import (
     SandboxError,
+    ensure_ssh_keepalive,
     gateway_status,
     provider_create,
     sandbox_create,
@@ -213,6 +214,58 @@ class TestUpdateLocalSshConfig:
 
         config_path = tmp_path / ".config" / "openshell" / "ssh_config"
         assert not config_path.exists()
+
+
+class TestEnsureSshKeepalive:
+    """Tests for SSH keepalive idempotent config write."""
+
+    def test_creates_keepalive_block_on_first_call(self, tmp_path: Path) -> None:
+        """First call writes the Host openshell-* keepalive block."""
+        with patch("sandboxctl.openshell.Path.home", return_value=tmp_path):
+            ensure_ssh_keepalive()
+
+        config_path = tmp_path / ".config" / "openshell" / "ssh_config"
+        assert config_path.exists()
+        content = config_path.read_text()
+        assert "Host openshell-*" in content
+        assert "ServerAliveInterval 60" in content
+        assert "ServerAliveCountMax 3" in content
+        assert "TCPKeepAlive yes" in content
+        assert "ConnectTimeout 10" in content
+
+    def test_idempotent_second_call_no_duplicate(self, tmp_path: Path) -> None:
+        """Second call does not duplicate the keepalive block."""
+        with patch("sandboxctl.openshell.Path.home", return_value=tmp_path):
+            ensure_ssh_keepalive()
+            ensure_ssh_keepalive()
+
+        config_path = tmp_path / ".config" / "openshell" / "ssh_config"
+        content = config_path.read_text()
+        # ServerAliveInterval should appear exactly once
+        assert content.count("ServerAliveInterval 60") == 1
+
+    def test_creates_directory_if_missing(self, tmp_path: Path) -> None:
+        """Creates ~/.config/openshell directory if it doesn't exist."""
+        with patch("sandboxctl.openshell.Path.home", return_value=tmp_path):
+            ensure_ssh_keepalive()
+
+        config_dir = tmp_path / ".config" / "openshell"
+        assert config_dir.exists()
+        assert config_dir.is_dir()
+
+    def test_preserves_existing_content(self, tmp_path: Path) -> None:
+        """Appends to existing file without clobbering existing entries."""
+        config_dir = tmp_path / ".config" / "openshell"
+        config_dir.mkdir(parents=True)
+        config_path = config_dir / "ssh_config"
+        config_path.write_text("Host openshell-existing\n  HostName 127.0.0.1\n")
+
+        with patch("sandboxctl.openshell.Path.home", return_value=tmp_path):
+            ensure_ssh_keepalive()
+
+        content = config_path.read_text()
+        assert "Host openshell-existing" in content
+        assert "Host openshell-*" in content
 
 
 class TestProviderCreate:

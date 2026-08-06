@@ -110,3 +110,43 @@ def test_path_expansion_in_config(tmp_path: Path) -> None:
     cfg = load_config(config_dir=tmp_path)
     assert "~" not in str(cfg.ssh_key)
     assert str(cfg.ssh_key).endswith(".ssh/my_key")
+
+
+class TestFindTerminalApp:
+    """Tests for terminal app detection (iTerm2-first, then Terminal.app, then None)."""
+
+    def test_finds_iterm_when_present(self) -> None:
+        """Returns 'iTerm' when iTerm.app exists."""
+        from unittest.mock import patch
+
+        from sandboxctl.config import find_terminal_app
+
+        with patch("pathlib.Path.exists") as mock_exists:
+            # /Applications/iTerm.app exists
+            mock_exists.return_value = True
+            result = find_terminal_app()
+            assert result == "iTerm"
+
+    def test_finds_terminal_when_iterm_absent(self) -> None:
+        """Returns 'Terminal' when iTerm.app absent but Terminal.app exists."""
+        from unittest.mock import patch
+
+        from sandboxctl.config import find_terminal_app
+
+        def exists_side_effect(path_self: Path) -> bool:
+            # iTerm.app missing, Terminal.app present
+            return str(path_self).endswith("Terminal.app")
+
+        with patch("pathlib.Path.exists", new=exists_side_effect):
+            result = find_terminal_app()
+            assert result == "Terminal"
+
+    def test_returns_none_when_no_terminal(self) -> None:
+        """Returns None when neither iTerm.app nor Terminal.app exists."""
+        from unittest.mock import patch
+
+        from sandboxctl.config import find_terminal_app
+
+        with patch("pathlib.Path.exists", return_value=False):
+            result = find_terminal_app()
+            assert result is None

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 from pathlib import Path
@@ -504,6 +505,39 @@ class TestGenerateWorkspace:
             generate_workspace("mybox", "mybox", profile, [])
 
         mock_pipe.assert_not_called()
+
+    def test_workspace_includes_remote_ssh_settings(self) -> None:
+        profile = Profile(name="test")
+        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+            generate_workspace("mybox", "mybox", profile, ["repo1", "repo2"])
+
+        # Extract the base64 payload from the script
+        call_script = mock_pipe.call_args[0][1]
+        # Script format: echo <base64> | base64 -d > <path>
+        base64_token = call_script.split("|")[0].strip().replace("echo ", "")
+        decoded = base64.b64decode(base64_token).decode()
+        workspace_json = json.loads(decoded)
+
+        # Assert Remote-SSH settings exist
+        assert "settings" in workspace_json
+        settings = workspace_json["settings"]
+        assert settings["remote.SSH.connectTimeout"] == 120
+        assert settings["remote.SSH.useLocalServer"] is False
+
+    def test_workspace_includes_extension_recommendations(self) -> None:
+        profile = Profile(name="test")
+        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+            generate_workspace("mybox", "mybox", profile, ["repo1", "repo2"])
+
+        # Extract and decode the base64 payload
+        call_script = mock_pipe.call_args[0][1]
+        base64_token = call_script.split("|")[0].strip().replace("echo ", "")
+        decoded = base64.b64decode(base64_token).decode()
+        workspace_json = json.loads(decoded)
+
+        # Assert extensions object exists with empty recommendations
+        assert "extensions" in workspace_json
+        assert workspace_json["extensions"] == {"recommendations": []}
 
 
 class TestCreateSandbox:

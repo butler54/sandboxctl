@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -187,13 +187,13 @@ class TestKeepaliveWiring:
         report = MagicMock(healthy=True)
         config = MagicMock()
 
-        mock_calls = []
+        mock_calls: list[str] = []
 
-        def track_diagnose(*args, **kwargs):
+        def track_diagnose(*args: object, **kwargs: object) -> MagicMock:
             mock_calls.append("diagnose")
             return report
 
-        def track_keepalive():
+        def track_keepalive() -> None:
             mock_calls.append("keepalive")
 
         with (

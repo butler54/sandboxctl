@@ -118,6 +118,7 @@ class TestFindTerminalApp:
     def test_finds_iterm_when_present(self) -> None:
         """Returns 'iTerm' when iTerm.app exists."""
         from unittest.mock import patch
+
         from sandboxctl.config import find_terminal_app
 
         with patch("pathlib.Path.exists") as mock_exists:
@@ -129,6 +130,7 @@ class TestFindTerminalApp:
     def test_finds_terminal_when_iterm_absent(self) -> None:
         """Returns 'Terminal' when iTerm.app absent but Terminal.app exists."""
         from unittest.mock import patch
+
         from sandboxctl.config import find_terminal_app
 
         def exists_side_effect(path_self: Path) -> bool:
@@ -142,6 +144,7 @@ class TestFindTerminalApp:
     def test_returns_none_when_no_terminal(self) -> None:
         """Returns None when neither iTerm.app nor Terminal.app exists."""
         from unittest.mock import patch
+
         from sandboxctl.config import find_terminal_app
 
         with patch("pathlib.Path.exists", return_value=False):

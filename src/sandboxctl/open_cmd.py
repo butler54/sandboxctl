@@ -48,12 +48,16 @@ def open_sandbox(
     config: SandboxctlConfig,
     mode: str = "claude",
 ) -> None:
+    # VSCODE-04 Layer 2: Container-death recovery
     report = diagnose(name, auto_recover=True)
     if not report.healthy:
         for detail in report.details:
             typer.echo(f"  {detail}")
         typer.echo(f"Sandbox '{name}' is not healthy: {report.recovery_action}")
         raise typer.Exit(1)
+
+    # VSCODE-04 Layer 1: SSH keepalive for network-blip resilience
+    osh.ensure_ssh_keepalive()
 
     if mode == "shell":
         osh.sandbox_connect(name)

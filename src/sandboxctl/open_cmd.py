@@ -8,6 +8,7 @@ import typer
 
 from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig, find_terminal_app, find_vscode_bin
+from sandboxctl.extensions import classify_remote_extensions, install_extensions
 from sandboxctl.health import diagnose
 
 
@@ -68,6 +69,23 @@ def open_sandbox(
         if not vscode_bin:
             typer.echo("WARNING: 'code' CLI not found. Skipping VS Code.")
         else:
+            # Install extensions before GUI launch (EXT-02, D-09, D-11)
+            try:
+                from sandboxctl.profile import load_profile
+
+                profile = load_profile(name, config)
+                remote = classify_remote_extensions(profile.extensions)
+                if remote:
+                    report = install_extensions(name, remote, vscode_bin)
+                    installed_count = len(report.installed)
+                    skipped_count = len(report.skipped_invalid)
+                    failed_count = len(report.failed)
+                    summary = f"Extensions: {installed_count} installed, {skipped_count} skipped, {failed_count} failed"
+                    typer.echo(summary)
+            except FileNotFoundError:
+                # No profile, skip extension install
+                pass
+
             workspace = f"/sandbox/workspace/{name}.code-workspace"
             has_ws = osh.sandbox_exec_pipe(
                 name,

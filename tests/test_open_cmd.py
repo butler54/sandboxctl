@@ -98,6 +98,7 @@ class TestOpenCodeMode:
             patch("sandboxctl.open_cmd.diagnose", return_value=report),
             patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
             patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
             patch("sandboxctl.open_cmd.subprocess.run") as mock_run,
         ):
             open_sandbox("mybox", config, mode="code")
@@ -114,6 +115,7 @@ class TestOpenCodeMode:
             patch("sandboxctl.open_cmd.diagnose", return_value=report),
             patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
             patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="no"),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
             patch("sandboxctl.open_cmd.osh.sandbox_connect") as mock_connect,
         ):
             open_sandbox("mybox", config, mode="code")
@@ -155,6 +157,7 @@ class TestKeepaliveWiring:
             patch("sandboxctl.open_cmd.diagnose", return_value=report),
             patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
             patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
             patch("sandboxctl.open_cmd.subprocess.run"),
             patch("sandboxctl.open_cmd.osh.ensure_ssh_keepalive") as mock_keepalive,
         ):
@@ -200,6 +203,7 @@ class TestKeepaliveWiring:
             patch("sandboxctl.open_cmd.diagnose", side_effect=track_diagnose),
             patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
             patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
             patch("sandboxctl.open_cmd.subprocess.run"),
             patch("sandboxctl.open_cmd.osh.ensure_ssh_keepalive", side_effect=track_keepalive),
         ):

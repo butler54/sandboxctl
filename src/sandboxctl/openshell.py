@@ -232,6 +232,43 @@ def update_local_ssh_config(name: str) -> None:
         f.write(new_block)
 
 
+def ensure_ssh_keepalive() -> None:
+    """Write SSH keepalive directives for VS Code Remote-SSH resilience.
+
+    Creates an idempotent 'Host openshell-*' block in ~/.config/openshell/ssh_config
+    with keepalive settings to survive network blips (VSCODE-04 layer 1).
+
+    Settings:
+    - ServerAliveInterval 60: Send keepalive every 60s to prevent NAT timeout
+    - ServerAliveCountMax 3: Disconnect after 3 missed probes (180s total)
+    - TCPKeepAlive yes: OS-level keepalive as additional layer
+    - ConnectTimeout 10: Reasonable timeout for initial connection
+
+    Idempotency: Re-running does NOT duplicate the block (substring guard).
+    """
+    ssh_config_dir = Path.home() / ".config" / "openshell"
+    ssh_config_dir.mkdir(parents=True, exist_ok=True)
+    ssh_config_path = ssh_config_dir / "ssh_config"
+
+    keepalive_block = """Host openshell-*
+  ServerAliveInterval 60
+  ServerAliveCountMax 3
+  TCPKeepAlive yes
+  ConnectTimeout 10
+"""
+
+    existing = ssh_config_path.read_text() if ssh_config_path.exists() else ""
+
+    # Idempotency guard: only append if marker not present
+    if "Host openshell-*" in existing:
+        return
+
+    with ssh_config_path.open("a") as f:
+        if existing and not existing.endswith("\n"):
+            f.write("\n")
+        f.write(keepalive_block)
+
+
 def settings_set(key: str, value: str) -> None:
     _run(
         ["openshell", "settings", "set", "--global", "--key", key, "--value", value, "--yes"],

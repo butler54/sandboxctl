@@ -2,6 +2,85 @@
 
 <!-- version list -->
 
+## v1.11.0 (2026-08-07)
+
+### Chores
+
+- Bump actions/checkout from 7.0.0 to 7.0.1 ([#77](https://github.com/butler54/sandboxctl/pull/77),
+  [`330571b`](https://github.com/butler54/sandboxctl/commit/330571be6fec9e4450c13720af9e084b094c3ed9))
+
+- Bump actions/setup-python from 6.3.0 to 7.0.0
+  ([#79](https://github.com/butler54/sandboxctl/pull/79),
+  [`f8c9543`](https://github.com/butler54/sandboxctl/commit/f8c9543f56c9953f0144f8e39ad8faa4d423b3c2))
+
+- Bump pypa/gh-action-pypi-publish from 1.14.0 to 1.14.1
+  ([#78](https://github.com/butler54/sandboxctl/pull/78),
+  [`219787f`](https://github.com/butler54/sandboxctl/commit/219787fcd9a15861628a67e4490d735fc5197923))
+
+### Code Style
+
+- **20-01**: Satisfy ruff (add -> None on test fns, minor fix)
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+### Documentation
+
+- **20-03**: Add [extensions] examples to bundled profiles
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+### Features
+
+- **20**: Extension management ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+- **20-01**: Extensions model + profile wiring end-to-end
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+- **20-01**: Implement denylist, ID validation, and full classifier
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+- **20-01**: Implement idempotent install helper
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+- **20-02**: Implement extension install hook in open_sandbox
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+- **20-02**: Populate workspace recommendations with full declared list
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+- **20-03**: Implement extensions install CLI command
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+### Testing
+
+- **20-01**: Add failing tests for denylist and ID validation
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+- **20-01**: Add failing tests for install helper
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+- **20-02**: Add failing tests for extension install hook
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+- **20-02**: Add failing tests for workspace recommendations
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+- **20-03**: Add failing tests for extensions install command
+  ([#84](https://github.com/butler54/sandboxctl/pull/84),
+  [`dc35a3e`](https://github.com/butler54/sandboxctl/commit/dc35a3e7cc276272acd4ccd9ed9bf850c6d8f5cf))
+
+
 ## v1.10.0 (2026-08-06)
 
 ### Code Style

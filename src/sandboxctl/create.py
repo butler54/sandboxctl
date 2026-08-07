@@ -414,8 +414,8 @@ def generate_workspace(
     settings["remote.SSH.connectTimeout"] = 120
     settings["remote.SSH.useLocalServer"] = False
 
-    # Extension recommendations for Phase 20 (VSCODE-05)
-    extensions = {"recommendations": []}
+    # Extension recommendations: full declared list (remote + local per D-06)
+    extensions = {"recommendations": list(profile.extensions.extensions_list)}
 
     workspace = json.dumps({"folders": folders, "settings": settings, "extensions": extensions})
     encoded_ws = base64.b64encode(workspace.encode()).decode()

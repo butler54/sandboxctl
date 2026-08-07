@@ -539,6 +539,66 @@ class TestGenerateWorkspace:
         assert "extensions" in workspace_json
         assert workspace_json["extensions"] == {"recommendations": []}
 
+    def test_workspace_recommendations_populated_from_profile(self) -> None:
+        """Workspace recommendations include full declared list from profile.extensions.list (Task 2 - Phase 20)."""
+        from sandboxctl.models import Extensions
+
+        profile = Profile(
+            name="test",
+            extensions=Extensions(extensions_list=["ms-python.python", "dracula-theme.theme-dracula"]),
+        )
+        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+            generate_workspace("mybox", "mybox", profile, ["repo1"])
+
+        # Extract and decode the base64 payload
+        call_script = mock_pipe.call_args[0][1]
+        base64_token = call_script.split("|")[0].strip().replace("echo ", "")
+        decoded = base64.b64decode(base64_token).decode()
+        workspace_json = json.loads(decoded)
+
+        # Assert recommendations == full declared list (remote + local per D-06)
+        assert workspace_json["extensions"]["recommendations"] == ["ms-python.python", "dracula-theme.theme-dracula"]
+
+    def test_workspace_recommendations_empty_when_no_extensions(self) -> None:
+        """Workspace recommendations are empty list when profile.extensions.list is empty."""
+        from sandboxctl.models import Extensions
+
+        profile = Profile(name="test", extensions=Extensions(extensions_list=[]))
+        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+            generate_workspace("mybox", "mybox", profile, ["repo1"])
+
+        # Extract and decode the base64 payload
+        call_script = mock_pipe.call_args[0][1]
+        base64_token = call_script.split("|")[0].strip().replace("echo ", "")
+        decoded = base64.b64decode(base64_token).decode()
+        workspace_json = json.loads(decoded)
+
+        # Assert empty recommendations
+        assert workspace_json["extensions"]["recommendations"] == []
+
+    def test_workspace_recommendations_include_local_only(self) -> None:
+        """Workspace recommendations include local_only extensions (no denylist filtering per D-06)."""
+        from sandboxctl.models import Extensions
+
+        profile = Profile(
+            name="test",
+            extensions=Extensions(
+                extensions_list=["ms-python.python", "dracula-theme.theme-dracula"],
+                local_only=["dracula-theme.theme-dracula"],
+            ),
+        )
+        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+            generate_workspace("mybox", "mybox", profile, ["repo1"])
+
+        # Extract and decode
+        call_script = mock_pipe.call_args[0][1]
+        base64_token = call_script.split("|")[0].strip().replace("echo ", "")
+        decoded = base64.b64decode(base64_token).decode()
+        workspace_json = json.loads(decoded)
+
+        # Assert BOTH extensions in recommendations (local_only NOT excluded)
+        assert workspace_json["extensions"]["recommendations"] == ["ms-python.python", "dracula-theme.theme-dracula"]
+
 
 class TestCreateSandbox:
     def test_happy_path(self, tmp_path: Path) -> None:

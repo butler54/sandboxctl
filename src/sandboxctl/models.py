@@ -61,6 +61,15 @@ class CredentialConfig(BaseModel):
     model_config = {"extra": "ignore"}
 
 
+class Extensions(BaseModel):
+    """VS Code extension declarations."""
+
+    extensions_list: list[str] = Field(default_factory=list, alias="list")
+    local_only: list[str] = Field(default_factory=list)
+
+    model_config = {"extra": "ignore", "populate_by_name": True}
+
+
 class Profile(BaseModel):
     """Sandbox profile loaded from TOML."""
 
@@ -70,6 +79,7 @@ class Profile(BaseModel):
     repos: dict[str, list[str]] = Field(default_factory=dict)
     ssh: dict[str, SshHostConfig] = Field(default_factory=dict)
     credentials: CredentialConfig = Field(default_factory=CredentialConfig)
+    extensions: Extensions = Field(default_factory=Extensions)
 
 
 class ClaudePermissions(BaseModel):

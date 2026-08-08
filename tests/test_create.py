@@ -658,3 +658,10 @@ class TestCreateSandbox:
             create_sandbox(profile, config, ephemeral=True, open_editor=False)
 
         assert mock_create.call_args[1]["no_keep"] is True
+
+
+@pytest.mark.skip(reason="implemented in 21-03")
+def test_create_injects_mlflow_uri() -> None:
+    """Create validates MLflow is up and injects MLFLOW_TRACKING_URI into sandbox."""
+    # Wave 0 stub — implementation in Plan 21-03
+    pass

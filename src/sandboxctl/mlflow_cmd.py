@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import typer
@@ -67,6 +69,31 @@ def start_mlflow_container(data_dir: Path, port: int = 5050) -> None:
         raise RuntimeError(f"Failed to start MLflow container: {result.stderr}")
 
 
+def stop_mlflow_container() -> None:
+    """Stop MLflow tracking server container."""
+    _run(["podman", "stop", MLFLOW_CONTAINER_NAME], check=False)
+
+
+def is_mlflow_running() -> bool:
+    """Check if MLflow container is running."""
+    result = _run(
+        ["podman", "ps", "--filter", f"name={MLFLOW_CONTAINER_NAME}", "--format", "{{.Names}}"],
+        check=False,
+    )
+    return MLFLOW_CONTAINER_NAME in result.stdout
+
+
+def check_mlflow_health(tracking_uri: str, timeout: int = 5) -> bool:
+    """Check if MLflow server is healthy (returns True if /health responds 200)."""
+    health_url = f"{tracking_uri.rstrip('/')}/health"
+    try:
+        req = urllib.request.Request(health_url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.status == 200
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+        return False
+
+
 @mlflow_app.command("start")
 def start_command() -> None:
     """Start MLflow tracking server container."""
@@ -84,3 +111,18 @@ def start_command() -> None:
     except RuntimeError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1)
+
+
+@mlflow_app.command("stop")
+def stop_command() -> None:
+    """Stop MLflow tracking server container."""
+    from sandboxctl.config import load_config
+
+    config = load_config()
+
+    if not config.mlflow.managed:
+        typer.echo("MLflow is in external (unmanaged) mode — nothing to stop")
+        return
+
+    stop_mlflow_container()
+    typer.echo("MLflow stopped")

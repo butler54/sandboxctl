@@ -264,7 +264,7 @@ class TestPostLaunchSetup:
         profile = Profile(name="test")
 
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -282,7 +282,7 @@ class TestPostLaunchSetup:
         profile = Profile(name="test")
 
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -297,7 +297,7 @@ class TestPostLaunchSetup:
         profile = Profile(name="test", repos={"gitlab.com": ["group/project"]})
 
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value="glpat-test-token"),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -316,7 +316,7 @@ class TestPostLaunchSetup:
         profile = Profile(name="test", repos={"gitlab.example.com": ["team/project"]})
 
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value="glpat-test"),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -342,7 +342,7 @@ class TestPostLaunchSetup:
         )
 
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value="glpat-test"),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -360,7 +360,7 @@ class TestPostLaunchSetup:
         profile = Profile(name="test")
 
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe"),
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
             patch("sandboxctl.create.get_credential") as mock_get_cred,
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -378,7 +378,7 @@ class TestPostLaunchSetup:
         profile = Profile(name="test")
 
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -398,8 +398,8 @@ class TestPostLaunchSetup:
         (gws_dir / "client_secret.json").write_text('{"installed":{}}')
 
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe"),
-            patch("sandboxctl.create.osh.sandbox_upload") as mock_upload,
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+            patch("sandboxctl.openshell.sandbox_upload") as mock_upload,
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.create.shutil.which", return_value="/usr/bin/gws"),
@@ -420,8 +420,8 @@ class TestPostLaunchSetup:
         (gws_dir / "client_secret.json").write_text('{"installed":{}}')
 
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe"),
-            patch("sandboxctl.create.osh.sandbox_upload") as mock_upload,
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+            patch("sandboxctl.openshell.sandbox_upload") as mock_upload,
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.create.shutil.which", return_value=None),
@@ -440,8 +440,8 @@ class TestPostLaunchSetup:
         (gws_dir / "client_secret.json").write_text('{"installed":{}}')
 
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe"),
-            patch("sandboxctl.create.osh.sandbox_upload") as mock_upload,
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+            patch("sandboxctl.openshell.sandbox_upload") as mock_upload,
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.create.shutil.which", return_value="/usr/bin/gws"),
@@ -466,7 +466,7 @@ class TestCloneRepos:
     def test_github_repos(self) -> None:
         profile = Profile(name="test", repos={"github": ["owner/repo1"]})
         with (
-            patch("sandboxctl.create.osh.sandbox_exec_pipe"),
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
             patch("sandboxctl.create.osh.sandbox_exec") as mock_exec,
         ):
             result = clone_repos("mybox", profile)
@@ -479,7 +479,7 @@ class TestCloneRepos:
 
     def test_non_github_repos(self) -> None:
         profile = Profile(name="test", repos={"gitlab.com": ["group/project"]})
-        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe:
             result = clone_repos("mybox", profile)
 
         assert result == ["project"]
@@ -493,7 +493,7 @@ class TestGenerateWorkspace:
             name="test",
             workspace=WorkspaceConfig(theme="Cobalt2", zoom=2),
         )
-        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe:
             generate_workspace("mybox", "mybox", profile, ["repo1", "repo2"])
 
         call_script = mock_pipe.call_args[0][1]
@@ -501,14 +501,14 @@ class TestGenerateWorkspace:
 
     def test_empty_repos_noop(self) -> None:
         profile = Profile(name="test")
-        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe:
             generate_workspace("mybox", "mybox", profile, [])
 
         mock_pipe.assert_not_called()
 
     def test_workspace_includes_remote_ssh_settings(self) -> None:
         profile = Profile(name="test")
-        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe:
             generate_workspace("mybox", "mybox", profile, ["repo1", "repo2"])
 
         # Extract the base64 payload from the script
@@ -526,7 +526,7 @@ class TestGenerateWorkspace:
 
     def test_workspace_includes_extension_recommendations(self) -> None:
         profile = Profile(name="test")
-        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe:
             generate_workspace("mybox", "mybox", profile, ["repo1", "repo2"])
 
         # Extract and decode the base64 payload
@@ -547,7 +547,7 @@ class TestGenerateWorkspace:
             name="test",
             extensions=Extensions(extensions_list=["ms-python.python", "dracula-theme.theme-dracula"]),
         )
-        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe:
             generate_workspace("mybox", "mybox", profile, ["repo1"])
 
         # Extract and decode the base64 payload
@@ -564,7 +564,7 @@ class TestGenerateWorkspace:
         from sandboxctl.models import Extensions
 
         profile = Profile(name="test", extensions=Extensions(extensions_list=[]))
-        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe:
             generate_workspace("mybox", "mybox", profile, ["repo1"])
 
         # Extract and decode the base64 payload
@@ -587,7 +587,7 @@ class TestGenerateWorkspace:
                 local_only=["dracula-theme.theme-dracula"],
             ),
         )
-        with patch("sandboxctl.create.osh.sandbox_exec_pipe") as mock_pipe:
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe:
             generate_workspace("mybox", "mybox", profile, ["repo1"])
 
         # Extract and decode
@@ -660,8 +660,190 @@ class TestCreateSandbox:
         assert mock_create.call_args[1]["no_keep"] is True
 
 
-@pytest.mark.skip(reason="implemented in 21-03")
 def test_create_injects_mlflow_uri() -> None:
     """Create validates MLflow is up and injects MLFLOW_TRACKING_URI into sandbox."""
-    # Wave 0 stub — implementation in Plan 21-03
-    pass
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import MagicMock, call, patch
+
+    from sandboxctl.config import MlflowConfig, SandboxctlConfig
+    from sandboxctl.create import post_launch_setup
+    from sandboxctl.models import Profile
+
+    # Scenario 1: managed mode, healthy server → injection proceeds
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        mlflow_cfg = MlflowConfig(managed=True, port=5050, tracking_uri="http://localhost:5050")
+        config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
+        profile = Profile(name="test", mlflow=True)
+
+        with (
+            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=True) as mock_health,
+            patch("sandboxctl.create.mlflow_cmd.start_mlflow_container") as mock_start,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home") as mock_home,
+        ):
+            # Mock Path.home to return a non-existent path
+            mock_home.return_value = Path(tmpdir) / "nonexistent"
+            post_launch_setup("test-sandbox", profile, config)
+
+            # Health check was called
+            mock_health.assert_called_once_with("http://localhost:5050")
+
+            # Injection script contains grep-q check and the gateway IP
+            injection_calls = [c for c in mock_exec.call_args_list if "MLFLOW_TRACKING_URI" in str(c)]
+            assert len(injection_calls) == 1
+            script = injection_calls[0][0][1]
+            assert "grep -q MLFLOW_TRACKING_URI /sandbox/.bashrc" in script
+            assert "export MLFLOW_TRACKING_URI=http://10.200.0.1:5050" in script
+
+    # Scenario 2: managed mode, down-then-recovered → start called, injection proceeds
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        mlflow_cfg = MlflowConfig(
+            managed=True, port=5050, tracking_uri="http://localhost:5050", data_dir=Path(tmpdir)
+        )
+        config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
+        profile = Profile(name="test", mlflow=True)
+
+        with (
+            patch(
+                "sandboxctl.create.mlflow_cmd.check_mlflow_health", side_effect=[False, True]
+            ) as mock_health,
+            patch("sandboxctl.create.mlflow_cmd.start_mlflow_container") as mock_start,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home") as mock_home,
+        ):
+            mock_home.return_value = Path(tmpdir) / "nonexistent"
+            post_launch_setup("test-sandbox", profile, config)
+
+            # Two health checks, one start
+            assert mock_health.call_count == 2
+            mock_start.assert_called_once_with(Path(tmpdir), 5050)
+
+            # Injection still happened
+            injection_calls = [c for c in mock_exec.call_args_list if "MLFLOW_TRACKING_URI" in str(c)]
+            assert len(injection_calls) == 1
+
+    # Scenario 3: managed mode, stays down → create fails (fail-closed)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        mlflow_cfg = MlflowConfig(
+            managed=True, port=5050, tracking_uri="http://localhost:5050", data_dir=Path(tmpdir)
+        )
+        config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
+        profile = Profile(name="test", mlflow=True)
+
+        with (
+            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=False),
+            patch("sandboxctl.create.mlflow_cmd.start_mlflow_container"),
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home") as mock_home,
+        ):
+            mock_home.return_value = Path(tmpdir) / "nonexistent"
+            with pytest.raises(RuntimeError, match="MLflow tracking server is not responding"):
+                post_launch_setup("test-sandbox", profile, config)
+
+            # No injection happened
+            injection_calls = [c for c in mock_exec.call_args_list if "MLFLOW_TRACKING_URI" in str(c)]
+            assert len(injection_calls) == 0
+
+    # Scenario 4: opt-out (profile.mlflow=False) → no health check, no injection
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        mlflow_cfg = MlflowConfig(managed=True, port=5050)
+        config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health") as mock_health,
+            patch("sandboxctl.create.mlflow_cmd.start_mlflow_container") as mock_start,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home") as mock_home,
+        ):
+            mock_home.return_value = Path(tmpdir) / "nonexistent"
+            post_launch_setup("test-sandbox", profile, config)
+
+            # No health check or start
+            mock_health.assert_not_called()
+            mock_start.assert_not_called()
+
+            # No injection
+            injection_calls = [c for c in mock_exec.call_args_list if "MLFLOW_TRACKING_URI" in str(c)]
+            assert len(injection_calls) == 0
+
+    # Scenario 5: external mode (managed=False) → health check only, no start, user URI injected
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        external_uri = "https://mlflow.example.com"
+        mlflow_cfg = MlflowConfig(managed=False, tracking_uri=external_uri)
+        config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
+        profile = Profile(name="test", mlflow=True)
+
+        with (
+            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=True) as mock_health,
+            patch("sandboxctl.create.mlflow_cmd.start_mlflow_container") as mock_start,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home") as mock_home,
+        ):
+            mock_home.return_value = Path(tmpdir) / "nonexistent"
+            post_launch_setup("test-sandbox", profile, config)
+
+            # Health check on user URI
+            mock_health.assert_called_once_with(external_uri)
+            # No start call
+            mock_start.assert_not_called()
+
+            # Injection with user URI
+            injection_calls = [c for c in mock_exec.call_args_list if "MLFLOW_TRACKING_URI" in str(c)]
+            assert len(injection_calls) == 1
+            script = injection_calls[0][0][1]
+            assert f"export MLFLOW_TRACKING_URI={external_uri}" in script
+
+    # Scenario 6: external mode, down → create fails
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        external_uri = "https://mlflow.example.com"
+        mlflow_cfg = MlflowConfig(managed=False, tracking_uri=external_uri)
+        config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
+        profile = Profile(name="test", mlflow=True)
+
+        with (
+            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=False),
+            patch("sandboxctl.create.mlflow_cmd.start_mlflow_container") as mock_start,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home") as mock_home,
+        ):
+            mock_home.return_value = Path(tmpdir) / "nonexistent"
+            with pytest.raises(RuntimeError, match="External MLflow server .* is not reachable"):
+                post_launch_setup("test-sandbox", profile, config)
+
+            # No start
+            mock_start.assert_not_called()
+            # No injection
+            injection_calls = [c for c in mock_exec.call_args_list if "MLFLOW_TRACKING_URI" in str(c)]
+            assert len(injection_calls) == 0

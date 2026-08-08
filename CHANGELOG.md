@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v1.12.0 (2026-08-08)
+
+### Features
+
+- **21-01**: Add MlflowConfig section with validation
+  ([`fc724b1`](https://github.com/butler54/sandboxctl/commit/fc724b130529da7d40d02883daa3c2e10fc06d36))
+
+- **21-01**: Add Profile.mlflow opt-out boolean (default-on)
+  ([`032a717`](https://github.com/butler54/sandboxctl/commit/032a717e859490177053f0a69c44e415849db8ce))
+
+### Testing
+
+- **21-01**: Add Wave 0 test scaffolds for mlflow_cmd, setup, create
+  ([`0a8065c`](https://github.com/butler54/sandboxctl/commit/0a8065c540fd7ae2293ff85a7715fc0793cac7d3))
+
+
 ## v1.11.0 (2026-08-07)
 
 ### Chores

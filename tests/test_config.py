@@ -112,6 +112,43 @@ def test_path_expansion_in_config(tmp_path: Path) -> None:
     assert str(cfg.ssh_key).endswith(".ssh/my_key")
 
 
+def test_profile_mlflow_opt_out() -> None:
+    """Profile.mlflow defaults to True; mlflow=false opts out."""
+    import tempfile
+
+    from sandboxctl.profile import load_profile
+
+    # Profile with mlflow = false → Profile.mlflow is False
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        profiles_dir = config_dir / "profiles"
+        profiles_dir.mkdir()
+        profile_toml = profiles_dir / "opt-out.toml"
+        profile_toml.write_text(
+            "mlflow = false\n"
+            "\n"
+            "[sandbox]\n"
+            'containerfile = "Containerfile"\n'
+        )
+        config = load_config(config_dir=config_dir)
+        profile = load_profile("opt-out", config)
+        assert profile.mlflow is False
+
+    # Profile with no mlflow key → defaults to True (default-on)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        profiles_dir = config_dir / "profiles"
+        profiles_dir.mkdir()
+        profile_toml = profiles_dir / "default-on.toml"
+        profile_toml.write_text(
+            "[sandbox]\n"
+            'containerfile = "Containerfile"\n'
+        )
+        config = load_config(config_dir=config_dir)
+        profile = load_profile("default-on", config)
+        assert profile.mlflow is True
+
+
 def test_mlflow_config() -> None:
     """MlflowConfig section loads, validates, and rejects bad values."""
     import tempfile

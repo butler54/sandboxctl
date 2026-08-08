@@ -24,6 +24,7 @@ def load_profile(name: str, config: SandboxctlConfig) -> Profile:
     ssh: dict[str, SshHostConfig] = {host: SshHostConfig(**cfg) for host, cfg in data.get("ssh", {}).items()}
     credentials = CredentialConfig(**data.get("credentials", {}))
     extensions = Extensions(**data.get("extensions", {}))
+    mlflow: bool = data.get("mlflow", True)
 
     if not sandbox.model:
         sandbox = sandbox.model_copy(update={"model": config.default_model})
@@ -36,6 +37,7 @@ def load_profile(name: str, config: SandboxctlConfig) -> Profile:
         ssh=ssh,
         credentials=credentials,
         extensions=extensions,
+        mlflow=mlflow,
     )
 
 

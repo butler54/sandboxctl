@@ -80,6 +80,7 @@ class Profile(BaseModel):
     ssh: dict[str, SshHostConfig] = Field(default_factory=dict)
     credentials: CredentialConfig = Field(default_factory=CredentialConfig)
     extensions: Extensions = Field(default_factory=Extensions)
+    mlflow: bool = True
 
 
 class ClaudePermissions(BaseModel):

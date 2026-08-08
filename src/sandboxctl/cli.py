@@ -37,6 +37,9 @@ app.add_typer(config_app, name="config")
 extensions_app = typer.Typer(help="Manage sandbox VS Code extensions.")
 app.add_typer(extensions_app, name="extensions")
 
+from sandboxctl.mlflow_cmd import mlflow_app
+app.add_typer(mlflow_app, name="mlflow")
+
 
 @app.callback(invoke_without_command=True)
 def main(

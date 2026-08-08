@@ -96,11 +96,105 @@ def test_start_mlflow_container_failure(tmp_path) -> None:
             start_mlflow_container(data_dir, 5050)
 
 
-@pytest.mark.skip(reason="implemented in 21-02")
 def test_stop_mlflow_container() -> None:
     """Stop command calls podman stop with container name."""
-    # Wave 0 stub — implementation in Plan 21-02
-    pass
+    from sandboxctl.mlflow_cmd import stop_mlflow_container
+
+    with patch("sandboxctl.mlflow_cmd._run") as mock_run:
+        mock_run.return_value = mock_completed_process(returncode=0)
+
+        stop_mlflow_container()
+
+        # Verify podman stop was called with correct args
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert call_args == ["podman", "stop", "mlflow-tracking"]
+        # Verify check=False (missing container is not an error)
+        assert mock_run.call_args[1]["check"] is False
+
+
+def test_stop_mlflow_container_missing() -> None:
+    """Stop command handles missing container gracefully (no error)."""
+    from sandboxctl.mlflow_cmd import stop_mlflow_container
+
+    with patch("sandboxctl.mlflow_cmd._run") as mock_run:
+        # Non-zero returncode (container not found)
+        mock_run.return_value = mock_completed_process(returncode=1, stderr="Error: no such container")
+
+        # Should not raise
+        stop_mlflow_container()
+
+        mock_run.assert_called_once()
+
+
+def test_is_mlflow_running_true() -> None:
+    """is_mlflow_running returns True when container is running."""
+    from sandboxctl.mlflow_cmd import is_mlflow_running
+
+    with patch("sandboxctl.mlflow_cmd._run") as mock_run:
+        mock_run.return_value = mock_completed_process(returncode=0, stdout="mlflow-tracking\n")
+
+        result = is_mlflow_running()
+
+        assert result is True
+        call_args = mock_run.call_args[0][0]
+        assert "podman" in call_args
+        assert "ps" in call_args
+        assert "--filter" in call_args
+        assert "name=mlflow-tracking" in call_args
+
+
+def test_is_mlflow_running_false() -> None:
+    """is_mlflow_running returns False when container is not running."""
+    from sandboxctl.mlflow_cmd import is_mlflow_running
+
+    with patch("sandboxctl.mlflow_cmd._run") as mock_run:
+        mock_run.return_value = mock_completed_process(returncode=0, stdout="")
+
+        result = is_mlflow_running()
+
+        assert result is False
+
+
+def test_check_mlflow_health_success() -> None:
+    """check_mlflow_health returns True on 200 status."""
+    from sandboxctl.mlflow_cmd import check_mlflow_health
+
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.return_value = MockHTTPResponse(status=200)
+
+        result = check_mlflow_health("http://localhost:5050", timeout=5)
+
+        assert result is True
+        # Verify /health endpoint was used
+        call_args = mock_urlopen.call_args[0][0]
+        assert "/health" in call_args.full_url
+
+
+def test_check_mlflow_health_timeout() -> None:
+    """check_mlflow_health returns False on timeout."""
+    from sandboxctl.mlflow_cmd import check_mlflow_health
+    from urllib.error import URLError
+
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = URLError("timeout")
+
+        result = check_mlflow_health("http://localhost:5050", timeout=5)
+
+        assert result is False
+
+
+def test_check_mlflow_health_http_error() -> None:
+    """check_mlflow_health returns False on HTTP error."""
+    from sandboxctl.mlflow_cmd import check_mlflow_health
+    from urllib.error import HTTPError
+
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = HTTPError("http://localhost:5050/health", 500, "Internal Server Error", {}, None)
+
+        result = check_mlflow_health("http://localhost:5050", timeout=5)
+
+        assert result is False
 
 
 @pytest.mark.skip(reason="implemented in 21-02")

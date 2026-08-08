@@ -112,6 +112,59 @@ def test_path_expansion_in_config(tmp_path: Path) -> None:
     assert str(cfg.ssh_key).endswith(".ssh/my_key")
 
 
+def test_mlflow_config() -> None:
+    """MlflowConfig section loads, validates, and rejects bad values."""
+    import tempfile
+
+    # Happy path: valid config
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        config_file = config_dir / "config.toml"
+        config_file.write_text(
+            "[mlflow]\n"
+            'tracking_uri = "http://localhost:5050"\n'
+            "managed = true\n"
+            "port = 5050\n"
+        )
+        cfg = load_config(config_dir=config_dir)
+        assert cfg.mlflow.tracking_uri == "http://localhost:5050"
+        assert cfg.mlflow.managed is True
+        assert cfg.mlflow.port == 5050
+        assert cfg.mlflow_tracking_uri == "http://localhost:5050"
+
+    # No [mlflow] section → defaults
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        cfg = load_config(config_dir=config_dir)
+        assert cfg.mlflow.managed is True
+        assert cfg.mlflow.port == 5050
+        assert "mlflow-data" in str(cfg.mlflow.data_dir)
+
+    # Bad port → ValueError
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        config_file = config_dir / "config.toml"
+        config_file.write_text("[mlflow]\nport = 70000\n")
+        with pytest.raises(ValueError, match="port must be between 1 and 65535"):
+            load_config(config_dir=config_dir)
+
+    # Parent traversal in data_dir → ValueError
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        config_file = config_dir / "config.toml"
+        config_file.write_text('[mlflow]\ndata_dir = "/home/user/../etc/passwd"\n')
+        with pytest.raises(ValueError, match="data_dir cannot contain parent directory traversal"):
+            load_config(config_dir=config_dir)
+
+    # Non-http scheme → ValueError
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        config_file = config_dir / "config.toml"
+        config_file.write_text('[mlflow]\ntracking_uri = "file:///etc/passwd"\n')
+        with pytest.raises(ValueError, match="tracking_uri scheme must be http or https"):
+            load_config(config_dir=config_dir)
+
+
 class TestFindTerminalApp:
     """Tests for terminal app detection (iTerm2-first, then Terminal.app, then None)."""
 

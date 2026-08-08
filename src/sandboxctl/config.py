@@ -70,6 +70,40 @@ class BackupConfig(_SubConfig):
     extra_paths: list[str] = Field(default_factory=list)
 
 
+class MlflowConfig(_SubConfig):
+    tracking_uri: str = "http://localhost:5050"
+    managed: bool = True
+    data_dir: Path = Field(default_factory=lambda: Path.home() / ".config" / "sandboxctl" / "mlflow-data")
+    port: int = 5050
+
+    @model_validator(mode="after")
+    def _validate_and_expand(self) -> MlflowConfig:
+        from urllib.parse import urlparse
+
+        # Expand tilde in data_dir
+        if "~" in str(self.data_dir):
+            object.__setattr__(self, "data_dir", self.data_dir.expanduser())
+
+        # Reject parent traversal in data_dir
+        for part in self.data_dir.parts:
+            if part == "..":
+                msg = f"data_dir cannot contain parent directory traversal: {self.data_dir}"
+                raise ValueError(msg)
+
+        # Validate port range
+        if not (1 <= self.port <= 65535):
+            msg = f"port must be between 1 and 65535, got {self.port}"
+            raise ValueError(msg)
+
+        # Validate tracking_uri scheme
+        parsed = urlparse(self.tracking_uri)
+        if parsed.scheme not in ("http", "https"):
+            msg = f"tracking_uri scheme must be http or https, got {parsed.scheme}"
+            raise ValueError(msg)
+
+        return self
+
+
 class SandboxctlConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SANDBOXCTL_",
@@ -87,6 +121,7 @@ class SandboxctlConfig(BaseSettings):
     keychain: KeychainConfig = Field(default_factory=KeychainConfig)
     tls: TlsConfig = Field(default_factory=TlsConfig)
     backup: BackupConfig = Field(default_factory=BackupConfig)
+    mlflow: MlflowConfig = Field(default_factory=MlflowConfig)
 
     _config_dir_override: ClassVar[Path | None] = None
 
@@ -170,6 +205,10 @@ class SandboxctlConfig(BaseSettings):
     def backup_extra_paths(self) -> list[str]:
         return self.backup.extra_paths
 
+    @property
+    def mlflow_tracking_uri(self) -> str:
+        return self.mlflow.tracking_uri
+
 
 def load_config(config_dir: Path | None = None) -> SandboxctlConfig:
     """Load config with optional config_dir override (mainly for testing)."""
@@ -222,6 +261,13 @@ CONFIG_TEMPLATE = """\
 
 [backup]
 # extra_paths = [".some-plugin"]
+
+# [mlflow]
+# MLflow tracking server configuration
+# tracking_uri = "http://localhost:5050"
+# managed = true  # If false, sandboxctl will not manage the container (external MLflow)
+# data_dir = "~/.config/sandboxctl/mlflow-data"
+# port = 5050
 """
 
 

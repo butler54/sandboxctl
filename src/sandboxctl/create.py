@@ -13,7 +13,7 @@ from pathlib import Path
 
 import typer
 
-from sandboxctl import openshell as osh
+from sandboxctl import mlflow_cmd, openshell as osh
 from sandboxctl.config import SandboxctlConfig
 from sandboxctl.credentials import get_credential
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile
@@ -301,6 +301,38 @@ def post_launch_setup(
                 '\'!f() { echo "username=oauth2"; echo "password=$GITLAB_TOKEN"; }; f\' && '
                 f'echo "  GitLab git ({server}): configured"',
             )
+
+    # MLflow tracking server integration (MLFLOW-05: validate-then-start + fail-closed URI injection)
+    if profile.mlflow:
+        if config.mlflow.managed:
+            # Managed mode: health-check localhost, (re)start if down, fail if still down
+            tracking_uri_check = f"http://localhost:{config.mlflow.port}"
+            if not mlflow_cmd.check_mlflow_health(tracking_uri_check):
+                typer.echo("MLflow tracking server is down, attempting to start...")
+                mlflow_cmd.start_mlflow_container(config.mlflow.data_dir, config.mlflow.port)
+                # Re-check after start attempt
+                if not mlflow_cmd.check_mlflow_health(tracking_uri_check):
+                    msg = (
+                        f"MLflow tracking server is not responding at {tracking_uri_check} "
+                        "after start attempt. Create aborted (fail-closed)."
+                    )
+                    raise RuntimeError(msg)
+            # Inject gateway IP URI (not localhost — 10.200.0.1 is the host gateway reachable from sandbox)
+            injected_uri = f"http://10.200.0.1:{config.mlflow.port}"
+        else:
+            # External mode (D-12): health-check user URI, fail if unreachable, inject user URI
+            if not mlflow_cmd.check_mlflow_health(config.mlflow.tracking_uri):
+                msg = f"External MLflow server ({config.mlflow.tracking_uri}) is not reachable. Create aborted."
+                raise RuntimeError(msg)
+            injected_uri = config.mlflow.tracking_uri
+
+        # Idempotent bashrc injection (D-08)
+        osh.sandbox_exec_pipe(
+            name,
+            "grep -q MLFLOW_TRACKING_URI /sandbox/.bashrc 2>/dev/null || "
+            f'echo "export MLFLOW_TRACKING_URI={injected_uri}" >> /sandbox/.bashrc; '
+            'echo "MLflow tracking: configured"',
+        )
 
     # Stage gcloud ADC for Vertex AI
     adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"

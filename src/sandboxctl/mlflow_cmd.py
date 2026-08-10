@@ -64,7 +64,7 @@ def start_mlflow_container(data_dir: Path, port: int = 5050) -> None:
         "--artifacts-destination",
         "/mlflow-data/artifacts",
         "--host",
-        "0.0.0.0",
+        "0.0.0.0",  # noqa: S104
         "--port",
         str(port),
     ]
@@ -92,8 +92,8 @@ def check_mlflow_health(tracking_uri: str, timeout: int = 5) -> bool:
     """Check if MLflow server is healthy (returns True if /health responds 200)."""
     health_url = f"{tracking_uri.rstrip('/')}/health"
     try:
-        req = urllib.request.Request(health_url, method="GET")
-        with urllib.request.urlopen(req, timeout=timeout) as response:
+        req = urllib.request.Request(health_url, method="GET")  # noqa: S310
+        with urllib.request.urlopen(req, timeout=timeout) as response:  # noqa: S310
             return response.status == 200
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
         return False

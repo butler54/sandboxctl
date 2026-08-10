@@ -10,6 +10,7 @@ import typer
 from rich.table import Table
 
 from sandboxctl.config import CONFIG_TEMPLATE, ensure_config_dir, load_config
+from sandboxctl.mlflow_cmd import mlflow_app
 
 _NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 
@@ -37,7 +38,6 @@ app.add_typer(config_app, name="config")
 extensions_app = typer.Typer(help="Manage sandbox VS Code extensions.")
 app.add_typer(extensions_app, name="extensions")
 
-from sandboxctl.mlflow_cmd import mlflow_app
 app.add_typer(mlflow_app, name="mlflow")
 
 

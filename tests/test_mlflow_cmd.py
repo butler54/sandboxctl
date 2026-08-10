@@ -272,7 +272,7 @@ def test_external_mlflow_mode() -> None:
         # Verify external mode indicators
         assert "external" in output.lower()
         assert "unmanaged" in output.lower()
-        assert "http://external.mlflow:5000" in output
+        assert "Tracking URI: http://external.mlflow:5000" in output
         # Verify health check was called
         mock_health.assert_called_once_with("http://external.mlflow:5000", timeout=5)
         # Verify reachability shown

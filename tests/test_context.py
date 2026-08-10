@@ -204,3 +204,12 @@ class TestRestoreClaudeContext:
         result = restore_claude_context("mybox", config)
 
         assert result is False
+
+
+def test_backup_paths_exclude_settings_json() -> None:
+    """settings.json is managed by sandboxctl and must not be overwritten on restore (#91)."""
+    from sandboxctl.context import _BACKUP_PATHS
+
+    assert ".claude/settings.json" not in _BACKUP_PATHS
+    # settings.local.json (user customizations) is preserved
+    assert ".claude/settings.local.json" in _BACKUP_PATHS

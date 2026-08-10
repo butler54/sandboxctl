@@ -10,7 +10,6 @@ from sandboxctl.config import SandboxctlConfig
 
 _BACKUP_PATHS = (
     ".claude/memory",
-    ".claude/settings.json",
     ".claude/settings.local.json",
     ".claude/projects",
     ".claude/CLAUDE.md",

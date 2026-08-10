@@ -280,6 +280,18 @@ def post_launch_setup(
         'gh auth setup-git 2>/dev/null && echo "GitHub git: configured"',
     )
 
+    # Git identity injection (#80) — inject from [identity] config when set
+    if config.git_user_name:
+        osh.sandbox_exec_pipe(
+            name,
+            f'git config --global user.name "{config.git_user_name}" && '
+            f'git config --global user.email "{config.git_user_email}" && '
+            "git config --global gpg.format ssh && "
+            "git config --global commit.gpgsign true && "
+            "git config --global user.signingkey /sandbox/.ssh/id_ed25519 && "
+            'echo "Git identity: configured"',
+        )
+
     gitlab_token = get_credential(config.keychain_gitlab, os.environ.get("USER", "sandboxctl"))
     if gitlab_token:
         encoded_token = base64.b64encode(gitlab_token.encode()).decode()
@@ -385,12 +397,26 @@ def post_launch_setup(
         else:
             typer.echo("  MCP OAuth: no credentials found in host keychain")
 
-    # Verify GSD runtime
+    # GSD runtime — install if missing, then write model_profile when set (#81, #82)
     gsd_check = osh.sandbox_exec_pipe(name, "test -d /sandbox/.claude/gsd-core && echo 'present' || echo 'missing'")
     if "present" in gsd_check:
         typer.echo("  GSD runtime: present")
     else:
-        typer.echo("  GSD runtime: not found (install with: npx -y @opengsd/gsd-core@latest --claude --global)")
+        typer.echo("  GSD runtime: installing...")
+        osh.sandbox_exec_pipe(
+            name,
+            "npx -y @opengsd/gsd-core@latest --claude --global 2>&1 | tail -1",
+        )
+
+    if profile.gsd.model_profile:
+        import json
+
+        defaults = json.dumps({"model_profile": profile.gsd.model_profile})
+        osh.sandbox_exec_pipe(
+            name,
+            f"mkdir -p /sandbox/.gsd && printf '%s' '{defaults}' > /sandbox/.gsd/defaults.json && "
+            f'echo "GSD model profile: {profile.gsd.model_profile}"',
+        )
 
 
 def clone_repos(name: str, profile: Profile) -> list[str]:

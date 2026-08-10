@@ -560,6 +560,7 @@ def extensions_install(
     """Install VS Code extensions into a sandbox from its profile."""
     from sandboxctl.config import find_vscode_bin
     from sandboxctl.extensions import classify_remote_extensions, install_extensions
+    from sandboxctl.health import resolve_ssh_host
     from sandboxctl.profile import load_profile
 
     cfg = load_config()
@@ -584,9 +585,16 @@ def extensions_install(
         typer.echo("No remote extensions to install.")
         return
 
+    # Resolve the live SSH alias (bare openshell-<name> vs workspace-scoped
+    # openshell-<name>.<workspace> across OpenShell versions)
+    ssh_host = resolve_ssh_host(name)
+    if ssh_host is None:
+        typer.echo(f"Sandbox '{name}' is not reachable over SSH.")
+        raise typer.Exit(1)
+
     # Install extensions
     typer.echo(f"Installing {len(remote)} extension(s) into sandbox '{name}'...")
-    report = install_extensions(name, remote, vscode_bin)
+    report = install_extensions(ssh_host, remote, vscode_bin)
 
     # Print summary
     installed_count = len(report.installed)

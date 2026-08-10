@@ -559,12 +559,13 @@ class TestExtensionsCommand:
             patch("sandboxctl.cli.load_config", return_value=cfg),
             patch("sandboxctl.profile.load_profile", return_value=profile),
             patch("sandboxctl.config.find_vscode_bin", return_value=vscode_bin),
+            patch("sandboxctl.health.resolve_ssh_host", return_value="openshell-mybox.default"),
             patch("sandboxctl.extensions.classify_remote_extensions", return_value=ext_list),
             patch("sandboxctl.extensions.install_extensions", return_value=report) as mock_install,
         ):
             result = runner.invoke(app, ["extensions", "install", "mybox"])
             assert result.exit_code == 0
-            mock_install.assert_called_once_with("mybox", ext_list, vscode_bin)
+            mock_install.assert_called_once_with("openshell-mybox.default", ext_list, vscode_bin)
             assert "2" in result.output  # 2 installed
 
     def test_extensions_install_failures_exit_zero(self) -> None:
@@ -583,6 +584,7 @@ class TestExtensionsCommand:
             patch("sandboxctl.cli.load_config", return_value=cfg),
             patch("sandboxctl.profile.load_profile", return_value=profile),
             patch("sandboxctl.config.find_vscode_bin", return_value=vscode_bin),
+            patch("sandboxctl.health.resolve_ssh_host", return_value="openshell-mybox.default"),
             patch("sandboxctl.extensions.classify_remote_extensions", return_value=["valid.ext"]),
             patch("sandboxctl.extensions.install_extensions", return_value=report),
         ):

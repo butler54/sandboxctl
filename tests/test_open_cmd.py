@@ -323,6 +323,7 @@ class TestExtensionInstallHook:
 
         with (
             patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.resolve_ssh_host", return_value="openshell-mybox.default"),
             patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
             patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
             patch("sandboxctl.profile.load_profile", return_value=profile),
@@ -345,6 +346,7 @@ class TestExtensionInstallHook:
 
         with (
             patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.resolve_ssh_host", return_value="openshell-mybox.default"),
             patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
             patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
             patch("sandboxctl.profile.load_profile", return_value=profile),
@@ -366,6 +368,7 @@ class TestExtensionInstallHook:
 
         with (
             patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.resolve_ssh_host", return_value="openshell-mybox.default"),
             patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
             patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
             patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
@@ -395,6 +398,7 @@ class TestExtensionInstallHook:
 
         with (
             patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.resolve_ssh_host", return_value="openshell-mybox.default"),
             patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
             patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
             patch("sandboxctl.profile.load_profile", return_value=profile),

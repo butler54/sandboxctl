@@ -109,18 +109,21 @@ class InstallReport:
     failed: list[tuple[str, str]] = field(default_factory=list)
 
 
-def install_extensions(sandbox_name: str, ext_ids: list[str], vscode_bin: Path) -> InstallReport:
+def install_extensions(ssh_host: str, ext_ids: list[str], vscode_bin: Path) -> InstallReport:
     """Install VS Code extensions into a sandbox via host code CLI.
 
     Runs one subprocess per extension ID:
-    code --remote ssh-remote+openshell-<name> --install-extension <id>
+    code --remote ssh-remote+<ssh_host> --install-extension <id>
 
     IDs are validated; invalid IDs skip subprocess and are recorded in skipped_invalid.
     Non-zero returncode is recorded in failed; the loop continues (warn-and-continue).
     The command is idempotent (code CLI no-ops if already installed).
 
     Args:
-        sandbox_name: The sandbox name (for ssh-remote+openshell-<name>)
+        ssh_host: The resolved SSH alias for the sandbox (see health.resolve_ssh_host —
+            OpenShell has used both bare `openshell-<name>` and workspace-scoped
+            `openshell-<name>.<workspace>` aliases across versions, so callers must
+            resolve the live one rather than assuming a fixed format here)
         ext_ids: List of extension IDs to install
         vscode_bin: Path to the code CLI binary
 
@@ -142,7 +145,7 @@ def install_extensions(sandbox_name: str, ext_ids: list[str], vscode_bin: Path) 
             [
                 str(vscode_bin),
                 "--remote",
-                f"ssh-remote+openshell-{sandbox_name}",
+                f"ssh-remote+{ssh_host}",
                 "--install-extension",
                 ext_id,
             ],

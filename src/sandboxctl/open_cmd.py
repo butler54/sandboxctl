@@ -9,7 +9,7 @@ import typer
 from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig, find_terminal_app, find_vscode_bin
 from sandboxctl.extensions import classify_remote_extensions, install_extensions
-from sandboxctl.health import diagnose
+from sandboxctl.health import diagnose, resolve_ssh_host
 
 
 def spawn_terminal_with_claude(sandbox_name: str, terminal_app: str | None) -> None:
@@ -69,6 +69,12 @@ def open_sandbox(
         if not vscode_bin:
             typer.echo("WARNING: 'code' CLI not found. Skipping VS Code.")
         else:
+            # Resolve the live SSH alias — OpenShell has used both bare
+            # openshell-<name> and workspace-scoped openshell-<name>.<workspace>
+            # aliases across versions (health check above already confirmed
+            # one of them is reachable).
+            ssh_host = resolve_ssh_host(name) or f"openshell-{name}"
+
             # Install extensions before GUI launch (EXT-02, D-09, D-11)
             try:
                 from sandboxctl.profile import load_profile
@@ -76,7 +82,7 @@ def open_sandbox(
                 profile = load_profile(name, config)
                 remote = classify_remote_extensions(profile.extensions)
                 if remote:
-                    report = install_extensions(name, remote, vscode_bin)
+                    report = install_extensions(ssh_host, remote, vscode_bin)
                     installed_count = len(report.installed)
                     skipped_count = len(report.skipped_invalid)
                     failed_count = len(report.failed)
@@ -94,7 +100,7 @@ def open_sandbox(
             if "yes" in has_ws:
                 typer.echo(f"Opening VS Code workspace: {name}")
                 subprocess.run(
-                    [str(vscode_bin), "--remote", f"ssh-remote+openshell-{name}", workspace],
+                    [str(vscode_bin), "--remote", f"ssh-remote+{ssh_host}", workspace],
                     check=False,
                 )
             else:

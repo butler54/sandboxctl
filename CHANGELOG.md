@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.13.1 (2026-08-10)
+
+### Bug Fixes
+
+- Address issues #80 #81 #82 #91 #92 ([#94](https://github.com/butler54/sandboxctl/pull/94),
+  [`3d6546f`](https://github.com/butler54/sandboxctl/commit/3d6546f661246cfe79558e30c76e995d121bdb8b))
+
+
 ## v1.13.0 (2026-08-10)
 
 ### Bug Fixes

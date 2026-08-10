@@ -842,3 +842,169 @@ def test_create_injects_mlflow_uri() -> None:
             # No injection
             injection_calls = [c for c in mock_exec.call_args_list if "MLFLOW_TRACKING_URI" in str(c)]
             assert len(injection_calls) == 0
+
+
+def test_git_identity_injected_from_config() -> None:
+    """Git identity is set inside the sandbox when [identity] is configured (#80)."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
+
+    from sandboxctl.config import IdentityConfig, SandboxctlConfig
+    from sandboxctl.models import Profile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = SandboxctlConfig(
+            config_dir=Path(tmpdir),
+            identity=IdentityConfig(user_name="Alice Dev", user_email="alice@example.com"),
+        )
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=Path(tmpdir) / "nohome"),
+        ):
+            from sandboxctl.create import post_launch_setup
+
+            post_launch_setup("mybox", profile, config)
+
+        identity_calls = [c for c in mock_exec.call_args_list if "user.name" in str(c)]
+        assert len(identity_calls) == 1
+        script = identity_calls[0][0][1]
+        assert "Alice Dev" in script
+        assert "alice@example.com" in script
+        assert "gpg.format ssh" in script
+        assert "commit.gpgsign true" in script
+
+
+def test_git_identity_skipped_when_not_configured() -> None:
+    """Git identity block is skipped when [identity] is empty (#80)."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
+
+    from sandboxctl.config import SandboxctlConfig
+    from sandboxctl.models import Profile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = SandboxctlConfig(config_dir=Path(tmpdir))  # no identity
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=Path(tmpdir) / "nohome"),
+        ):
+            from sandboxctl.create import post_launch_setup
+
+            post_launch_setup("mybox", profile, config)
+
+        identity_calls = [c for c in mock_exec.call_args_list if "user.name" in str(c)]
+        assert len(identity_calls) == 0
+
+
+def test_gsd_model_profile_written_when_set() -> None:
+    """GSD defaults.json is written with model_profile when [gsd] sets one (#81)."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
+
+    from sandboxctl.config import SandboxctlConfig
+    from sandboxctl.models import GsdConfig, Profile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = SandboxctlConfig(config_dir=Path(tmpdir))
+        profile = Profile(name="test", mlflow=False, gsd=GsdConfig(model_profile="quality"))
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=Path(tmpdir) / "nohome"),
+        ):
+            from sandboxctl.create import post_launch_setup
+
+            post_launch_setup("mybox", profile, config)
+
+        gsd_calls = [c for c in mock_exec.call_args_list if "defaults.json" in str(c)]
+        assert len(gsd_calls) == 1
+        script = gsd_calls[0][0][1]
+        assert "quality" in script
+        assert "model_profile" in script
+        assert "/sandbox/.gsd/defaults.json" in script
+
+
+def test_gsd_model_profile_skipped_when_not_set() -> None:
+    """No defaults.json write when gsd.model_profile is empty (#81)."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
+
+    from sandboxctl.config import SandboxctlConfig
+    from sandboxctl.models import Profile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = SandboxctlConfig(config_dir=Path(tmpdir))
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=Path(tmpdir) / "nohome"),
+        ):
+            from sandboxctl.create import post_launch_setup
+
+            post_launch_setup("mybox", profile, config)
+
+        gsd_calls = [c for c in mock_exec.call_args_list if "defaults.json" in str(c)]
+        assert len(gsd_calls) == 0
+
+
+def test_gsd_auto_installs_when_missing() -> None:
+    """GSD is installed via npx when not present in the sandbox (#82)."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
+
+    from sandboxctl.config import SandboxctlConfig
+    from sandboxctl.models import Profile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = SandboxctlConfig(config_dir=Path(tmpdir))
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=Path(tmpdir) / "nohome"),
+        ):
+            # Simulate GSD not present: 'missing' returned for gsd-core check
+            def exec_side_effect(name: str, script: str) -> str:
+                if "gsd-core" in script and "echo 'present'" in script:
+                    return "missing"
+                return ""
+
+            mock_exec.side_effect = exec_side_effect
+
+            from sandboxctl.create import post_launch_setup
+
+            post_launch_setup("mybox", profile, config)
+
+        npx_calls = [c for c in mock_exec.call_args_list if "npx" in str(c)]
+        assert len(npx_calls) == 1
+        assert "@opengsd/gsd-core@latest" in str(npx_calls[0])

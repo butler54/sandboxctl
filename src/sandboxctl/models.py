@@ -70,6 +70,14 @@ class Extensions(BaseModel):
     model_config = {"extra": "ignore", "populate_by_name": True}
 
 
+class GsdConfig(BaseModel):
+    """GSD runtime settings staged at sandbox creation."""
+
+    model_profile: str = ""
+
+    model_config = {"extra": "ignore"}
+
+
 class Profile(BaseModel):
     """Sandbox profile loaded from TOML."""
 
@@ -81,6 +89,7 @@ class Profile(BaseModel):
     credentials: CredentialConfig = Field(default_factory=CredentialConfig)
     extensions: Extensions = Field(default_factory=Extensions)
     mlflow: bool = True
+    gsd: GsdConfig = Field(default_factory=GsdConfig)
 
 
 class ClaudePermissions(BaseModel):

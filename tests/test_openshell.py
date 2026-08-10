@@ -277,3 +277,16 @@ class TestProviderCreate:
             assert "github" in cmd
             assert "--type" in cmd
             assert "--credential" in cmd
+
+    def test_deletes_before_create(self) -> None:
+        """provider_create deletes first so stale credentials are never inherited (#92)."""
+        with patch("sandboxctl.openshell._run") as mock_run:
+            provider_create("vertex-claude", "vertex", "CRED=new-project-id")
+
+            calls = mock_run.call_args_list
+            assert len(calls) == 2  # delete then create
+            delete_cmd = calls[0][0][0]
+            create_cmd = calls[1][0][0]
+            assert delete_cmd == ["openshell", "provider", "delete", "vertex-claude"]
+            assert "create" in create_cmd
+            assert "CRED=new-project-id" in create_cmd

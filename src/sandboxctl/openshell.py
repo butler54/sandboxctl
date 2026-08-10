@@ -179,6 +179,9 @@ def provider_create(
     provider_type: str,
     credential: str,
 ) -> None:
+    # Delete first so stale credentials are never inherited (upsert semantics).
+    # No-op when the provider does not exist (check=False).
+    _run(["openshell", "provider", "delete", name], check=False, capture=True)
     _run(
         [
             "openshell",

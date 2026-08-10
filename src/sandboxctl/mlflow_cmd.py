@@ -103,7 +103,7 @@ def get_directory_size(path: Path) -> int:
     """Calculate total size of directory in bytes (cross-platform)."""
     total = 0
     try:
-        for dirpath, dirnames, filenames in os.walk(path):
+        for dirpath, _dirnames, filenames in os.walk(path):
             for filename in filenames:
                 filepath = os.path.join(dirpath, filename)
                 try:
@@ -171,7 +171,7 @@ def start_command() -> None:
         typer.echo(f"MLflow started: {config.mlflow.tracking_uri}")
     except RuntimeError as e:
         typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @mlflow_app.command("stop")

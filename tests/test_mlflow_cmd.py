@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,7 +29,7 @@ class MockHTTPResponse:
         pass
 
 
-def test_start_mlflow_container(tmp_path) -> None:
+def test_start_mlflow_container(tmp_path: Path) -> None:
     """Start command creates data_dir and runs podman with correct args."""
     from sandboxctl.mlflow_cmd import start_mlflow_container
 
@@ -75,7 +76,7 @@ def test_start_mlflow_container(tmp_path) -> None:
         assert "/mlflow-data/artifacts" in call_args
         # Host and port
         assert "--host" in call_args
-        assert "0.0.0.0" in call_args
+        assert "0.0.0.0" in call_args  # noqa: S104
         assert "--port" in call_args
         assert str(port) in call_args
 
@@ -83,7 +84,7 @@ def test_start_mlflow_container(tmp_path) -> None:
         assert mock_run.call_args[1]["check"] is False
 
 
-def test_start_mlflow_container_failure(tmp_path) -> None:
+def test_start_mlflow_container_failure(tmp_path: Path) -> None:
     """Start command raises RuntimeError when podman fails."""
     from sandboxctl.mlflow_cmd import start_mlflow_container
 
@@ -197,7 +198,7 @@ def test_check_mlflow_health_http_error() -> None:
         assert result is False
 
 
-def test_mlflow_status(tmp_path) -> None:
+def test_mlflow_status(tmp_path: Path) -> None:
     """Status shows container state, URI, data_dir size for managed mode."""
     from sandboxctl.mlflow_cmd import mlflow_status
     from sandboxctl.config import MlflowConfig
@@ -225,7 +226,7 @@ def test_mlflow_status(tmp_path) -> None:
         assert "KB" in output or "B" in output  # Size formatting
 
 
-def test_mlflow_status_stopped(tmp_path) -> None:
+def test_mlflow_status_stopped(tmp_path: Path) -> None:
     """Status shows stopped state when container is not running."""
     from sandboxctl.mlflow_cmd import mlflow_status
     from sandboxctl.config import MlflowConfig
@@ -289,7 +290,7 @@ def test_external_mode_start_stop_noop() -> None:
     # This is verified by the command-level tests below
 
 
-def test_get_directory_size(tmp_path) -> None:
+def test_get_directory_size(tmp_path: Path) -> None:
     """get_directory_size calculates total bytes recursively."""
     from sandboxctl.mlflow_cmd import get_directory_size
 

@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from enum import Enum
 
+# Legacy naming (pre-workspace scoping): openshell-sandbox-{name}
 _CONTAINER_PREFIX = "openshell-sandbox-"
+# Workspace-scoped naming (OpenShell 0.0.9x+): openshell-{workspace}--{name}-{uuid}
+_WORKSPACE_SCOPED_RE = r"^openshell-[^-]+--{name}-[0-9a-f-]+$"
 
 
 class ContainerState(Enum):
@@ -78,12 +82,38 @@ def check_gateway_state() -> GatewayState:
         return GatewayState.UNKNOWN
 
 
+def resolve_container_name(sandbox_name: str) -> str | None:
+    """Resolve the actual podman container name for a sandbox.
+
+    OpenShell has used more than one container naming scheme across versions
+    (e.g. legacy `openshell-sandbox-{name}` vs. workspace-scoped
+    `openshell-{workspace}--{name}-{uuid}`), so we match against all known
+    patterns instead of assuming a fixed prefix.
+    """
+    try:
+        result = _run(["podman", "ps", "-a", "--format", "{{.Names}}"], env=_podman_env())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+
+    legacy_name = f"{_CONTAINER_PREFIX}{sandbox_name}"
+    scoped_re = re.compile(_WORKSPACE_SCOPED_RE.format(name=re.escape(sandbox_name)))
+    for line in result.stdout.splitlines():
+        name = line.strip()
+        if name == legacy_name or scoped_re.match(name):
+            return name
+    return None
+
+
 def check_container_state(sandbox_name: str) -> ContainerState:
     """Check the state of a sandbox container."""
-    container_name = f"{_CONTAINER_PREFIX}{sandbox_name}"
+    container_name = resolve_container_name(sandbox_name)
+    if container_name is None:
+        return ContainerState.MISSING
     try:
         result = _run(
-            ["podman", "ps", "-a", "--filter", f"name={container_name}", "--format", "{{.Status}}"],
+            ["podman", "ps", "-a", "--filter", f"name=^{container_name}$", "--format", "{{.Status}}"],
             env=_podman_env(),
         )
         if result.returncode != 0:
@@ -105,14 +135,18 @@ def check_container_state(sandbox_name: str) -> ContainerState:
 
 def check_ssh_connectivity(sandbox_name: str, timeout: int = 5) -> bool:
     """Check if SSH into the sandbox works."""
-    try:
-        # Accepted risk: StrictHostKeyChecking=no — health probe only, not data channel
-        ssh_host = f"openshell-{sandbox_name}"
-        cmd = ["ssh", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=no", ssh_host, "echo", "ok"]
-        result = _run(cmd, timeout=timeout)
-        return result.returncode == 0 and "ok" in result.stdout
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
+    # OpenShell has used both a bare host alias (openshell-{name}) and a
+    # workspace-scoped one (openshell-{name}.{workspace}) across versions.
+    for ssh_host in (f"openshell-{sandbox_name}.default", f"openshell-{sandbox_name}"):
+        try:
+            # Accepted risk: StrictHostKeyChecking=no — health probe only, not data channel
+            cmd = ["ssh", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=no", ssh_host, "echo", "ok"]
+            result = _run(cmd, timeout=timeout)
+            if result.returncode == 0 and "ok" in result.stdout:
+                return True
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return False
 
 
 def recover_gateway() -> bool:
@@ -131,7 +165,9 @@ def recover_gateway() -> bool:
 
 def recover_container(sandbox_name: str) -> bool:
     """Attempt to start a stopped container (safe — no data loss)."""
-    container_name = f"{_CONTAINER_PREFIX}{sandbox_name}"
+    container_name = resolve_container_name(sandbox_name)
+    if container_name is None:
+        return False
     try:
         result = _run(["podman", "start", container_name], timeout=30, env=_podman_env())
         return result.returncode == 0

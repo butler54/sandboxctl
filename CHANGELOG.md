@@ -2,6 +2,75 @@
 
 <!-- version list -->
 
+## v1.13.0 (2026-08-10)
+
+### Bug Fixes
+
+- **21**: Fix all remaining ruff lint and format violations
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-02**: Add noqa suppressions for S104 and S310 in mlflow_cmd.py
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-02**: Anchor URL assertion to 'Tracking URI:' prefix to fix CodeQL S104
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-02**: Fix ruff B007, B904, ANN001, S104 in mlflow_cmd and test
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-02**: Move mlflow_app import to top of cli.py to fix ruff E402
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-03**: Add mlflow=False to gitlab profile tests to avoid health-check errors
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+### Features
+
+- **21**: MLflow observability — container lifecycle, CLI, and sandbox integration
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-02**: Implement status, directory size, external mode
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-02**: Implement stop, is_running, health check
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-03**: Add optional prompted MLflow setup step (MLFLOW-04)
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-03**: Implement MLflow validate-then-start + fail-closed URI injection (GREEN)
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+### Testing
+
+- **21-02**: Add failing tests for mlflow start
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-02**: Add tests for status, directory size, external mode
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-02**: Add tests for stop, is_running, health check
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+- **21-03**: Add failing test for MLflow URI injection (RED)
+  ([#93](https://github.com/butler54/sandboxctl/pull/93),
+  [`1c0498e`](https://github.com/butler54/sandboxctl/commit/1c0498e001f2c01d550912d932a02bc6b987f8e9))
+
+
 ## v1.12.0 (2026-08-08)
 
 ### Features

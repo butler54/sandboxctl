@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
 
 def test_setup_mlflow_prompted() -> None:
     """Setup prompts for optional MLflow tracking server installation."""
-    from unittest.mock import MagicMock, patch
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
 
     from sandboxctl.config import MlflowConfig, SandboxctlConfig
     from sandboxctl.setup_cmd import _setup_mlflow
@@ -23,7 +21,7 @@ def test_setup_mlflow_prompted() -> None:
             patch("sandboxctl.setup_cmd.typer.confirm", return_value=True) as mock_confirm,
             patch("sandboxctl.mlflow_cmd.is_mlflow_running", return_value=False),
             patch("sandboxctl.mlflow_cmd.start_mlflow_container") as mock_start,
-            patch("sandboxctl.setup_cmd.typer.echo") as mock_echo,
+            patch("sandboxctl.setup_cmd.typer.echo"),
         ):
             _setup_mlflow(config)
 
@@ -41,7 +39,7 @@ def test_setup_mlflow_prompted() -> None:
             patch("sandboxctl.setup_cmd.typer.confirm", return_value=True),
             patch("sandboxctl.mlflow_cmd.is_mlflow_running", return_value=True),
             patch("sandboxctl.mlflow_cmd.start_mlflow_container") as mock_start,
-            patch("sandboxctl.setup_cmd.typer.echo") as mock_echo,
+            patch("sandboxctl.setup_cmd.typer.echo"),
         ):
             _setup_mlflow(config)
 
@@ -56,7 +54,7 @@ def test_setup_mlflow_prompted() -> None:
         with (
             patch("sandboxctl.setup_cmd.typer.confirm", return_value=False),
             patch("sandboxctl.mlflow_cmd.start_mlflow_container") as mock_start,
-            patch("sandboxctl.setup_cmd.typer.echo") as mock_echo,
+            patch("sandboxctl.setup_cmd.typer.echo"),
         ):
             _setup_mlflow(config)
 
@@ -71,7 +69,7 @@ def test_setup_mlflow_prompted() -> None:
         with (
             patch("sandboxctl.setup_cmd.typer.confirm") as mock_confirm,
             patch("sandboxctl.mlflow_cmd.start_mlflow_container") as mock_start,
-            patch("sandboxctl.setup_cmd.typer.echo") as mock_echo,
+            patch("sandboxctl.setup_cmd.typer.echo"),
         ):
             _setup_mlflow(config)
 

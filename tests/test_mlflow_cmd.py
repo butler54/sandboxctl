@@ -174,8 +174,9 @@ def test_check_mlflow_health_success() -> None:
 
 def test_check_mlflow_health_timeout() -> None:
     """check_mlflow_health returns False on timeout."""
-    from sandboxctl.mlflow_cmd import check_mlflow_health
     from urllib.error import URLError
+
+    from sandboxctl.mlflow_cmd import check_mlflow_health
 
     with patch("urllib.request.urlopen") as mock_urlopen:
         mock_urlopen.side_effect = URLError("timeout")
@@ -187,8 +188,9 @@ def test_check_mlflow_health_timeout() -> None:
 
 def test_check_mlflow_health_http_error() -> None:
     """check_mlflow_health returns False on HTTP error."""
-    from sandboxctl.mlflow_cmd import check_mlflow_health
     from urllib.error import HTTPError
+
+    from sandboxctl.mlflow_cmd import check_mlflow_health
 
     with patch("urllib.request.urlopen") as mock_urlopen:
         mock_urlopen.side_effect = HTTPError("http://localhost:5050/health", 500, "Internal Server Error", {}, None)
@@ -200,8 +202,8 @@ def test_check_mlflow_health_http_error() -> None:
 
 def test_mlflow_status(tmp_path: Path) -> None:
     """Status shows container state, URI, data_dir size for managed mode."""
-    from sandboxctl.mlflow_cmd import mlflow_status
     from sandboxctl.config import MlflowConfig
+    from sandboxctl.mlflow_cmd import mlflow_status
 
     data_dir = tmp_path / "mlflow-data"
     data_dir.mkdir()
@@ -228,8 +230,8 @@ def test_mlflow_status(tmp_path: Path) -> None:
 
 def test_mlflow_status_stopped(tmp_path: Path) -> None:
     """Status shows stopped state when container is not running."""
-    from sandboxctl.mlflow_cmd import mlflow_status
     from sandboxctl.config import MlflowConfig
+    from sandboxctl.mlflow_cmd import mlflow_status
 
     data_dir = tmp_path / "mlflow-data"
     data_dir.mkdir()
@@ -252,8 +254,8 @@ def test_mlflow_status_stopped(tmp_path: Path) -> None:
 
 def test_external_mlflow_mode() -> None:
     """External mode (managed=false) skips container mgmt, shows reachability probe."""
-    from sandboxctl.mlflow_cmd import mlflow_status
     from sandboxctl.config import MlflowConfig
+    from sandboxctl.mlflow_cmd import mlflow_status
 
     config = MagicMock()
     config.mlflow = MlflowConfig(
@@ -279,7 +281,6 @@ def test_external_mlflow_mode() -> None:
 
 def test_external_mode_start_stop_noop() -> None:
     """External mode start/stop commands are no-ops (no podman subprocess)."""
-    from sandboxctl.mlflow_cmd import start_mlflow_container, stop_mlflow_container
 
     # These are the underlying functions — the command wrappers check managed flag
     # Here we verify the external mode path in the commands doesn't call the container functions

@@ -13,7 +13,8 @@ from pathlib import Path
 
 import typer
 
-from sandboxctl import mlflow_cmd, openshell as osh
+from sandboxctl import mlflow_cmd
+from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig
 from sandboxctl.credentials import get_credential
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile

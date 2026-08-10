@@ -124,12 +124,7 @@ def test_profile_mlflow_opt_out() -> None:
         profiles_dir = config_dir / "profiles"
         profiles_dir.mkdir()
         profile_toml = profiles_dir / "opt-out.toml"
-        profile_toml.write_text(
-            "mlflow = false\n"
-            "\n"
-            "[sandbox]\n"
-            'containerfile = "Containerfile"\n'
-        )
+        profile_toml.write_text('mlflow = false\n\n[sandbox]\ncontainerfile = "Containerfile"\n')
         config = load_config(config_dir=config_dir)
         profile = load_profile("opt-out", config)
         assert profile.mlflow is False
@@ -140,10 +135,7 @@ def test_profile_mlflow_opt_out() -> None:
         profiles_dir = config_dir / "profiles"
         profiles_dir.mkdir()
         profile_toml = profiles_dir / "default-on.toml"
-        profile_toml.write_text(
-            "[sandbox]\n"
-            'containerfile = "Containerfile"\n'
-        )
+        profile_toml.write_text('[sandbox]\ncontainerfile = "Containerfile"\n')
         config = load_config(config_dir=config_dir)
         profile = load_profile("default-on", config)
         assert profile.mlflow is True
@@ -157,12 +149,7 @@ def test_mlflow_config() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         config_dir = Path(tmpdir)
         config_file = config_dir / "config.toml"
-        config_file.write_text(
-            "[mlflow]\n"
-            'tracking_uri = "http://localhost:5050"\n'
-            "managed = true\n"
-            "port = 5050\n"
-        )
+        config_file.write_text('[mlflow]\ntracking_uri = "http://localhost:5050"\nmanaged = true\nport = 5050\n')
         cfg = load_config(config_dir=config_dir)
         assert cfg.mlflow.tracking_uri == "http://localhost:5050"
         assert cfg.mlflow.managed is True

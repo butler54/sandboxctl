@@ -665,7 +665,7 @@ def test_create_injects_mlflow_uri() -> None:
     """Create validates MLflow is up and injects MLFLOW_TRACKING_URI into sandbox."""
     import tempfile
     from pathlib import Path
-    from unittest.mock import MagicMock, call, patch
+    from unittest.mock import patch
 
     from sandboxctl.config import MlflowConfig, SandboxctlConfig
     from sandboxctl.create import post_launch_setup
@@ -705,16 +705,12 @@ def test_create_injects_mlflow_uri() -> None:
     # Scenario 2: managed mode, down-then-recovered → start called, injection proceeds
     with tempfile.TemporaryDirectory() as tmpdir:
         config_dir = Path(tmpdir)
-        mlflow_cfg = MlflowConfig(
-            managed=True, port=5050, tracking_uri="http://localhost:5050", data_dir=Path(tmpdir)
-        )
+        mlflow_cfg = MlflowConfig(managed=True, port=5050, tracking_uri="http://localhost:5050", data_dir=Path(tmpdir))
         config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
         profile = Profile(name="test", mlflow=True)
 
         with (
-            patch(
-                "sandboxctl.create.mlflow_cmd.check_mlflow_health", side_effect=[False, True]
-            ) as mock_health,
+            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", side_effect=[False, True]) as mock_health,
             patch("sandboxctl.create.mlflow_cmd.start_mlflow_container") as mock_start,
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
             patch("sandboxctl.openshell.sandbox_upload"),
@@ -737,9 +733,7 @@ def test_create_injects_mlflow_uri() -> None:
     # Scenario 3: managed mode, stays down → create fails (fail-closed)
     with tempfile.TemporaryDirectory() as tmpdir:
         config_dir = Path(tmpdir)
-        mlflow_cfg = MlflowConfig(
-            managed=True, port=5050, tracking_uri="http://localhost:5050", data_dir=Path(tmpdir)
-        )
+        mlflow_cfg = MlflowConfig(managed=True, port=5050, tracking_uri="http://localhost:5050", data_dir=Path(tmpdir))
         config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
         profile = Profile(name="test", mlflow=True)
 

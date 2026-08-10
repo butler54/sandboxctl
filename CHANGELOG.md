@@ -2,6 +2,23 @@
 
 <!-- version list -->
 
+## v1.13.2 (2026-08-10)
+
+### Bug Fixes
+
+- **health**: Resolve container/SSH names across OpenShell naming schemes
+  ([#95](https://github.com/butler54/sandboxctl/pull/95),
+  [`871dbd8`](https://github.com/butler54/sandboxctl/commit/871dbd8b66e24ca2bcca9b907e3ad47f30cbd165))
+
+- **open**: Resolve container/SSH naming and VS Code launch alias
+  ([#95](https://github.com/butler54/sandboxctl/pull/95),
+  [`871dbd8`](https://github.com/butler54/sandboxctl/commit/871dbd8b66e24ca2bcca9b907e3ad47f30cbd165))
+
+- **open**: Resolve live SSH alias for VS Code launch and extension install
+  ([#95](https://github.com/butler54/sandboxctl/pull/95),
+  [`871dbd8`](https://github.com/butler54/sandboxctl/commit/871dbd8b66e24ca2bcca9b907e3ad47f30cbd165))
+
+
 ## v1.13.1 (2026-08-10)
 
 ### Bug Fixes

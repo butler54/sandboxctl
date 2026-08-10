@@ -134,7 +134,7 @@ def test_install_extensions_uses_correct_subprocess_args() -> None:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         vscode_bin = Path("/usr/bin/code")
 
-        install_extensions("mybox", ["ms-python.python"], vscode_bin)
+        install_extensions("openshell-mybox.default", ["ms-python.python"], vscode_bin)
 
         # Verify subprocess.run was called with correct args
         mock_run.assert_called_once()
@@ -142,7 +142,7 @@ def test_install_extensions_uses_correct_subprocess_args() -> None:
         assert args[0] == [
             str(vscode_bin),
             "--remote",
-            "ssh-remote+openshell-mybox",
+            "ssh-remote+openshell-mybox.default",
             "--install-extension",
             "ms-python.python",
         ]
@@ -156,7 +156,7 @@ def test_install_extensions_never_uses_shell() -> None:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         vscode_bin = Path("/usr/bin/code")
 
-        install_extensions("mybox", ["ms-python.python"], vscode_bin)
+        install_extensions("openshell-mybox.default", ["ms-python.python"], vscode_bin)
 
         # Verify shell keyword is not True
         _, kwargs = mock_run.call_args
@@ -173,7 +173,7 @@ def test_install_extensions_captures_failures() -> None:
         ]
         vscode_bin = Path("/usr/bin/code")
 
-        report = install_extensions("mybox", ["bad.extension", "ms-python.python"], vscode_bin)
+        report = install_extensions("openshell-mybox.default", ["bad.extension", "ms-python.python"], vscode_bin)
 
         # Verify both were attempted
         assert mock_run.call_count == 2
@@ -191,7 +191,7 @@ def test_install_extensions_skips_invalid_ids() -> None:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         vscode_bin = Path("/usr/bin/code")
 
-        report = install_extensions("mybox", ["-badid", "ms-python.python"], vscode_bin)
+        report = install_extensions("openshell-mybox.default", ["-badid", "ms-python.python"], vscode_bin)
 
         # Verify only valid ID was processed
         assert mock_run.call_count == 1
@@ -205,7 +205,7 @@ def test_install_extensions_empty_list() -> None:
     with patch("sandboxctl.extensions.subprocess.run") as mock_run:
         vscode_bin = Path("/usr/bin/code")
 
-        report = install_extensions("mybox", [], vscode_bin)
+        report = install_extensions("openshell-mybox.default", [], vscode_bin)
 
         # Verify no subprocess calls
         mock_run.assert_not_called()

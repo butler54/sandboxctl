@@ -133,20 +133,28 @@ def check_container_state(sandbox_name: str) -> ContainerState:
         return ContainerState.UNKNOWN
 
 
-def check_ssh_connectivity(sandbox_name: str, timeout: int = 5) -> bool:
-    """Check if SSH into the sandbox works."""
-    # OpenShell has used both a bare host alias (openshell-{name}) and a
-    # workspace-scoped one (openshell-{name}.{workspace}) across versions.
+def resolve_ssh_host(sandbox_name: str, timeout: int = 5) -> str | None:
+    """Resolve the SSH alias that actually connects for this sandbox.
+
+    OpenShell has used both a bare host alias (openshell-{name}) and a
+    workspace-scoped one (openshell-{name}.{workspace}) across versions, so we
+    probe both and return whichever one is live.
+    """
     for ssh_host in (f"openshell-{sandbox_name}.default", f"openshell-{sandbox_name}"):
         try:
             # Accepted risk: StrictHostKeyChecking=no — health probe only, not data channel
             cmd = ["ssh", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=no", ssh_host, "echo", "ok"]
             result = _run(cmd, timeout=timeout)
             if result.returncode == 0 and "ok" in result.stdout:
-                return True
+                return ssh_host
         except (FileNotFoundError, subprocess.TimeoutExpired):
             continue
-    return False
+    return None
+
+
+def check_ssh_connectivity(sandbox_name: str, timeout: int = 5) -> bool:
+    """Check if SSH into the sandbox works."""
+    return resolve_ssh_host(sandbox_name, timeout=timeout) is not None
 
 
 def recover_gateway() -> bool:

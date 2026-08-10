@@ -16,6 +16,8 @@ from sandboxctl.health import (
     diagnose,
     recover_container,
     recover_gateway,
+    resolve_container_name,
+    resolve_ssh_host,
 )
 
 
@@ -60,31 +62,71 @@ class TestGatewayState:
             assert check_gateway_state() == GatewayState.UNKNOWN
 
 
+class TestResolveContainerName:
+    def test_matches_legacy_name(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=0, stdout=f"{_CONTAINER_PREFIX}mybox\n")
+            assert resolve_container_name("mybox") == f"{_CONTAINER_PREFIX}mybox"
+
+    def test_matches_workspace_scoped_name(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(
+                returncode=0,
+                stdout="openshell-default--mybox-8b9c3917-fcf7-4b3a-bb20-273c0b9ef1d3\n",
+            )
+            assert resolve_container_name("mybox") == "openshell-default--mybox-8b9c3917-fcf7-4b3a-bb20-273c0b9ef1d3"
+
+    def test_no_match_returns_none(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=0, stdout="some-unrelated-container\n")
+            assert resolve_container_name("mybox") is None
+
+    def test_podman_failure_returns_none(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=1, stdout="")
+            assert resolve_container_name("mybox") is None
+
+    def test_not_found_returns_none(self) -> None:
+        with patch("sandboxctl.health._run", side_effect=FileNotFoundError):
+            assert resolve_container_name("mybox") is None
+
+
 class TestContainerState:
     def test_running(self) -> None:
-        with patch("sandboxctl.health._run") as mock:
+        with (
+            patch("sandboxctl.health.resolve_container_name", return_value=f"{_CONTAINER_PREFIX}test"),
+            patch("sandboxctl.health._run") as mock,
+        ):
             mock.return_value = MagicMock(returncode=0, stdout="Up 2 hours")
             assert check_container_state("test") == ContainerState.RUNNING
 
-    def test_uses_prefixed_name(self) -> None:
-        with patch("sandboxctl.health._run") as mock:
+    def test_uses_resolved_name(self) -> None:
+        with (
+            patch("sandboxctl.health.resolve_container_name", return_value=f"{_CONTAINER_PREFIX}mybox"),
+            patch("sandboxctl.health._run") as mock,
+        ):
             mock.return_value = MagicMock(returncode=0, stdout="Up 2 hours")
             check_container_state("mybox")
             cmd = mock.call_args[0][0]
-            assert f"name={_CONTAINER_PREFIX}mybox" in " ".join(cmd)
+            assert f"name=^{_CONTAINER_PREFIX}mybox$" in " ".join(cmd)
 
     def test_stopped(self) -> None:
-        with patch("sandboxctl.health._run") as mock:
+        with (
+            patch("sandboxctl.health.resolve_container_name", return_value=f"{_CONTAINER_PREFIX}test"),
+            patch("sandboxctl.health._run") as mock,
+        ):
             mock.return_value = MagicMock(returncode=0, stdout="Exited (0) 5 minutes ago")
             assert check_container_state("test") == ContainerState.STOPPED
 
-    def test_missing(self) -> None:
-        with patch("sandboxctl.health._run") as mock:
-            mock.return_value = MagicMock(returncode=0, stdout="")
+    def test_missing_when_not_resolvable(self) -> None:
+        with patch("sandboxctl.health.resolve_container_name", return_value=None):
             assert check_container_state("test") == ContainerState.MISSING
 
     def test_paused(self) -> None:
-        with patch("sandboxctl.health._run") as mock:
+        with (
+            patch("sandboxctl.health.resolve_container_name", return_value=f"{_CONTAINER_PREFIX}test"),
+            patch("sandboxctl.health._run") as mock,
+        ):
             mock.return_value = MagicMock(returncode=0, stdout="Paused")
             assert check_container_state("test") == ContainerState.PAUSED
 
@@ -184,12 +226,25 @@ class TestSshConnectivity:
             mock.return_value = MagicMock(returncode=0, stdout="ok")
             assert check_ssh_connectivity("test") is True
 
-    def test_uses_openshell_prefix(self) -> None:
+    def test_prefers_workspace_scoped_alias(self) -> None:
         with patch("sandboxctl.health._run") as mock:
             mock.return_value = MagicMock(returncode=0, stdout="ok")
             check_ssh_connectivity("mybox")
             cmd = mock.call_args[0][0]
-            assert "openshell-mybox" in cmd
+            assert "openshell-mybox.default" in cmd
+
+    def test_falls_back_to_bare_alias(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            # First attempt (.default) fails, second (bare) succeeds
+            mock.side_effect = [
+                MagicMock(returncode=1, stdout=""),
+                MagicMock(returncode=0, stdout="ok"),
+            ]
+            assert check_ssh_connectivity("mybox") is True
+            assert mock.call_count == 2
+            second_cmd = mock.call_args_list[1][0][0]
+            assert "openshell-mybox" in second_cmd
+            assert "openshell-mybox.default" not in second_cmd
 
     def test_unreachable(self) -> None:
         with patch("sandboxctl.health._run") as mock:
@@ -203,6 +258,11 @@ class TestSshConnectivity:
     def test_not_found(self) -> None:
         with patch("sandboxctl.health._run", side_effect=FileNotFoundError):
             assert check_ssh_connectivity("test") is False
+
+    def test_resolve_ssh_host_returns_none_when_unreachable(self) -> None:
+        with patch("sandboxctl.health._run") as mock:
+            mock.return_value = MagicMock(returncode=1, stdout="")
+            assert resolve_ssh_host("test") is None
 
 
 class TestRecoveryFunctions:
@@ -237,19 +297,32 @@ class TestRecoveryFunctions:
             assert recover_gateway() is False
 
     def test_recover_container_success(self) -> None:
-        with patch("sandboxctl.health._run") as mock:
+        with (
+            patch("sandboxctl.health.resolve_container_name", return_value=f"{_CONTAINER_PREFIX}test"),
+            patch("sandboxctl.health._run") as mock,
+        ):
             mock.return_value = MagicMock(returncode=0)
             assert recover_container("test") is True
 
-    def test_recover_container_uses_prefixed_name(self) -> None:
-        with patch("sandboxctl.health._run") as mock:
+    def test_recover_container_uses_resolved_name(self) -> None:
+        with (
+            patch("sandboxctl.health.resolve_container_name", return_value=f"{_CONTAINER_PREFIX}mybox"),
+            patch("sandboxctl.health._run") as mock,
+        ):
             mock.return_value = MagicMock(returncode=0)
             recover_container("mybox")
             cmd = mock.call_args[0][0]
             assert f"{_CONTAINER_PREFIX}mybox" in cmd
 
     def test_recover_container_failure(self) -> None:
-        with patch("sandboxctl.health._run", side_effect=FileNotFoundError):
+        with (
+            patch("sandboxctl.health.resolve_container_name", return_value=f"{_CONTAINER_PREFIX}test"),
+            patch("sandboxctl.health._run", side_effect=FileNotFoundError),
+        ):
+            assert recover_container("test") is False
+
+    def test_recover_container_missing_returns_false(self) -> None:
+        with patch("sandboxctl.health.resolve_container_name", return_value=None):
             assert recover_container("test") is False
 
 

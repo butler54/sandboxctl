@@ -330,6 +330,37 @@ def _setup_providers(config: SandboxctlConfig, github_token: str | None) -> None
         typer.echo("  github: configured")
 
 
+def _setup_mlflow(config: SandboxctlConfig) -> None:
+    """Optional/prompted MLflow tracking server setup (MLFLOW-04)."""
+    from sandboxctl import mlflow_cmd
+
+    typer.echo("\n--- MLflow Tracking ---")
+
+    # External mode is unmanaged — nothing to set up
+    if not config.mlflow.managed:
+        typer.echo("  External mode (unmanaged) — skip setup")
+        return
+
+    # Prompt user whether to set up MLflow
+    setup_mlflow = typer.confirm("  Setup MLflow tracking server?", default=False)
+    if not setup_mlflow:
+        typer.echo("  Skipped")
+        return
+
+    # Check if already running
+    if mlflow_cmd.is_mlflow_running():
+        typer.echo(f"  MLflow already running: {config.mlflow.tracking_uri}")
+        return
+
+    # Start container
+    try:
+        mlflow_cmd.start_mlflow_container(config.mlflow.data_dir, config.mlflow.port)
+        typer.echo(f"  MLflow started: {config.mlflow.tracking_uri}")
+    except RuntimeError as e:
+        typer.echo(f"  Failed to start MLflow: {e}", err=True)
+        typer.echo("  You can start it later with: sandboxctl mlflow start")
+
+
 def run_setup(config: SandboxctlConfig) -> None:
     """Orchestrate first-run onboarding."""
     typer.echo("=" * 40)
@@ -347,6 +378,7 @@ def run_setup(config: SandboxctlConfig) -> None:
     github_token = _setup_github_pat(config)
     _setup_gitlab_pats(config)
     _setup_providers(config, github_token)
+    _setup_mlflow(config)
 
     typer.echo("\n" + "=" * 40)
     typer.echo("Setup complete.")

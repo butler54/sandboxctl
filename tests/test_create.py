@@ -261,7 +261,7 @@ class TestPostLaunchSetup:
 
     def test_vertex_env_vars_injected(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path, vertex=True)
-        profile = Profile(name="test")
+        profile = Profile(name="test", mlflow=False)
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
@@ -279,7 +279,7 @@ class TestPostLaunchSetup:
 
     def test_no_vertex_env_vars_when_not_configured(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path, vertex=False)
-        profile = Profile(name="test")
+        profile = Profile(name="test", mlflow=False)
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
@@ -294,7 +294,7 @@ class TestPostLaunchSetup:
 
     def test_gitlab_token_injected_without_shell_expansion(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)
-        profile = Profile(name="test", repos={"gitlab.com": ["group/project"]})
+        profile = Profile(name="test", repos={"gitlab.com": ["group/project"]}, mlflow=False)
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
@@ -313,7 +313,7 @@ class TestPostLaunchSetup:
 
     def test_gitlab_credential_helper_per_server(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)
-        profile = Profile(name="test", repos={"gitlab.example.com": ["team/project"]})
+        profile = Profile(name="test", repos={"gitlab.example.com": ["team/project"]}, mlflow=False)
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
@@ -339,6 +339,7 @@ class TestPostLaunchSetup:
         profile = Profile(
             name="test",
             credentials=CredentialConfig(gitlab_servers=["gitlab.com", "gitlab.internal.co"]),
+            mlflow=False,
         )
 
         with (
@@ -357,7 +358,7 @@ class TestPostLaunchSetup:
 
     def test_gitlab_credential_uses_user_account(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)
-        profile = Profile(name="test")
+        profile = Profile(name="test", mlflow=False)
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe"),
@@ -375,7 +376,7 @@ class TestPostLaunchSetup:
 
     def test_ca_env_vars_include_gh_ssl_cainfo(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)
-        profile = Profile(name="test")
+        profile = Profile(name="test", mlflow=False)
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
@@ -392,7 +393,7 @@ class TestPostLaunchSetup:
 
     def test_gws_credentials_exported_when_gws_installed(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)
-        profile = Profile(name="test")
+        profile = Profile(name="test", mlflow=False)
         gws_dir = tmp_path / "nohome" / ".config" / "gws"
         gws_dir.mkdir(parents=True)
         (gws_dir / "client_secret.json").write_text('{"installed":{}}')
@@ -414,7 +415,7 @@ class TestPostLaunchSetup:
 
     def test_gws_skipped_when_not_installed(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)
-        profile = Profile(name="test")
+        profile = Profile(name="test", mlflow=False)
         gws_dir = tmp_path / "nohome" / ".config" / "gws"
         gws_dir.mkdir(parents=True)
         (gws_dir / "client_secret.json").write_text('{"installed":{}}')
@@ -434,7 +435,7 @@ class TestPostLaunchSetup:
 
     def test_gws_graceful_on_export_failure(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)
-        profile = Profile(name="test")
+        profile = Profile(name="test", mlflow=False)
         gws_dir = tmp_path / "nohome" / ".config" / "gws"
         gws_dir.mkdir(parents=True)
         (gws_dir / "client_secret.json").write_text('{"installed":{}}')

@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.13.3 (2026-08-11)
+
+### Bug Fixes
+
+- **open**: Detect Apple Events -1743 auth error and show permission fix instructions
+  ([#96](https://github.com/butler54/sandboxctl/pull/96),
+  [`6d86044`](https://github.com/butler54/sandboxctl/commit/6d86044f3dcfea8212a149aefbafeead6dbdc8b1))
+
+
 ## v1.13.2 (2026-08-10)
 
 ### Bug Fixes

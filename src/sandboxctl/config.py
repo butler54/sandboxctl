@@ -287,15 +287,42 @@ def find_terminal_app() -> str | None:
 
     Returns the app name suitable for osascript ("iTerm" or "Terminal"), NOT a full path.
     User can override via config [workspace] terminal_app field.
+
+    Detection order (most-to-least reliable):
+    1. ITERM_SESSION_ID env var  — set by iTerm2 in every shell it owns, including
+       tmux sessions launched from iTerm2. Works even when the .app is not at the
+       standard /Applications path.
+    2. mdfind by bundle ID       — locates iTerm2 regardless of install location.
+    3. Path fallback              — /Applications/iTerm.app (historical default).
+    4. Terminal.app               — built-in macOS fallback.
     """
-    # Check for iTerm2 (better UX: tabs, scripting)
-    iterm_path = Path("/Applications/iTerm.app")
-    if iterm_path.exists():
+    import subprocess
+
+    # 1. Environment-based: ITERM_SESSION_ID is injected by iTerm2 into every
+    #    shell it manages, including shells running inside tmux-integration mode.
+    if os.environ.get("ITERM_SESSION_ID"):
         return "iTerm"
 
-    # Fall back to built-in Terminal.app
-    terminal_path = Path("/System/Applications/Utilities/Terminal.app")
-    if terminal_path.exists():
+    # 2. Spotlight lookup: resolves non-standard install paths
+    try:
+        result = subprocess.run(
+            ["mdfind", "kMDItemCFBundleIdentifier == 'com.googlecode.iterm2'"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=2,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return "iTerm"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # 3. Standard path fallback
+    if Path("/Applications/iTerm.app").exists():
+        return "iTerm"
+
+    # 4. Built-in Terminal.app
+    if Path("/System/Applications/Utilities/Terminal.app").exists():
         return "Terminal"
 
     return None  # Neither found — caller prints manual command

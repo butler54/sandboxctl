@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.13.5 (2026-08-11)
+
+### Bug Fixes
+
+- **open**: Restore inline Claude launch in current terminal session
+  ([#98](https://github.com/butler54/sandboxctl/pull/98),
+  [`5916a9b`](https://github.com/butler54/sandboxctl/commit/5916a9b3e39889860891c9187f0d36390e1e8ec7))
+
+
 ## v1.13.4 (2026-08-11)
 
 ### Bug Fixes

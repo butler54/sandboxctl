@@ -11,6 +11,33 @@ from sandboxctl.config import SandboxctlConfig, find_terminal_app, find_vscode_b
 from sandboxctl.extensions import classify_remote_extensions, install_extensions
 from sandboxctl.health import diagnose, resolve_ssh_host
 
+_APPLE_EVENTS_AUTH_ERROR = "-1743"
+_APPLE_EVENTS_HELP = (
+    "Fix: System Settings → Privacy & Security → Automation\n     Allow the app running sandboxctl to control {app}."
+)
+
+
+def _run_osascript(script: str, app_display_name: str, command: str) -> None:
+    """Run osascript, detect -1743 auth errors, and show actionable help."""
+    result = subprocess.run(
+        ["osascript", "-e", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if _APPLE_EVENTS_AUTH_ERROR in stderr:
+            typer.echo(
+                f"ERROR: macOS blocked Apple Events to {app_display_name} ({_APPLE_EVENTS_AUTH_ERROR}).\n"
+                + _APPLE_EVENTS_HELP.format(app=app_display_name),
+                err=True,
+            )
+            typer.echo(f"\nRun manually:\n  {command}")
+        elif stderr:
+            typer.echo(f"WARNING: osascript error: {stderr}", err=True)
+            typer.echo(f"\nRun manually:\n  {command}")
+
 
 def spawn_terminal_with_claude(sandbox_name: str, terminal_app: str | None) -> None:
     """Spawn external terminal app running Claude Code session.
@@ -30,14 +57,14 @@ def spawn_terminal_with_claude(sandbox_name: str, terminal_app: str | None) -> N
           end tell
         end tell
         '''
-        subprocess.run(["osascript", "-e", script], check=False)
+        _run_osascript(script, "iTerm2", command)
     elif terminal_app == "Terminal":
         script = f'''
         tell application "Terminal"
           do script "{command}"
         end tell
         '''
-        subprocess.run(["osascript", "-e", script], check=False)
+        _run_osascript(script, "Terminal", command)
     else:
         # Fallback: print manual command
         typer.echo("WARNING: No terminal app detected. Run manually:")

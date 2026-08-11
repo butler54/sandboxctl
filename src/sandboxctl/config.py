@@ -283,19 +283,51 @@ def find_vscode_bin() -> Path | None:
 
 
 def find_terminal_app() -> str | None:
-    """Find terminal app on macOS: iTerm2 first, then Terminal.app, then None.
+    """Detect the terminal app to use for spawning a Claude Code session.
 
     Returns the app name suitable for osascript ("iTerm" or "Terminal"), NOT a full path.
     User can override via config [workspace] terminal_app field.
+
+    Priority: infer from the CURRENT terminal environment first so the new window
+    opens in the same app the user is already in. Only fall back to installed-app
+    detection if the environment gives no signal.
     """
-    # Check for iTerm2 (better UX: tabs, scripting)
-    iterm_path = Path("/Applications/iTerm.app")
-    if iterm_path.exists():
+    import subprocess
+
+    # 1. Current-terminal inference via environment variables.
+    #    These are set by the terminal app itself and survive tmux sessions.
+    iterm_session = os.environ.get("ITERM_SESSION_ID")
+    term_program = os.environ.get("TERM_PROGRAM", "")
+
+    if iterm_session or "iterm" in term_program.lower():
         return "iTerm"
 
-    # Fall back to built-in Terminal.app
-    terminal_path = Path("/System/Applications/Utilities/Terminal.app")
-    if terminal_path.exists():
+    if term_program == "Apple_Terminal":
         return "Terminal"
 
-    return None  # Neither found — caller prints manual command
+    # 2. Installed-app fallback (no useful env signal — e.g. launched from a
+    #    script or CI context). Check common locations and mdfind.
+    for iterm_path in (
+        Path("/Applications/iTerm.app"),
+        Path.home() / "Applications" / "iTerm.app",
+    ):
+        if iterm_path.exists():
+            return "iTerm"
+
+    try:
+        result = subprocess.run(
+            ["mdfind", "kMDItemCFBundleIdentifier == 'com.googlecode.iterm2'"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=2,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return "iTerm"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    if Path("/System/Applications/Utilities/Terminal.app").exists():
+        return "Terminal"
+
+    return None  # No terminal found — caller prints manual command

@@ -283,27 +283,37 @@ def find_vscode_bin() -> Path | None:
 
 
 def find_terminal_app() -> str | None:
-    """Find terminal app on macOS: iTerm2 first, then Terminal.app, then None.
+    """Detect the terminal app to use for spawning a Claude Code session.
 
     Returns the app name suitable for osascript ("iTerm" or "Terminal"), NOT a full path.
     User can override via config [workspace] terminal_app field.
 
-    Detection order (most-to-least reliable):
-    1. ITERM_SESSION_ID env var  — set by iTerm2 in every shell it owns, including
-       tmux sessions launched from iTerm2. Works even when the .app is not at the
-       standard /Applications path.
-    2. mdfind by bundle ID       — locates iTerm2 regardless of install location.
-    3. Path fallback              — /Applications/iTerm.app (historical default).
-    4. Terminal.app               — built-in macOS fallback.
+    Priority: infer from the CURRENT terminal environment first so the new window
+    opens in the same app the user is already in. Only fall back to installed-app
+    detection if the environment gives no signal.
     """
     import subprocess
 
-    # 1. Environment-based: ITERM_SESSION_ID is injected by iTerm2 into every
-    #    shell it manages, including shells running inside tmux-integration mode.
-    if os.environ.get("ITERM_SESSION_ID"):
+    # 1. Current-terminal inference via environment variables.
+    #    These are set by the terminal app itself and survive tmux sessions.
+    iterm_session = os.environ.get("ITERM_SESSION_ID")
+    term_program = os.environ.get("TERM_PROGRAM", "")
+
+    if iterm_session or "iterm" in term_program.lower():
         return "iTerm"
 
-    # 2. Spotlight lookup: resolves non-standard install paths
+    if term_program == "Apple_Terminal":
+        return "Terminal"
+
+    # 2. Installed-app fallback (no useful env signal — e.g. launched from a
+    #    script or CI context). Check common locations and mdfind.
+    for iterm_path in (
+        Path("/Applications/iTerm.app"),
+        Path.home() / "Applications" / "iTerm.app",
+    ):
+        if iterm_path.exists():
+            return "iTerm"
+
     try:
         result = subprocess.run(
             ["mdfind", "kMDItemCFBundleIdentifier == 'com.googlecode.iterm2'"],
@@ -317,12 +327,7 @@ def find_terminal_app() -> str | None:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # 3. Standard path fallback
-    if Path("/Applications/iTerm.app").exists():
-        return "iTerm"
-
-    # 4. Built-in Terminal.app
     if Path("/System/Applications/Utilities/Terminal.app").exists():
         return "Terminal"
 
-    return None  # Neither found — caller prints manual command
+    return None  # No terminal found — caller prints manual command

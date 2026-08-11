@@ -2,6 +2,23 @@
 
 <!-- version list -->
 
+## v1.13.4 (2026-08-11)
+
+### Bug Fixes
+
+- **config**: Improve iTerm2 detection via ITERM_SESSION_ID and mdfind
+  ([#97](https://github.com/butler54/sandboxctl/pull/97),
+  [`bba8efc`](https://github.com/butler54/sandboxctl/commit/bba8efc222e0eb1640a68759880de00485221885))
+
+- **config**: Infer current terminal from env vars before checking installed apps
+  ([#97](https://github.com/butler54/sandboxctl/pull/97),
+  [`bba8efc`](https://github.com/butler54/sandboxctl/commit/bba8efc222e0eb1640a68759880de00485221885))
+
+- **config**: Infer current terminal from env vars, not installed apps
+  ([#97](https://github.com/butler54/sandboxctl/pull/97),
+  [`bba8efc`](https://github.com/butler54/sandboxctl/commit/bba8efc222e0eb1640a68759880de00485221885))
+
+
 ## v1.13.3 (2026-08-11)
 
 ### Bug Fixes

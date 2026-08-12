@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.13.6 (2026-08-12)
+
+### Bug Fixes
+
+- Use valid google-vertex-ai provider type for Vertex project ID
+  ([#100](https://github.com/butler54/sandboxctl/pull/100),
+  [`4878533`](https://github.com/butler54/sandboxctl/commit/4878533599781b48dab2c89166e26e531957eecc))
+
+
 ## v1.13.5 (2026-08-11)
 
 ### Bug Fixes

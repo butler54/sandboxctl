@@ -177,23 +177,17 @@ def provider_list() -> str:
 def provider_create(
     name: str,
     provider_type: str,
-    credential: str,
+    credential: str = "",
+    *,
+    from_gcloud_adc: bool = False,
 ) -> None:
     # Delete first so stale credentials are never inherited (upsert semantics).
     # No-op when the provider does not exist (check=False).
     _run(["openshell", "provider", "delete", name], check=False, capture=True)
+    cmd = ["openshell", "provider", "create", "--name", name, "--type", provider_type]
+    cmd += ["--from-gcloud-adc"] if from_gcloud_adc else ["--credential", credential]
     _run(
-        [
-            "openshell",
-            "provider",
-            "create",
-            "--name",
-            name,
-            "--type",
-            provider_type,
-            "--credential",
-            credential,
-        ],
+        cmd,
         check=False,
         capture=False,
     )

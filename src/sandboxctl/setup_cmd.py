@@ -313,11 +313,11 @@ def _setup_providers(config: SandboxctlConfig, github_token: str | None) -> None
     typer.echo("  providers_v2_enabled: true")
 
     if config.providers.vertex_project_id:
-        provider_create(
-            "vertex-claude",
-            "vertex-claude",
-            f"ANTHROPIC_VERTEX_PROJECT_ID={config.providers.vertex_project_id}",
-        )
+        # "google-vertex-ai" is the real provider profile id — "vertex-claude" (the provider
+        # *name*) is not a valid --type and made this call fail silently every time. Project
+        # ID is exported directly into each sandbox's .bashrc (see create.py post_launch_setup)
+        # rather than smuggled in here as a provider credential.
+        provider_create("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
         # Import provider profile YAML with tls:skip on OAuth endpoints (fixes #69)
         yaml_path = _write_vertex_provider_yaml(config.config_dir)
         provider_profile_import(yaml_path)

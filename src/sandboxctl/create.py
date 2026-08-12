@@ -177,11 +177,14 @@ def setup_providers(config: SandboxctlConfig) -> list[str]:
 
     if config.vertex_project_id:
         osh.settings_set("providers_v2_enabled", "true")
-        osh.provider_create(
-            "vertex-claude",
-            "vertex-claude",
-            f"ANTHROPIC_VERTEX_PROJECT_ID={config.vertex_project_id}",
-        )
+        # Provider type must be a real OpenShell provider profile id ("google-vertex-ai"),
+        # not the provider *name* — the previous "vertex-claude" type made provider_create's
+        # upsert fail silently (delete succeeds, create is rejected: "unsupported provider
+        # type"), so the provider was never actually refreshed here. Project ID isn't a
+        # secret and isn't part of this profile's credential schema (token-only:
+        # service_account_key/service_account_token/gcloud_adc_token), so it's exported
+        # directly into the sandbox's .bashrc in post_launch_setup instead.
+        osh.provider_create("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
         providers.append("vertex-claude")
 
         # Ensure provider profile YAML exists with tls:skip on OAuth endpoints (fixes #69)
@@ -249,12 +252,14 @@ def post_launch_setup(
 
     if config.vertex_project_id:
         vertex_region = config.vertex_region
+        vertex_project_id = config.vertex_project_id
         osh.sandbox_exec_pipe(
             name,
             "grep -q CLAUDE_CODE_USE_VERTEX /sandbox/.bashrc 2>/dev/null || "
             'echo "export CLAUDE_CODE_USE_VERTEX=1\n'
-            f"export CLOUD_ML_REGION={vertex_region}"
-            '" >> /sandbox/.bashrc; '
+            f"export CLOUD_ML_REGION={vertex_region}\n"
+            f'export ANTHROPIC_VERTEX_PROJECT_ID={vertex_project_id}"'
+            " >> /sandbox/.bashrc; "
             'echo "Vertex AI env: configured"',
         )
 

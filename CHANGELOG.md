@@ -2,6 +2,31 @@
 
 <!-- version list -->
 
+## v1.14.0 (2026-08-12)
+
+### Chores
+
+- Bump github/codeql-action from 4.37.3 to 4.37.6
+  ([#102](https://github.com/butler54/sandboxctl/pull/102),
+  [`13b9d3b`](https://github.com/butler54/sandboxctl/commit/13b9d3beaea5da457ce1dbd95297c1f422f308e5))
+
+### Code Style
+
+- Fix ruff-format line length in MLflow plugin error raise
+  ([#101](https://github.com/butler54/sandboxctl/pull/101),
+  [`84565df`](https://github.com/butler54/sandboxctl/commit/84565dfcee4b9cfff713c41e3638cb842a8d9f9f))
+
+### Features
+
+- **22**: Wire MLflow Claude Code tracing plugin install and env var injection (TRACE-01/02/03)
+  ([#101](https://github.com/butler54/sandboxctl/pull/101),
+  [`84565df`](https://github.com/butler54/sandboxctl/commit/84565dfcee4b9cfff713c41e3638cb842a8d9f9f))
+
+- **22**: Wire MLflow Claude Code tracing plugin install and env vars
+  ([#101](https://github.com/butler54/sandboxctl/pull/101),
+  [`84565df`](https://github.com/butler54/sandboxctl/commit/84565dfcee4b9cfff713c41e3638cb842a8d9f9f))
+
+
 ## v1.13.7 (2026-08-12)
 
 ### Bug Fixes

@@ -2,6 +2,29 @@
 
 <!-- version list -->
 
+## v1.13.7 (2026-08-12)
+
+### Bug Fixes
+
+- **open**: Restore claude --continue session resume
+  ([#99](https://github.com/butler54/sandboxctl/pull/99),
+  [`fa896df`](https://github.com/butler54/sandboxctl/commit/fa896df3315b75a688c95dc23031077c9d617964))
+
+### Chores
+
+- Bump pypa/gh-action-pypi-publish from 1.14.1 to 1.14.2
+  ([#87](https://github.com/butler54/sandboxctl/pull/87),
+  [`7da6886`](https://github.com/butler54/sandboxctl/commit/7da6886a1d1f9293167c3d7713930f40095e86e3))
+
+- Bump sigstore/gh-action-sigstore-python from 3.4.0 to 3.5.0
+  ([#89](https://github.com/butler54/sandboxctl/pull/89),
+  [`7c890cb`](https://github.com/butler54/sandboxctl/commit/7c890cbc89fd9e7fb63b87db776e7fb92b96573d))
+
+- Bump step-security/harden-runner from 2.20.0 to 2.20.1
+  ([#88](https://github.com/butler54/sandboxctl/pull/88),
+  [`9265a3e`](https://github.com/butler54/sandboxctl/commit/9265a3e7062c9a7dba6f490ed90e9e754ed981ba))
+
+
 ## v1.13.6 (2026-08-12)
 
 ### Bug Fixes

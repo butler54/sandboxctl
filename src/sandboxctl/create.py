@@ -352,6 +352,28 @@ def post_launch_setup(
             'echo "MLflow tracking: configured"',
         )
 
+        # TRACE-01/02: Inject experiment name and enable tracing (idempotent append, per D-04/D-02)
+        osh.sandbox_exec_pipe(
+            name,
+            "grep -q MLFLOW_EXPERIMENT_NAME /sandbox/.bashrc 2>/dev/null || "
+            f'echo "export MLFLOW_EXPERIMENT_NAME=sandbox/{name}" >> /sandbox/.bashrc; '
+            "grep -q MLFLOW_CLAUDE_TRACING_ENABLED /sandbox/.bashrc 2>/dev/null || "
+            'echo "export MLFLOW_CLAUDE_TRACING_ENABLED=true" >> /sandbox/.bashrc; '
+            'echo "MLflow tracing: env vars configured"',
+        )
+
+        # TRACE-01: Install Claude Code tracing plugin (fail-closed per D-07)
+        result = osh.sandbox_exec_pipe(
+            name,
+            "claude plugin marketplace add mlflow/mlflow --sparse .claude-plugin && "
+            "claude plugin install mlflow-tracing@mlflow-plugins && "
+            'echo "MLflow tracing: plugin installed"',
+        )
+        if "plugin installed" not in result:
+            raise RuntimeError(
+                "MLflow Claude Code tracing plugin install failed. Create aborted (fail-closed)."
+            )
+
     # Stage gcloud ADC for Vertex AI
     adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
     if adc_path.exists():

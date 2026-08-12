@@ -290,3 +290,14 @@ class TestProviderCreate:
             assert delete_cmd == ["openshell", "provider", "delete", "vertex-claude"]
             assert "create" in create_cmd
             assert "CRED=new-project-id" in create_cmd
+
+    def test_from_gcloud_adc_omits_credential_flag(self) -> None:
+        """from_gcloud_adc=True uses --from-gcloud-adc instead of --credential."""
+        with patch("sandboxctl.openshell._run") as mock_run:
+            provider_create("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
+
+            create_cmd = mock_run.call_args_list[1][0][0]
+            assert "--from-gcloud-adc" in create_cmd
+            assert "--credential" not in create_cmd
+            assert "--type" in create_cmd
+            assert "google-vertex-ai" in create_cmd

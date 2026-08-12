@@ -225,7 +225,7 @@ class TestGenerateProviderYaml:
         ):
             providers = setup_providers(config)
         assert "vertex-claude" in providers
-        mock_create.assert_called_once_with("vertex-claude", "vertex-claude", "ANTHROPIC_VERTEX_PROJECT_ID=my-project")
+        mock_create.assert_called_once_with("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
 
         # Verify provider profile YAML is generated and imported with tls:skip
         mock_import.assert_called_once()
@@ -276,6 +276,7 @@ class TestPostLaunchSetup:
         script = vertex_calls[0][0][1]
         assert "CLAUDE_CODE_USE_VERTEX=1" in script
         assert "CLOUD_ML_REGION=us-central1" in script
+        assert "ANTHROPIC_VERTEX_PROJECT_ID=my-project" in script
 
     def test_no_vertex_env_vars_when_not_configured(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path, vertex=False)

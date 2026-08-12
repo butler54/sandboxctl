@@ -47,8 +47,8 @@ class TestOpenShellMode:
 
 
 class TestOpenClaudeMode:
-    def test_runs_claude_inline_in_current_session(self) -> None:
-        """Claude mode runs sandbox_exec_interactive in the current terminal session."""
+    def test_resumes_session_with_continue_flag(self) -> None:
+        """Claude mode tries claude --continue first to resume an existing session."""
         report = MagicMock(healthy=True)
         config = MagicMock()
 
@@ -59,7 +59,27 @@ class TestOpenClaudeMode:
         ):
             open_sandbox("mybox", config, mode="claude")
 
-        mock_exec.assert_called_once_with("mybox", "claude")
+        mock_exec.assert_called_once_with("mybox", "cd /sandbox && claude --continue")
+
+    def test_falls_back_to_fresh_session_when_continue_fails(self) -> None:
+        """When claude --continue returns non-zero, falls back to a fresh claude session."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        exec_results = iter([1, 0])
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", side_effect=exec_results) as mock_exec,
+        ):
+            open_sandbox("mybox", config, mode="claude")
+
+        assert mock_exec.call_count == 2
+        first_cmd = mock_exec.call_args_list[0][0][1]
+        second_cmd = mock_exec.call_args_list[1][0][1]
+        assert "--continue" in first_cmd
+        assert "--continue" not in second_cmd
 
     def test_uses_default_repo_when_set(self) -> None:
         """Claude mode cds into profile.sandbox.default_repo before launching."""
@@ -77,7 +97,7 @@ class TestOpenClaudeMode:
 
         cmd = mock_exec.call_args[0][1]
         assert "my-project" in cmd
-        assert "claude" in cmd
+        assert "--continue" in cmd
 
 
 class TestOpenCodeMode:
@@ -127,8 +147,8 @@ class TestOpenCodeMode:
 class TestClaudeContinueHardening:
     """Tests for Claude reconnect fallback when exec returns non-zero."""
 
-    def test_reconnects_via_shell_when_exec_fails(self) -> None:
-        """When sandbox_exec_interactive returns non-zero, falls back to sandbox_connect."""
+    def test_reconnects_via_shell_when_both_exec_attempts_fail(self) -> None:
+        """When both --continue and fresh session return non-zero, falls back to sandbox_connect."""
         report = MagicMock(healthy=True)
         config = MagicMock()
 
@@ -233,8 +253,8 @@ class TestBothMode:
         # VS Code launched via subprocess
         vscode_calls = [c for c in mock_run.call_args_list if "--remote" in str(c)]
         assert len(vscode_calls) >= 1
-        # Claude launched inline
-        mock_exec.assert_called_once_with("mybox", "claude")
+        # Claude launched inline with --continue to resume session
+        mock_exec.assert_called_once_with("mybox", "cd /sandbox && claude --continue")
 
 
 class TestExtensionInstallHook:

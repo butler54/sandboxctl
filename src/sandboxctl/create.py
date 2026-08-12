@@ -370,9 +370,7 @@ def post_launch_setup(
             'echo "MLflow tracing: plugin installed"',
         )
         if "plugin installed" not in result:
-            raise RuntimeError(
-                "MLflow Claude Code tracing plugin install failed. Create aborted (fail-closed)."
-            )
+            raise RuntimeError("MLflow Claude Code tracing plugin install failed. Create aborted (fail-closed).")
 
     # Stage gcloud ADC for Vertex AI
     adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"

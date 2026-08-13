@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.14.1 (2026-08-13)
+
+### Bug Fixes
+
+- Provider YAML id field and plugin install CA env
+  ([#103](https://github.com/butler54/sandboxctl/pull/103),
+  [`ba42d0d`](https://github.com/butler54/sandboxctl/commit/ba42d0d74b26cf27864f31e6af0c49712a6fb6eb))
+
+
 ## v1.14.0 (2026-08-12)
 
 ### Chores

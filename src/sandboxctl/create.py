@@ -150,23 +150,24 @@ def _ensure_vertex_provider_yaml(config_dir: Path) -> Path:
     providers_dir.mkdir(parents=True, exist_ok=True)
 
     yaml_path = providers_dir / "vertex-claude.yaml"
-    if not yaml_path.exists():
-        yaml_content = """\
-_provider_vertex_claude:
-  endpoints:
-    - host: oauth2.googleapis.com
-      port: 443
-      protocol: rest
-      tls: skip
-      enforcement: enforce
-      access: read-write
-    - host: accounts.google.com
-      port: 443
-      protocol: rest
-      tls: skip
-      enforcement: enforce
-      access: read-write
+    yaml_content = """\
+id: vertex-claude
+endpoints:
+  - host: oauth2.googleapis.com
+    port: 443
+    protocol: rest
+    tls: skip
+    enforcement: enforce
+    access: read-write
+  - host: accounts.google.com
+    port: 443
+    protocol: rest
+    tls: skip
+    enforcement: enforce
+    access: read-write
 """
+    # Regenerate if missing or if it has the old format (missing `id:` field)
+    if not yaml_path.exists() or "id:" not in yaml_path.read_text():
         yaml_path.write_text(yaml_content)
     return yaml_path
 
@@ -362,15 +363,21 @@ def post_launch_setup(
             'echo "MLflow tracing: env vars configured"',
         )
 
-        # TRACE-01: Install Claude Code tracing plugin (fail-closed per D-07)
+        # TRACE-01: Install Claude Code tracing plugin (fail-closed per D-07).
+        # Source .bashrc so CA env vars (GIT_SSL_CAINFO, SSL_CERT_FILE, etc.) are active
+        # for the git sparse-clone that `claude plugin marketplace add` performs.
+        # Redirect stderr to stdout so failures are captured and visible in the error message.
         result = osh.sandbox_exec_pipe(
             name,
-            "claude plugin marketplace add mlflow/mlflow --sparse .claude-plugin && "
-            "claude plugin install mlflow-tracing@mlflow-plugins && "
+            "source /sandbox/.bashrc 2>/dev/null; "
+            "claude plugin marketplace add mlflow/mlflow --sparse .claude-plugin 2>&1 && "
+            "claude plugin install mlflow-tracing@mlflow-plugins 2>&1 && "
             'echo "MLflow tracing: plugin installed"',
         )
         if "plugin installed" not in result:
-            raise RuntimeError("MLflow Claude Code tracing plugin install failed. Create aborted (fail-closed).")
+            raise RuntimeError(
+                f"MLflow Claude Code tracing plugin install failed. Create aborted (fail-closed).\n{result}"
+            )
 
     # Stage gcloud ADC for Vertex AI
     adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"

@@ -39,11 +39,20 @@ def _run(
 
 
 def start_mlflow_container(data_dir: Path, port: int = 5050) -> None:
-    """Start MLflow tracking server container with bind-mounted storage."""
-    # Ensure data directory exists
+    """Start MLflow tracking server container with bind-mounted storage.
+
+    If the container already exists in a stopped/exited state, restarts it
+    via `podman start` rather than attempting to create a duplicate.
+    """
+    if _mlflow_container_exists():
+        result = _run(["podman", "start", MLFLOW_CONTAINER_NAME], check=False)
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to start MLflow container: {result.stderr}")
+        return
+
+    # Container does not exist — create and start it
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build podman argv as list (no shell=True)
     cmd = [
         "podman",
         "run",
@@ -83,6 +92,15 @@ def is_mlflow_running() -> bool:
     """Check if MLflow container is running."""
     result = _run(
         ["podman", "ps", "--filter", f"name={MLFLOW_CONTAINER_NAME}", "--format", "{{.Names}}"],
+        check=False,
+    )
+    return MLFLOW_CONTAINER_NAME in result.stdout
+
+
+def _mlflow_container_exists() -> bool:
+    """Check if MLflow container exists in any state (running, stopped, exited)."""
+    result = _run(
+        ["podman", "ps", "-a", "--filter", f"name={MLFLOW_CONTAINER_NAME}", "--format", "{{.Names}}"],
         check=False,
     )
     return MLFLOW_CONTAINER_NAME in result.stdout
@@ -131,8 +149,12 @@ def mlflow_status(config: SandboxctlConfig) -> str:
 
     if config.mlflow.managed:
         # Managed mode: container state, tracking URI, data-dir size
-        running = is_mlflow_running()
-        state = "running" if running else "stopped"
+        if is_mlflow_running():
+            state = "running"
+        elif _mlflow_container_exists():
+            state = "stopped (container exists — run `sandboxctl mlflow start` to resume)"
+        else:
+            state = "stopped (no container)"
         lines.append(f"MLflow Status: {state}")
         lines.append(f"Tracking URI: {config.mlflow.tracking_uri}")
 

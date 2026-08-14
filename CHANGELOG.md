@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.14.2 (2026-08-14)
+
+### Bug Fixes
+
+- Provider YAML id field and plugin install CA env
+  ([#104](https://github.com/butler54/sandboxctl/pull/104),
+  [`81d7d76`](https://github.com/butler54/sandboxctl/commit/81d7d762fc85ebf723ef83672623e868b611c105))
+
+- **mlflow**: Start stopped container via podman start, not podman run
+  ([#104](https://github.com/butler54/sandboxctl/pull/104),
+  [`81d7d76`](https://github.com/butler54/sandboxctl/commit/81d7d762fc85ebf723ef83672623e868b611c105))
+
+
 ## v1.14.1 (2026-08-13)
 
 ### Bug Fixes

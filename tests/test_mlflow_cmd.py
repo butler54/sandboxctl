@@ -30,13 +30,16 @@ class MockHTTPResponse:
 
 
 def test_start_mlflow_container(tmp_path: Path) -> None:
-    """Start command creates data_dir and runs podman with correct args."""
+    """Start command creates data_dir and runs podman run when no container exists."""
     from sandboxctl.mlflow_cmd import start_mlflow_container
 
     data_dir = tmp_path / "mlflow-data"
     port = 5050
 
-    with patch("sandboxctl.mlflow_cmd._run") as mock_run:
+    with (
+        patch("sandboxctl.mlflow_cmd._mlflow_container_exists", return_value=False),
+        patch("sandboxctl.mlflow_cmd._run") as mock_run,
+    ):
         mock_run.return_value = mock_completed_process(returncode=0, stdout="container-id\n")
 
         start_mlflow_container(data_dir, port)
@@ -85,16 +88,51 @@ def test_start_mlflow_container(tmp_path: Path) -> None:
 
 
 def test_start_mlflow_container_failure(tmp_path: Path) -> None:
-    """Start command raises RuntimeError when podman fails."""
+    """Start command raises RuntimeError when podman run fails (no existing container)."""
     from sandboxctl.mlflow_cmd import start_mlflow_container
 
     data_dir = tmp_path / "mlflow-data"
 
-    with patch("sandboxctl.mlflow_cmd._run") as mock_run:
+    with (
+        patch("sandboxctl.mlflow_cmd._mlflow_container_exists", return_value=False),
+        patch("sandboxctl.mlflow_cmd._run") as mock_run,
+    ):
         mock_run.return_value = mock_completed_process(returncode=125, stderr="Error: image not found")
 
         with pytest.raises(RuntimeError, match="Failed to start MLflow container"):
             start_mlflow_container(data_dir, 5050)
+
+
+def test_start_mlflow_container_stopped() -> None:
+    """Start command uses `podman start` when stopped container already exists."""
+    from sandboxctl.mlflow_cmd import start_mlflow_container
+
+    with (
+        patch("sandboxctl.mlflow_cmd._mlflow_container_exists", return_value=True),
+        patch("sandboxctl.mlflow_cmd._run") as mock_run,
+    ):
+        mock_run.return_value = mock_completed_process(returncode=0, stdout="mlflow-tracking\n")
+
+        start_mlflow_container(Path("/tmp/mlflow-data"), 5050)
+
+        # Should call `podman start`, NOT `podman run`
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert call_args == ["podman", "start", "mlflow-tracking"]
+
+
+def test_start_mlflow_container_stopped_failure() -> None:
+    """Start command raises RuntimeError when `podman start` fails on stopped container."""
+    from sandboxctl.mlflow_cmd import start_mlflow_container
+
+    with (
+        patch("sandboxctl.mlflow_cmd._mlflow_container_exists", return_value=True),
+        patch("sandboxctl.mlflow_cmd._run") as mock_run,
+    ):
+        mock_run.return_value = mock_completed_process(returncode=1, stderr="Error: container in wrong state")
+
+        with pytest.raises(RuntimeError, match="Failed to start MLflow container"):
+            start_mlflow_container(Path("/tmp/mlflow-data"), 5050)
 
 
 def test_stop_mlflow_container() -> None:
@@ -228,8 +266,8 @@ def test_mlflow_status(tmp_path: Path) -> None:
         assert "KB" in output or "B" in output  # Size formatting
 
 
-def test_mlflow_status_stopped(tmp_path: Path) -> None:
-    """Status shows stopped state when container is not running."""
+def test_mlflow_status_stopped_container_exists(tmp_path: Path) -> None:
+    """Status shows 'stopped (container exists)' when container is stopped but present."""
     from sandboxctl.config import MlflowConfig
     from sandboxctl.mlflow_cmd import mlflow_status
 
@@ -244,12 +282,40 @@ def test_mlflow_status_stopped(tmp_path: Path) -> None:
         port=5050,
     )
 
-    with patch("sandboxctl.mlflow_cmd.is_mlflow_running") as mock_running:
-        mock_running.return_value = False
-
+    with (
+        patch("sandboxctl.mlflow_cmd.is_mlflow_running", return_value=False),
+        patch("sandboxctl.mlflow_cmd._mlflow_container_exists", return_value=True),
+    ):
         output = mlflow_status(config)
 
-        assert "stopped" in output.lower() or "not running" in output.lower()
+        assert "stopped" in output.lower()
+        assert "container exists" in output.lower()
+
+
+def test_mlflow_status_no_container(tmp_path: Path) -> None:
+    """Status shows 'stopped (no container)' when container has never been created."""
+    from sandboxctl.config import MlflowConfig
+    from sandboxctl.mlflow_cmd import mlflow_status
+
+    data_dir = tmp_path / "mlflow-data"
+    data_dir.mkdir()
+
+    config = MagicMock()
+    config.mlflow = MlflowConfig(
+        tracking_uri="http://localhost:5050",
+        managed=True,
+        data_dir=data_dir,
+        port=5050,
+    )
+
+    with (
+        patch("sandboxctl.mlflow_cmd.is_mlflow_running", return_value=False),
+        patch("sandboxctl.mlflow_cmd._mlflow_container_exists", return_value=False),
+    ):
+        output = mlflow_status(config)
+
+        assert "stopped" in output.lower()
+        assert "no container" in output.lower()
 
 
 def test_external_mlflow_mode() -> None:

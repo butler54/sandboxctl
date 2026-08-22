@@ -2,6 +2,42 @@
 
 <!-- version list -->
 
+## v1.15.0 (2026-08-22)
+
+### Chores
+
+- Bump astral-sh/setup-uv from 9.0.0 to 10.0.1
+  ([#110](https://github.com/butler54/sandboxctl/pull/110),
+  [`999f0b6`](https://github.com/butler54/sandboxctl/commit/999f0b68e37ac6f94627bd1ee0a05c34d25c6387))
+
+- Bump github/codeql-action/analyze from 4.37.6 to 4.37.7
+  ([#106](https://github.com/butler54/sandboxctl/pull/106),
+  [`69b5526`](https://github.com/butler54/sandboxctl/commit/69b55260189828d904f02abddf7678d19d1eeb1f))
+
+- Bump github/codeql-action/init from 4.37.6 to 4.37.7
+  ([#109](https://github.com/butler54/sandboxctl/pull/109),
+  [`635dbf2`](https://github.com/butler54/sandboxctl/commit/635dbf215e7e3ddd1f2a51bf3b67434509021aa9))
+
+- Bump github/codeql-action/upload-sarif from 4.37.3 to 4.37.7
+  ([#107](https://github.com/butler54/sandboxctl/pull/107),
+  [`be5f447`](https://github.com/butler54/sandboxctl/commit/be5f44731b6d7950eed1dc8016e40d5c75eecdd6))
+
+- Bump step-security/harden-runner from 2.20.1 to 2.21.0
+  ([#108](https://github.com/butler54/sandboxctl/pull/108),
+  [`68768bd`](https://github.com/butler54/sandboxctl/commit/68768bd15606e33c41f9ad727d312b119e008883))
+
+### Code Style
+
+- Fix ruff lint and format violations ([#114](https://github.com/butler54/sandboxctl/pull/114),
+  [`df3e46c`](https://github.com/butler54/sandboxctl/commit/df3e46ce31b9baaa4db2072eacad7a4cacbda82b))
+
+### Features
+
+- Opencode as default agent, GSD opt-in, context restore hardening
+  ([#114](https://github.com/butler54/sandboxctl/pull/114),
+  [`df3e46c`](https://github.com/butler54/sandboxctl/commit/df3e46ce31b9baaa4db2072eacad7a4cacbda82b))
+
+
 ## v1.14.2 (2026-08-14)
 
 ### Bug Fixes

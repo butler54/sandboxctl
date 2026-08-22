@@ -69,6 +69,45 @@ def stage_claude_state(stage_dir: Path) -> None:
     (stage_dir / ".claude.json").write_text(json.dumps(state.model_dump(), indent=2) + "\n")
 
 
+def stage_opencode_config(stage_dir: Path, config: SandboxctlConfig) -> bool:
+    """Stage opencode config: host file if present, else generate baseline from Vertex config."""
+    host_config = Path.home() / ".config" / "opencode" / "config.json"
+    opencode_dir = stage_dir / ".config" / "opencode"
+    opencode_dir.mkdir(parents=True, exist_ok=True)
+
+    if host_config.exists():
+        shutil.copy2(host_config, opencode_dir / "config.json")
+        return True
+
+    if config.vertex_project_id:
+        opencode_config = {
+            "providers": [
+                {
+                    "id": "vertex",
+                    "type": "anthropic-vertex",
+                    "projectId": config.vertex_project_id,
+                    "region": config.vertex_region,
+                    "default": True,
+                }
+            ]
+        }
+        (opencode_dir / "config.json").write_text(json.dumps(opencode_config, indent=2) + "\n")
+        return True
+
+    return False
+
+
+def stage_opencode_plugins(stage_dir: Path) -> int:
+    """Stage opencode plugins from host ~/.config/opencode/plugins/."""
+    plugins_src = Path.home() / ".config" / "opencode" / "plugins"
+    if not plugins_src.exists():
+        return 0
+    plugins_dst = stage_dir / ".config" / "opencode" / "plugins"
+    plugins_dst.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(plugins_src, plugins_dst, symlinks=False, dirs_exist_ok=True)
+    return len(list(plugins_dst.iterdir()))
+
+
 def stage_credentials(stage_dir: Path, config: SandboxctlConfig) -> list[str]:
     staged: list[str] = []
 
@@ -429,26 +468,27 @@ def post_launch_setup(
         else:
             typer.echo("  MCP OAuth: no credentials found in host keychain")
 
-    # GSD runtime — install if missing, then write model_profile when set (#81, #82)
-    gsd_check = osh.sandbox_exec_pipe(name, "test -d /sandbox/.claude/gsd-core && echo 'present' || echo 'missing'")
-    if "present" in gsd_check:
-        typer.echo("  GSD runtime: present")
-    else:
-        typer.echo("  GSD runtime: installing...")
-        osh.sandbox_exec_pipe(
-            name,
-            "npx -y @opengsd/gsd-core@latest --claude --global 2>&1 | tail -1",
-        )
+    # GSD runtime — opt-in via profile.gsd.enabled (#111)
+    if profile.gsd.enabled:
+        gsd_check = osh.sandbox_exec_pipe(name, "test -d /sandbox/.claude/gsd-core && echo 'present' || echo 'missing'")
+        if "present" in gsd_check:
+            typer.echo("  GSD runtime: present")
+        else:
+            typer.echo("  GSD runtime: installing...")
+            osh.sandbox_exec_pipe(
+                name,
+                "npx -y @opengsd/gsd-core@latest --claude --global 2>&1 | tail -1",
+            )
 
-    if profile.gsd.model_profile:
-        import json
+        if profile.gsd.model_profile:
+            import json
 
-        defaults = json.dumps({"model_profile": profile.gsd.model_profile})
-        osh.sandbox_exec_pipe(
-            name,
-            f"mkdir -p /sandbox/.gsd && printf '%s' '{defaults}' > /sandbox/.gsd/defaults.json && "
-            f'echo "GSD model profile: {profile.gsd.model_profile}"',
-        )
+            defaults = json.dumps({"model_profile": profile.gsd.model_profile})
+            osh.sandbox_exec_pipe(
+                name,
+                f"mkdir -p /sandbox/.gsd && printf '%s' '{defaults}' > /sandbox/.gsd/defaults.json && "
+                f'echo "GSD model profile: {profile.gsd.model_profile}"',
+            )
 
 
 def clone_repos(name: str, profile: Profile) -> list[str]:
@@ -551,6 +591,12 @@ def create_sandbox(
 
         stage_claude_state(stage_dir)
         typer.echo("  Claude state: staged (skip onboarding)")
+
+        if stage_opencode_config(stage_dir, config):
+            typer.echo("  OpenCode config: staged")
+        n_oc_plugins = stage_opencode_plugins(stage_dir)
+        if n_oc_plugins:
+            typer.echo(f"  OpenCode plugins: {n_oc_plugins} staged")
 
         creds = stage_credentials(stage_dir, config)
         for c in creds:

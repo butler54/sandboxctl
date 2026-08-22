@@ -73,6 +73,7 @@ class Extensions(BaseModel):
 class GsdConfig(BaseModel):
     """GSD runtime settings staged at sandbox creation."""
 
+    enabled: bool = False
     model_profile: str = ""
 
     model_config = {"extra": "ignore"}

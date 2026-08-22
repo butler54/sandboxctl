@@ -15,6 +15,7 @@ _BACKUP_PATHS = (
     ".claude/CLAUDE.md",
     ".claude/.credentials.json",
     ".claude-mem",
+    ".config/opencode",
 )
 
 _MAX_BACKUPS = 10
@@ -97,8 +98,12 @@ def restore_claude_context(name: str, config: SandboxctlConfig) -> bool:
 
     remote_tar = "/sandbox/claude-context-restore.tar.gz"  # noqa: S108
     osh.sandbox_upload(name, tarball, remote_tar)
+    # Exclude freshly-staged files that should never be overwritten by older backup copies.
     osh.sandbox_exec_pipe(
         name,
-        f"tar xzf {remote_tar} -C /sandbox && rm -f {remote_tar}",
+        f"tar xzf {remote_tar} -C /sandbox "
+        "--exclude='.claude/settings.json' "
+        "--exclude='.claude/.claude.json' "
+        f"&& rm -f {remote_tar}",
     )
     return True

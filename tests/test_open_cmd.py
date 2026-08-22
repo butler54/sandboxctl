@@ -232,9 +232,9 @@ class TestKeepaliveWiring:
 
 
 class TestBothMode:
-    """Mode 'both' opens VS Code AND runs Claude inline in current terminal."""
+    """Mode 'both' (--code) opens VS Code AND runs OpenCode in current terminal."""
 
-    def test_both_mode_opens_vscode_and_runs_claude(self) -> None:
+    def test_both_mode_opens_vscode_and_runs_opencode(self) -> None:
         report = MagicMock(healthy=True)
         config = MagicMock()
         profile = MagicMock()
@@ -253,8 +253,11 @@ class TestBothMode:
         # VS Code launched via subprocess
         vscode_calls = [c for c in mock_run.call_args_list if "--remote" in str(c)]
         assert len(vscode_calls) >= 1
-        # Claude launched inline with --continue to resume session
-        mock_exec.assert_called_once_with("mybox", "cd /sandbox && claude --continue")
+        # OpenCode (not Claude) launched inline
+        mock_exec.assert_called_once()
+        cmd = mock_exec.call_args[0][1]
+        assert "opencode" in cmd
+        assert "claude" not in cmd
 
 
 class TestExtensionInstallHook:
@@ -391,3 +394,97 @@ class TestExtensionInstallHook:
 
         # classify_remote_extensions called with profile.extensions
         mock_classify.assert_called_once_with(profile.extensions)
+
+
+class TestOpenOpenCodeMode:
+    def test_launches_opencode_interactive(self) -> None:
+        """opencode mode calls sandbox_exec_interactive with 'opencode' command."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=0) as mock_exec,
+        ):
+            open_sandbox("mybox", config, mode="opencode")
+
+        mock_exec.assert_called_once()
+        cmd = mock_exec.call_args[0][1]
+        assert "opencode" in cmd
+        assert "claude" not in cmd
+
+    def test_uses_default_repo_when_set(self) -> None:
+        """opencode mode cds into profile.sandbox.default_repo before launching."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+        profile = MagicMock()
+        profile.sandbox.default_repo = "my-project"
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=0) as mock_exec,
+        ):
+            open_sandbox("mybox", config, mode="opencode")
+
+        cmd = mock_exec.call_args[0][1]
+        assert "/sandbox/workspace/my-project" in cmd
+        assert "opencode" in cmd
+
+    def test_falls_back_to_shell_on_failure(self) -> None:
+        """opencode mode falls back to sandbox_connect when exec returns non-zero."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=1),
+            patch("sandboxctl.open_cmd.osh.sandbox_connect") as mock_connect,
+        ):
+            open_sandbox("mybox", config, mode="opencode")
+
+        mock_connect.assert_called_once_with("mybox")
+
+    def test_default_mode_is_opencode(self) -> None:
+        """Calling open_sandbox with no mode argument defaults to opencode."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=0) as mock_exec,
+        ):
+            open_sandbox("mybox", config)  # no mode arg
+
+        cmd = mock_exec.call_args[0][1]
+        assert "opencode" in cmd
+
+
+class TestOpenCodeServerMode:
+    def test_starts_server_and_port_forward(self) -> None:
+        """opencode-server mode runs opencode serve and starts SSH port-forward."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.resolve_ssh_host", return_value="openshell-mybox"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.open_cmd.subprocess.Popen") as mock_popen,
+        ):
+            open_sandbox("mybox", config, mode="opencode-server")
+
+        # Sandbox exec contains opencode serve
+        pipe_script = mock_pipe.call_args[0][1]
+        assert "opencode serve" in pipe_script
+        assert "--hostname 0.0.0.0" in pipe_script
+
+        # SSH port-forward spawned
+        mock_popen.assert_called_once()
+        popen_args = mock_popen.call_args[0][0]
+        assert "ssh" in popen_args
+        assert "-fNL" in popen_args
+        assert "openshell-mybox" in popen_args

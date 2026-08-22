@@ -21,6 +21,8 @@ from sandboxctl.create import (
     stage_claude_settings,
     stage_claude_state,
     stage_credentials,
+    stage_opencode_config,
+    stage_opencode_plugins,
     stage_skills,
 )
 from sandboxctl.models import Profile, SandboxConfig, WorkspaceConfig
@@ -614,7 +616,7 @@ class TestCreateSandbox:
             default_theme="dark",
             ssh_key=MagicMock(exists=MagicMock(return_value=False)),
             vertex_project_id="proj",
-            providers=MagicMock(vertex_region="us-central1"),
+            vertex_region="us-central1",
             profiles_dir=tmp_path / "profiles",
             config_dir=tmp_path,
         )
@@ -931,7 +933,7 @@ def test_gsd_model_profile_written_when_set() -> None:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         config = SandboxctlConfig(config_dir=Path(tmpdir))
-        profile = Profile(name="test", mlflow=False, gsd=GsdConfig(model_profile="quality"))
+        profile = Profile(name="test", mlflow=False, gsd=GsdConfig(enabled=True, model_profile="quality"))
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
@@ -1097,17 +1099,17 @@ def test_create_installs_mlflow_tracing_plugin() -> None:
 
 
 def test_gsd_auto_installs_when_missing() -> None:
-    """GSD is installed via npx when not present in the sandbox (#82)."""
+    """GSD is installed via npx when enabled and not present in the sandbox (#82)."""
     import tempfile
     from pathlib import Path
     from unittest.mock import patch
 
     from sandboxctl.config import SandboxctlConfig
-    from sandboxctl.models import Profile
+    from sandboxctl.models import GsdConfig, Profile
 
     with tempfile.TemporaryDirectory() as tmpdir:
         config = SandboxctlConfig(config_dir=Path(tmpdir))
-        profile = Profile(name="test", mlflow=False)
+        profile = Profile(name="test", mlflow=False, gsd=GsdConfig(enabled=True))
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
@@ -1132,3 +1134,128 @@ def test_gsd_auto_installs_when_missing() -> None:
         npx_calls = [c for c in mock_exec.call_args_list if "npx" in str(c)]
         assert len(npx_calls) == 1
         assert "@opengsd/gsd-core@latest" in str(npx_calls[0])
+
+
+def test_gsd_skipped_when_disabled() -> None:
+    """GSD install and model_profile write are skipped when gsd.enabled=False (default, #111)."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
+
+    from sandboxctl.config import SandboxctlConfig
+    from sandboxctl.models import Profile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = SandboxctlConfig(config_dir=Path(tmpdir))
+        profile = Profile(name="test", mlflow=False)  # gsd.enabled defaults to False
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_upload"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.shutil.which", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=Path(tmpdir) / "nohome"),
+        ):
+            from sandboxctl.create import post_launch_setup
+
+            post_launch_setup("mybox", profile, config)
+
+        all_scripts = [str(c) for c in mock_exec.call_args_list]
+        assert not any("gsd-core" in s for s in all_scripts), "GSD check ran despite gsd.enabled=False"
+        assert not any("@opengsd/gsd-core" in s for s in all_scripts), "GSD install ran despite gsd.enabled=False"
+        assert not any("defaults.json" in s for s in all_scripts), "GSD defaults.json written despite gsd.enabled=False"
+
+
+# ── OpenCode staging tests (#112) ────────────────────────────────────────────
+
+
+def test_stage_opencode_config_copies_host_file(tmp_path: Path) -> None:
+    """stage_opencode_config copies host config.json when it exists."""
+    from sandboxctl.config import SandboxctlConfig
+
+    host_config_dir = tmp_path / "home" / ".config" / "opencode"
+    host_config_dir.mkdir(parents=True)
+    host_config_dir.joinpath("config.json").write_text('{"providers":[]}')
+
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+    config = SandboxctlConfig(config_dir=tmp_path / "sandboxctl")
+
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+        result = stage_opencode_config(stage_dir, config)
+
+    assert result is True
+    staged = stage_dir / ".config" / "opencode" / "config.json"
+    assert staged.exists()
+    assert staged.read_text() == '{"providers":[]}'
+
+
+def test_stage_opencode_config_generates_vertex_baseline(tmp_path: Path) -> None:
+    """stage_opencode_config generates a Vertex baseline when no host file exists."""
+    from sandboxctl.config import SandboxctlConfig
+
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+    config = SandboxctlConfig(
+        config_dir=tmp_path / "sandboxctl",
+        providers={"vertex_project_id": "my-project", "vertex_region": "us-east5"},
+    )
+
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"):
+        result = stage_opencode_config(stage_dir, config)
+
+    assert result is True
+    staged = stage_dir / ".config" / "opencode" / "config.json"
+    assert staged.exists()
+    import json
+
+    data = json.loads(staged.read_text())
+    assert data["providers"][0]["type"] == "anthropic-vertex"
+    assert data["providers"][0]["projectId"] == "my-project"
+    assert data["providers"][0]["default"] is True
+
+
+def test_stage_opencode_config_returns_false_when_nothing_available(tmp_path: Path) -> None:
+    """stage_opencode_config returns False when no host file and no Vertex config."""
+    from sandboxctl.config import SandboxctlConfig
+
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+    config = SandboxctlConfig(config_dir=tmp_path / "sandboxctl")  # no vertex_project_id
+
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"):
+        result = stage_opencode_config(stage_dir, config)
+
+    assert result is False
+    assert not (stage_dir / ".config" / "opencode" / "config.json").exists()
+
+
+def test_stage_opencode_plugins_stages_from_host(tmp_path: Path) -> None:
+    """stage_opencode_plugins copies plugins from host when present."""
+
+    plugins_src = tmp_path / "home" / ".config" / "opencode" / "plugins"
+    plugins_src.mkdir(parents=True)
+    (plugins_src / "myplugin").mkdir()
+    (plugins_src / "myplugin" / "index.js").write_text("// plugin")
+
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+        count = stage_opencode_plugins(stage_dir)
+
+    assert count == 1
+    assert (stage_dir / ".config" / "opencode" / "plugins" / "myplugin" / "index.js").exists()
+
+
+def test_stage_opencode_plugins_returns_zero_when_absent(tmp_path: Path) -> None:
+    """stage_opencode_plugins returns 0 when no host plugins directory."""
+
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"):
+        count = stage_opencode_plugins(stage_dir)
+
+    assert count == 0

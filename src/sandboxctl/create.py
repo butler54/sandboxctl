@@ -70,30 +70,20 @@ def stage_claude_state(stage_dir: Path) -> None:
 
 
 def stage_opencode_config(stage_dir: Path, config: SandboxctlConfig) -> bool:
-    """Stage opencode config: host file if present, else generate baseline from Vertex config."""
-    host_config = Path.home() / ".config" / "opencode" / "config.json"
-    opencode_dir = stage_dir / ".config" / "opencode"
-    opencode_dir.mkdir(parents=True, exist_ok=True)
+    """Stage opencode config from host if present.
 
-    if host_config.exists():
-        shutil.copy2(host_config, opencode_dir / "config.json")
-        return True
-
-    if config.vertex_project_id:
-        opencode_config = {
-            "providers": [
-                {
-                    "id": "vertex",
-                    "type": "anthropic-vertex",
-                    "projectId": config.vertex_project_id,
-                    "region": config.vertex_region,
-                    "default": True,
-                }
-            ]
-        }
-        (opencode_dir / "config.json").write_text(json.dumps(opencode_config, indent=2) + "\n")
-        return True
-
+    Checks config.json, opencode.jsonc, and opencode.json (opencode reads all three).
+    Vertex auth is handled purely via GOOGLE_VERTEX_PROJECT / GOOGLE_VERTEX_LOCATION env
+    vars injected by post_launch_setup — no generated config file needed for that path.
+    """
+    opencode_config_dir = Path.home() / ".config" / "opencode"
+    for filename in ("config.json", "opencode.jsonc", "opencode.json"):
+        host_file = opencode_config_dir / filename
+        if host_file.exists():
+            dest_dir = stage_dir / ".config" / "opencode"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(host_file, dest_dir / filename)
+            return True
     return False
 
 
@@ -298,7 +288,11 @@ def post_launch_setup(
             "grep -q CLAUDE_CODE_USE_VERTEX /sandbox/.bashrc 2>/dev/null || "
             'echo "export CLAUDE_CODE_USE_VERTEX=1\n'
             f"export CLOUD_ML_REGION={vertex_region}\n"
-            f'export ANTHROPIC_VERTEX_PROJECT_ID={vertex_project_id}"'
+            f"export ANTHROPIC_VERTEX_PROJECT_ID={vertex_project_id}\n"
+            # OpenCode reads GOOGLE_VERTEX_PROJECT / GOOGLE_VERTEX_LOCATION to
+            # auto-detect the google-vertex-anthropic provider — no config file needed.
+            f"export GOOGLE_VERTEX_PROJECT={vertex_project_id}\n"
+            f'export GOOGLE_VERTEX_LOCATION={vertex_region}"'
             " >> /sandbox/.bashrc; "
             'echo "Vertex AI env: configured"',
         )

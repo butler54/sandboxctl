@@ -1191,44 +1191,39 @@ def test_stage_opencode_config_copies_host_file(tmp_path: Path) -> None:
     assert staged.read_text() == '{"providers":[]}'
 
 
-def test_stage_opencode_config_generates_vertex_baseline(tmp_path: Path) -> None:
-    """stage_opencode_config generates a Vertex baseline when no host file exists."""
+def test_stage_opencode_config_copies_jsonc_file(tmp_path: Path) -> None:
+    """stage_opencode_config picks up opencode.jsonc (real-world convention, #115)."""
     from sandboxctl.config import SandboxctlConfig
+
+    host_config_dir = tmp_path / "home" / ".config" / "opencode"
+    host_config_dir.mkdir(parents=True)
+    host_config_dir.joinpath("opencode.jsonc").write_text('{"provider":{}}')
 
     stage_dir = tmp_path / "stage"
     stage_dir.mkdir()
-    config = SandboxctlConfig(
-        config_dir=tmp_path / "sandboxctl",
-        providers={"vertex_project_id": "my-project", "vertex_region": "us-east5"},
-    )
+    config = SandboxctlConfig(config_dir=tmp_path / "sandboxctl")
 
-    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"):
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
         result = stage_opencode_config(stage_dir, config)
 
     assert result is True
-    staged = stage_dir / ".config" / "opencode" / "config.json"
-    assert staged.exists()
-    import json
-
-    data = json.loads(staged.read_text())
-    assert data["providers"][0]["type"] == "anthropic-vertex"
-    assert data["providers"][0]["projectId"] == "my-project"
-    assert data["providers"][0]["default"] is True
+    assert (stage_dir / ".config" / "opencode" / "opencode.jsonc").exists()
 
 
-def test_stage_opencode_config_returns_false_when_nothing_available(tmp_path: Path) -> None:
-    """stage_opencode_config returns False when no host file and no Vertex config."""
+def test_stage_opencode_config_returns_false_when_no_host_file(tmp_path: Path) -> None:
+    """stage_opencode_config returns False when no host config exists (no generated baseline)."""
     from sandboxctl.config import SandboxctlConfig
 
     stage_dir = tmp_path / "stage"
     stage_dir.mkdir()
-    config = SandboxctlConfig(config_dir=tmp_path / "sandboxctl")  # no vertex_project_id
+    config = SandboxctlConfig(config_dir=tmp_path / "sandboxctl")
 
     with patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"):
         result = stage_opencode_config(stage_dir, config)
 
     assert result is False
-    assert not (stage_dir / ".config" / "opencode" / "config.json").exists()
+    # No config file should be generated — Vertex auth is via env vars, not a config file
+    assert not (stage_dir / ".config" / "opencode").exists()
 
 
 def test_stage_opencode_plugins_stages_from_host(tmp_path: Path) -> None:

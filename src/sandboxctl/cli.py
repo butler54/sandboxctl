@@ -177,10 +177,11 @@ def open_cmd(
     name: str = typer.Argument(help="Sandbox name.", callback=_validate_name),
     shell: bool = typer.Option(False, "--shell", help="Open interactive shell."),
     code_only: bool = typer.Option(False, "--code-only", help="Open VS Code only."),
-    claude_only: bool = typer.Option(False, "--claude-only", help="Open Claude Code only."),
-    code: bool = typer.Option(False, "--code", help="Open both VS Code and Claude Code."),
+    claude_only: bool = typer.Option(False, "--claude-only", help="Open Claude Code (legacy)."),
+    code: bool = typer.Option(False, "--code", help="Open both VS Code and OpenCode."),
+    opencode_server: bool = typer.Option(False, "--opencode-server", help="Run OpenCode in server mode with SSH port-forward."),
 ) -> None:
-    """Open a sandbox."""
+    """Open a sandbox (default: OpenCode interactive)."""
     from sandboxctl.open_cmd import open_sandbox
 
     cfg = load_config()
@@ -189,10 +190,14 @@ def open_cmd(
         mode = "shell"
     elif code_only:
         mode = "code"
+    elif claude_only:
+        mode = "claude"
     elif code:
         mode = "both"
+    elif opencode_server:
+        mode = "opencode-server"
     else:
-        mode = "claude"
+        mode = "opencode"
 
     open_sandbox(name, cfg, mode=mode)
 

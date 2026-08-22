@@ -213,3 +213,32 @@ def test_backup_paths_exclude_settings_json() -> None:
     assert ".claude/settings.json" not in _BACKUP_PATHS
     # settings.local.json (user customizations) is preserved
     assert ".claude/settings.local.json" in _BACKUP_PATHS
+
+
+def test_restore_excludes_settings_json(tmp_path: Path) -> None:
+    """restore_claude_context passes --exclude flags to protect freshly-staged settings.json (#91)."""
+    from unittest.mock import patch
+
+    from sandboxctl.context import restore_claude_context
+
+    backup_dir = tmp_path / "backups" / "mybox"
+    backup_dir.mkdir(parents=True)
+    (backup_dir / "claude-context.tar.gz").write_bytes(b"fake")
+    config = MagicMock(config_dir=tmp_path)
+
+    with (
+        patch("sandboxctl.context.osh.sandbox_upload"),
+        patch("sandboxctl.context.osh.sandbox_exec_pipe") as mock_pipe,
+    ):
+        restore_claude_context("mybox", config)
+
+    script = mock_pipe.call_args[0][1]
+    assert "--exclude='.claude/settings.json'" in script
+    assert "--exclude='.claude/.claude.json'" in script
+
+
+def test_backup_paths_include_opencode() -> None:
+    """OpenCode config is included in backup paths for persistence (#112)."""
+    from sandboxctl.context import _BACKUP_PATHS
+
+    assert ".config/opencode" in _BACKUP_PATHS

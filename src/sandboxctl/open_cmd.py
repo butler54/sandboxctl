@@ -101,8 +101,7 @@ def open_sandbox(
 
         osh.sandbox_exec_pipe(
             name,
-            f"nohup opencode serve --port {port} --hostname 0.0.0.0 "
-            f"> /sandbox/.opencode-server.log 2>&1 & echo $!",
+            f"nohup opencode serve --port {port} --hostname 0.0.0.0 > /sandbox/.opencode-server.log 2>&1 & echo $!",
         )
 
         subprocess.Popen(  # noqa: S603
@@ -112,7 +111,7 @@ def open_sandbox(
         )
 
         typer.echo(f"OpenCode server started (port {port})")
-        typer.echo(f"  Log: /sandbox/.opencode-server.log")
+        typer.echo("  Log: /sandbox/.opencode-server.log")
         typer.echo(f"  Connect with: opencode attach http://localhost:{port}")
         return
 

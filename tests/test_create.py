@@ -1169,10 +1169,10 @@ def test_gsd_skipped_when_disabled() -> None:
 
 # ── OpenCode staging tests (#112) ────────────────────────────────────────────
 
+
 def test_stage_opencode_config_copies_host_file(tmp_path: Path) -> None:
     """stage_opencode_config copies host config.json when it exists."""
     from sandboxctl.config import SandboxctlConfig
-    from sandboxctl.create import stage_opencode_config
 
     host_config_dir = tmp_path / "home" / ".config" / "opencode"
     host_config_dir.mkdir(parents=True)
@@ -1194,7 +1194,6 @@ def test_stage_opencode_config_copies_host_file(tmp_path: Path) -> None:
 def test_stage_opencode_config_generates_vertex_baseline(tmp_path: Path) -> None:
     """stage_opencode_config generates a Vertex baseline when no host file exists."""
     from sandboxctl.config import SandboxctlConfig
-    from sandboxctl.create import stage_opencode_config
 
     stage_dir = tmp_path / "stage"
     stage_dir.mkdir()
@@ -1210,6 +1209,7 @@ def test_stage_opencode_config_generates_vertex_baseline(tmp_path: Path) -> None
     staged = stage_dir / ".config" / "opencode" / "config.json"
     assert staged.exists()
     import json
+
     data = json.loads(staged.read_text())
     assert data["providers"][0]["type"] == "anthropic-vertex"
     assert data["providers"][0]["projectId"] == "my-project"
@@ -1219,7 +1219,6 @@ def test_stage_opencode_config_generates_vertex_baseline(tmp_path: Path) -> None
 def test_stage_opencode_config_returns_false_when_nothing_available(tmp_path: Path) -> None:
     """stage_opencode_config returns False when no host file and no Vertex config."""
     from sandboxctl.config import SandboxctlConfig
-    from sandboxctl.create import stage_opencode_config
 
     stage_dir = tmp_path / "stage"
     stage_dir.mkdir()
@@ -1234,7 +1233,6 @@ def test_stage_opencode_config_returns_false_when_nothing_available(tmp_path: Pa
 
 def test_stage_opencode_plugins_stages_from_host(tmp_path: Path) -> None:
     """stage_opencode_plugins copies plugins from host when present."""
-    from sandboxctl.create import stage_opencode_plugins
 
     plugins_src = tmp_path / "home" / ".config" / "opencode" / "plugins"
     plugins_src.mkdir(parents=True)
@@ -1253,7 +1251,6 @@ def test_stage_opencode_plugins_stages_from_host(tmp_path: Path) -> None:
 
 def test_stage_opencode_plugins_returns_zero_when_absent(tmp_path: Path) -> None:
     """stage_opencode_plugins returns 0 when no host plugins directory."""
-    from sandboxctl.create import stage_opencode_plugins
 
     stage_dir = tmp_path / "stage"
     stage_dir.mkdir()

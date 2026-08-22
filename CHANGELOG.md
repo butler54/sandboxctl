@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.15.1 (2026-08-22)
+
+### Bug Fixes
+
+- Opencode Vertex auth via env vars, multi-filename config lookup (#115)
+  ([#117](https://github.com/butler54/sandboxctl/pull/117),
+  [`8611992`](https://github.com/butler54/sandboxctl/commit/8611992502809943de7f931fce04ceb04a00ca64))
+
+
 ## v1.15.0 (2026-08-22)
 
 ### Chores

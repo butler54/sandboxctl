@@ -21,6 +21,7 @@ from sandboxctl.create import (
     stage_claude_settings,
     stage_claude_state,
     stage_credentials,
+    stage_opencode_agents,
     stage_opencode_config,
     stage_opencode_plugins,
     stage_skills,
@@ -1319,5 +1320,49 @@ def test_stage_opencode_plugins_returns_zero_when_absent(tmp_path: Path) -> None
 
     with patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"):
         count = stage_opencode_plugins(stage_dir)
+
+    assert count == 0
+
+
+def test_stage_opencode_agents_from_agent_dir(tmp_path: Path) -> None:
+    """stage_opencode_agents copies host ~/.config/opencode/agent/*.md (#124)."""
+    agents_src = tmp_path / "home" / ".config" / "opencode" / "agent"
+    agents_src.mkdir(parents=True)
+    (agents_src / "reviewer.md").write_text("---\n---\nreviewer")
+    (agents_src / "planner.md").write_text("---\n---\nplanner")
+
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+        count = stage_opencode_agents(stage_dir)
+
+    assert count == 2
+    assert (stage_dir / ".config" / "opencode" / "agent" / "reviewer.md").exists()
+
+
+def test_stage_opencode_agents_from_agents_dir(tmp_path: Path) -> None:
+    """stage_opencode_agents also accepts the plural 'agents' directory name (#124)."""
+    agents_src = tmp_path / "home" / ".config" / "opencode" / "agents"
+    agents_src.mkdir(parents=True)
+    (agents_src / "solo.md").write_text("agent")
+
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+        count = stage_opencode_agents(stage_dir)
+
+    assert count == 1
+    assert (stage_dir / ".config" / "opencode" / "agents" / "solo.md").exists()
+
+
+def test_stage_opencode_agents_returns_zero_when_absent(tmp_path: Path) -> None:
+    """stage_opencode_agents returns 0 when no host agent directory (#124)."""
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"):
+        count = stage_opencode_agents(stage_dir)
 
     assert count == 0

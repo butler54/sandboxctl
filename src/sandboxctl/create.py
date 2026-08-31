@@ -115,6 +115,24 @@ def stage_opencode_plugins(stage_dir: Path) -> int:
     return len(list(plugins_dst.iterdir()))
 
 
+def stage_opencode_agents(stage_dir: Path) -> int:
+    """Stage opencode custom agents from host ~/.config/opencode/agent(s)/.
+
+    opencode accepts either directory name (`agent` or `agents`) and does not
+    auto-discover Claude's ~/.claude/agents (unlike skills), so these must be
+    copied explicitly. Returns the count of staged *.md agent files.
+    """
+    opencode_dir = Path.home() / ".config" / "opencode"
+    for dirname in ("agent", "agents"):
+        agents_src = opencode_dir / dirname
+        if agents_src.exists():
+            agents_dst = stage_dir / ".config" / "opencode" / dirname
+            agents_dst.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(agents_src, agents_dst, symlinks=False, dirs_exist_ok=True)
+            return len(list(agents_dst.glob("*.md")))
+    return 0
+
+
 def stage_credentials(stage_dir: Path, config: SandboxctlConfig) -> list[str]:
     staged: list[str] = []
 
@@ -611,6 +629,9 @@ def create_sandbox(
         n_oc_plugins = stage_opencode_plugins(stage_dir)
         if n_oc_plugins:
             typer.echo(f"  OpenCode plugins: {n_oc_plugins} staged")
+        n_oc_agents = stage_opencode_agents(stage_dir)
+        if n_oc_agents:
+            typer.echo(f"  OpenCode agents: {n_oc_agents} staged")
 
         creds = stage_credentials(stage_dir, config)
         for c in creds:

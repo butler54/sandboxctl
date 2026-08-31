@@ -413,11 +413,38 @@ def post_launch_setup(
             "models": {model: {} for model in _OPENAI_CURATED_MODELS},
         }
 
-    # Inject the generated providers via OPENCODE_CONFIG_CONTENT — opencode merges this
-    # JSON env var into the user's own config at load time, so named OpenAI accounts are
-    # immediately selectable in the model picker without editing opencode.jsonc (#129).
+    # Accumulate all generated opencode config into a single patch so it is injected once
+    # (OPENCODE_CONFIG_CONTENT holds one JSON value). Providers (#129) and the MCP server
+    # registration below (#123) both contribute to it.
+    opencode_config: dict = {}
     if opencode_providers:
-        _inject_opencode_config_content(name, {"provider": opencode_providers})
+        opencode_config["provider"] = opencode_providers
+
+    # codebase-memory-mcp (#123): the base image ships this as a static binary
+    # (arm64-only). When present in the sandbox, register it as a local MCP server for
+    # both agents so it's actually usable, not just an inert binary on disk.
+    cbm_bin = "/usr/local/bin/codebase-memory-mcp"
+    cbm_present = "present" in osh.sandbox_exec_pipe(name, f"test -x {cbm_bin} && echo present || echo missing")
+    if cbm_present:
+        # opencode: merge an mcp entry (verified against opencode's McpLocalConfig schema).
+        opencode_config.setdefault("mcp", {})["codebase-memory"] = {
+            "type": "local",
+            "command": [cbm_bin],
+            "enabled": True,
+        }
+        # Claude Code: write /sandbox/.mcp.json with the equivalent mcpServers entry.
+        claude_mcp = json.dumps({"mcpServers": {"codebase-memory": {"command": cbm_bin}}})
+        encoded_mcp = base64.b64encode(claude_mcp.encode()).decode()
+        osh.sandbox_exec_pipe(
+            name,
+            f'echo {encoded_mcp} | base64 -d > /sandbox/.mcp.json; echo "codebase-memory MCP: registered"',
+        )
+
+    # Inject the combined opencode config via OPENCODE_CONFIG_CONTENT — opencode merges
+    # this JSON env var into the user's own config at load time, so providers and the MCP
+    # server are available without editing opencode.jsonc (#123, #129).
+    if opencode_config:
+        _inject_opencode_config_content(name, opencode_config)
 
     if profile.ssh:
         typer.echo("Configuring SSH proxy hosts...")
@@ -597,8 +624,6 @@ def post_launch_setup(
             )
 
         if profile.gsd.model_profile:
-            import json
-
             defaults = json.dumps({"model_profile": profile.gsd.model_profile})
             osh.sandbox_exec_pipe(
                 name,

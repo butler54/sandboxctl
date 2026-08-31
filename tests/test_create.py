@@ -458,6 +458,60 @@ class TestPostLaunchSetup:
         scripts = [c[0][1] for c in mock_pipe.call_args_list]
         assert not any("OPENAI_API_KEY_GHOST" in s for s in scripts)
 
+    def test_codebase_memory_mcp_registered_when_present(self, tmp_path: Path) -> None:
+        """When the binary exists, register codebase-memory MCP for opencode + Claude (#123)."""
+        import base64 as _b64
+        import json as _json
+
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test", mlflow=False)
+
+        def fake_exec(name: str, script: str) -> str:
+            if "codebase-memory-mcp" in script and "test -x" in script:
+                return "present"
+            return ""
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=fake_exec) as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        scripts = [c[0][1] for c in mock_pipe.call_args_list]
+        # Claude Code: .mcp.json written
+        assert any(".mcp.json" in s for s in scripts)
+        # opencode: mcp entry present in the injected OPENCODE_CONFIG_CONTENT
+        cfg_calls = [s for s in scripts if "OPENCODE_CONFIG_CONTENT" in s]
+        assert len(cfg_calls) == 1
+        b64 = next(tok for tok in cfg_calls[0].split() if tok.startswith("eyJ"))
+        patch_obj = _json.loads(_b64.b64decode(b64).decode())
+        assert patch_obj["mcp"]["codebase-memory"]["command"] == ["/usr/local/bin/codebase-memory-mcp"]
+        assert patch_obj["mcp"]["codebase-memory"]["type"] == "local"
+
+    def test_codebase_memory_mcp_skipped_when_absent(self, tmp_path: Path) -> None:
+        """No MCP registration when the binary is absent (e.g. amd64 sandbox) (#123)."""
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test", mlflow=False)
+
+        def fake_exec(name: str, script: str) -> str:
+            if "codebase-memory-mcp" in script and "test -x" in script:
+                return "missing"
+            return ""
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=fake_exec) as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        scripts = [c[0][1] for c in mock_pipe.call_args_list]
+        assert not any(".mcp.json" in s for s in scripts)
+        assert not any("OPENCODE_CONFIG_CONTENT" in s for s in scripts)
+
     def test_gitlab_token_injected_without_shell_expansion(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)
         profile = Profile(name="test", repos={"gitlab.com": ["group/project"]}, mlflow=False)

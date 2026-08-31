@@ -484,8 +484,9 @@ def post_launch_setup(
             if not mlflow_cmd.check_mlflow_health(tracking_uri_check):
                 typer.echo("MLflow tracking server is down, attempting to start...")
                 mlflow_cmd.start_mlflow_container(config.mlflow.data_dir, config.mlflow.port)
-                # Re-check after start attempt
-                if not mlflow_cmd.check_mlflow_health(tracking_uri_check):
+                # Poll with backoff — the container takes a few seconds to bind and serve
+                # its port after start, so an immediate re-check races the server (#122).
+                if not mlflow_cmd.wait_for_mlflow_health(tracking_uri_check):
                     msg = (
                         f"MLflow tracking server is not responding at {tracking_uri_check} "
                         "after start attempt. Create aborted (fail-closed)."

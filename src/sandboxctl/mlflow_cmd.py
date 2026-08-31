@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -113,8 +114,25 @@ def check_mlflow_health(tracking_uri: str, timeout: int = 5) -> bool:
         req = urllib.request.Request(health_url, method="GET")  # noqa: S310
         with urllib.request.urlopen(req, timeout=timeout) as response:  # noqa: S310
             return response.status == 200
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
+        # OSError covers http.client.RemoteDisconnected / ConnectionError raised when the
+        # container's port is accepting connections but the server isn't serving yet (#122).
         return False
+
+
+def wait_for_mlflow_health(tracking_uri: str, attempts: int = 6, delay: float = 2.0) -> bool:
+    """Poll check_mlflow_health with backoff; return True as soon as it is healthy (#122).
+
+    The MLflow container takes a few seconds to bind and serve its port after start, so a
+    single immediate check races the server. Retries up to `attempts` times, sleeping
+    `delay` seconds between tries (~10s total by default).
+    """
+    for attempt in range(attempts):
+        if check_mlflow_health(tracking_uri):
+            return True
+        if attempt < attempts - 1:
+            time.sleep(delay)
+    return False
 
 
 def get_directory_size(path: Path) -> int:

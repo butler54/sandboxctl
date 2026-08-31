@@ -238,6 +238,50 @@ def test_check_mlflow_health_http_error() -> None:
         assert result is False
 
 
+def test_check_mlflow_health_remote_disconnected() -> None:
+    """check_mlflow_health returns False (not raises) on RemoteDisconnected (#122)."""
+    from http.client import RemoteDisconnected
+
+    from sandboxctl.mlflow_cmd import check_mlflow_health
+
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = RemoteDisconnected("Remote end closed connection")
+
+        result = check_mlflow_health("http://localhost:5050", timeout=5)
+
+        assert result is False
+
+
+def test_wait_for_mlflow_health_succeeds_after_retries() -> None:
+    """wait_for_mlflow_health polls until the server comes up (#122)."""
+    from sandboxctl.mlflow_cmd import wait_for_mlflow_health
+
+    # Down for the first two checks, then healthy.
+    with (
+        patch("sandboxctl.mlflow_cmd.check_mlflow_health", side_effect=[False, False, True]) as mock_health,
+        patch("sandboxctl.mlflow_cmd.time.sleep") as mock_sleep,
+    ):
+        result = wait_for_mlflow_health("http://localhost:5050", attempts=6, delay=2.0)
+
+    assert result is True
+    assert mock_health.call_count == 3
+    assert mock_sleep.call_count == 2  # slept between the three attempts
+
+
+def test_wait_for_mlflow_health_gives_up() -> None:
+    """wait_for_mlflow_health returns False when the server never comes up (#122)."""
+    from sandboxctl.mlflow_cmd import wait_for_mlflow_health
+
+    with (
+        patch("sandboxctl.mlflow_cmd.check_mlflow_health", return_value=False) as mock_health,
+        patch("sandboxctl.mlflow_cmd.time.sleep"),
+    ):
+        result = wait_for_mlflow_health("http://localhost:5050", attempts=3, delay=1.0)
+
+    assert result is False
+    assert mock_health.call_count == 3
+
+
 def test_mlflow_status(tmp_path: Path) -> None:
     """Status shows container state, URI, data_dir size for managed mode."""
     from sandboxctl.config import MlflowConfig

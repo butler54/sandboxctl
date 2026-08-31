@@ -2,6 +2,29 @@
 
 <!-- version list -->
 
+## v1.15.2 (2026-08-31)
+
+### Bug Fixes
+
+- Quiet vertex-claude provider create-time errors (#120, #121)
+  ([#131](https://github.com/butler54/sandboxctl/pull/131),
+  [`bb07444`](https://github.com/butler54/sandboxctl/commit/bb074443467c8065121f29ba4025853e433bc4eb))
+
+### Chores
+
+- Bump github/codeql-action/analyze from 4.37.7 to 4.37.8
+  ([#125](https://github.com/butler54/sandboxctl/pull/125),
+  [`139cc49`](https://github.com/butler54/sandboxctl/commit/139cc491e730b27916d3b646efc1dfae561e9a97))
+
+- Bump github/codeql-action/init from 4.37.7 to 4.37.8
+  ([#127](https://github.com/butler54/sandboxctl/pull/127),
+  [`4198f30`](https://github.com/butler54/sandboxctl/commit/4198f300713ad47de63c8b39ee54224bcc0c5e0e))
+
+- Bump github/codeql-action/upload-sarif from 4.37.7 to 4.37.8
+  ([#126](https://github.com/butler54/sandboxctl/pull/126),
+  [`1544033`](https://github.com/butler54/sandboxctl/commit/15440338c5013e98a54e4b9db1283d134d9b0b74))
+
+
 ## v1.15.1 (2026-08-22)
 
 ### Bug Fixes

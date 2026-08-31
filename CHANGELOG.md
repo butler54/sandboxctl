@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.17.0 (2026-08-31)
+
+### Features
+
+- Stage opencode custom agents into sandboxes (#124)
+  ([#133](https://github.com/butler54/sandboxctl/pull/133),
+  [`7dccb56`](https://github.com/butler54/sandboxctl/commit/7dccb566a328bcf86ff1791c23dc747bc900577d))
+
+
 ## v1.16.0 (2026-08-31)
 
 ### Features

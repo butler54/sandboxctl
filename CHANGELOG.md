@@ -2,6 +2,27 @@
 
 <!-- version list -->
 
+## v1.19.0 (2026-08-31)
+
+### Bug Fixes
+
+- Retry MLflow health check after container start (#122)
+  ([#136](https://github.com/butler54/sandboxctl/pull/136),
+  [`baab39f`](https://github.com/butler54/sandboxctl/commit/baab39fe8fc0dd19e27ffc170f618a0550ece2b6))
+
+### Documentation
+
+- Document mlflow, opencode/MCP config, and per-profile scoping (#116)
+  ([#137](https://github.com/butler54/sandboxctl/pull/137),
+  [`7f95c4c`](https://github.com/butler54/sandboxctl/commit/7f95c4c2d52c939a59bcbd12f436312cde66a062))
+
+### Features
+
+- Register codebase-memory-mcp as an MCP server (#123)
+  ([#135](https://github.com/butler54/sandboxctl/pull/135),
+  [`f084ace`](https://github.com/butler54/sandboxctl/commit/f084aceeddeae3e97036ef88e349a1fb497295f3))
+
+
 ## v1.18.0 (2026-08-31)
 
 ### Features

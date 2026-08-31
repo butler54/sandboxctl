@@ -918,12 +918,12 @@ def test_create_injects_mlflow_uri() -> None:
             # Health check was called
             mock_health.assert_called_once_with("http://localhost:5050")
 
-            # Injection script contains grep-q check and the gateway IP
+            # Injection script contains grep-q check and the host-gateway hostname
             injection_calls = [c for c in mock_exec.call_args_list if "MLFLOW_TRACKING_URI" in str(c)]
             assert len(injection_calls) == 1
             script = injection_calls[0][0][1]
             assert "grep -q MLFLOW_TRACKING_URI /sandbox/.bashrc" in script
-            assert "export MLFLOW_TRACKING_URI=http://10.200.0.1:5050" in script
+            assert "export MLFLOW_TRACKING_URI=http://host.openshell.internal:5050" in script
 
     # Scenario 2: managed mode, down-then-recovered → start called, injection proceeds
     with tempfile.TemporaryDirectory() as tmpdir:

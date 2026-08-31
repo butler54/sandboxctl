@@ -30,24 +30,41 @@ def _validate_repo_ref(value: str) -> str:
     return value
 
 
-def stage_skills(stage_dir: Path) -> int:
+def _stage_selected(src: Path, dst: Path, allowlist: list[str]) -> None:
+    """Copy src → dst. When allowlist is non-empty, copy only the named entries.
+
+    Names match top-level files or directories under src (e.g. skill/agent names).
+    Missing names are skipped silently — a profile may list entries not present on
+    every host.
+    """
+    if not allowlist:
+        shutil.copytree(src, dst, symlinks=False, dirs_exist_ok=True)
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+    for name in allowlist:
+        entry = src / name
+        if entry.is_dir():
+            shutil.copytree(entry, dst / name, symlinks=False, dirs_exist_ok=True)
+        elif entry.exists():
+            shutil.copy2(entry, dst / name)
+
+
+def stage_skills(stage_dir: Path, allowlist: list[str] | None = None) -> int:
     skills_src = Path.home() / ".claude" / "skills"
     if not skills_src.exists():
         return 0
     skills_dst = stage_dir / ".claude" / "skills"
-    skills_dst.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(skills_src, skills_dst, symlinks=False, dirs_exist_ok=True)
-    return len(list(skills_dst.iterdir()))
+    _stage_selected(skills_src, skills_dst, allowlist or [])
+    return len(list(skills_dst.iterdir())) if skills_dst.exists() else 0
 
 
-def stage_agents(stage_dir: Path) -> int:
+def stage_agents(stage_dir: Path, allowlist: list[str] | None = None) -> int:
     agents_src = Path.home() / ".claude" / "agents"
     if not agents_src.exists():
         return 0
     agents_dst = stage_dir / ".claude" / "agents"
-    agents_dst.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(agents_src, agents_dst, symlinks=False, dirs_exist_ok=True)
-    return len(list(agents_dst.iterdir()))
+    _stage_selected(agents_src, agents_dst, allowlist or [])
+    return len(list(agents_dst.iterdir())) if agents_dst.exists() else 0
 
 
 def stage_claude_settings(stage_dir: Path, profile: Profile, config: SandboxctlConfig) -> None:
@@ -575,11 +592,11 @@ def create_sandbox(
         stage_dir.mkdir()
 
         typer.echo("Staging upload contents...")
-        skill_count = stage_skills(stage_dir)
+        skill_count = stage_skills(stage_dir, profile.skills)
         if skill_count:
             typer.echo(f"  Skills: {skill_count} (symlinks dereferenced)")
 
-        agent_count = stage_agents(stage_dir)
+        agent_count = stage_agents(stage_dir, profile.agents)
         if agent_count:
             typer.echo(f"  Agents: {agent_count} (symlinks dereferenced)")
 

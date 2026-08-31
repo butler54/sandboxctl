@@ -91,6 +91,10 @@ class Profile(BaseModel):
     extensions: Extensions = Field(default_factory=Extensions)
     mlflow: bool = True
     gsd: GsdConfig = Field(default_factory=GsdConfig)
+    # Per-profile staging allowlists (empty = stage all, preserving default behavior).
+    # Entries are directory/file names under ~/.claude/skills and ~/.claude/agents.
+    skills: list[str] = Field(default_factory=list)
+    agents: list[str] = Field(default_factory=list)
 
 
 class ClaudePermissions(BaseModel):

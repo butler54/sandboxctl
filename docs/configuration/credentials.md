@@ -98,6 +98,45 @@ export SANDBOXCTL_GITLAB_GITLAB_INTERNAL_EXAMPLE_COM="glpat-your_token_here"
 If no server-specific credential is found, sandboxctl falls back to the generic
 `sandboxctl-gitlab-token` credential.
 
+### OpenAI Keys (opencode)
+
+opencode can use one or more named OpenAI accounts. List the account names in
+the `[opencode]` section of `config.toml`, and store each account's key in the
+keychain under the service name `sandboxctl-openai-{name}`:
+
+```toml
+# ~/.config/sandboxctl/config.toml
+[opencode]
+openai_accounts = ["work", "personal"]
+```
+
+```bash
+# Store each account's key (keychain service = sandboxctl-openai-<name>)
+export SANDBOXCTL_OPENAI_WORK="sk-..."
+export SANDBOXCTL_OPENAI_PERSONAL="sk-..."
+```
+
+At sandbox creation each account is injected as an `OPENAI_API_KEY_<NAME>` env
+var (the first account also sets `OPENAI_API_KEY`) and generated as a selectable
+opencode provider `openai-<name>` exposing the GPT-5.6 models. You then switch
+accounts directly in opencode's model picker, e.g. `openai-work/gpt-5.6-sol` vs
+`openai-personal/gpt-5.6-luna`. Accounts without a stored key are skipped.
+
+### MCP OAuth Credentials
+
+A profile can stage OAuth credentials for MCP servers from the host's
+`Claude Code-credentials` keychain entry into the sandbox. List the MCP server
+names under `credentials.mcp.servers` in the profile:
+
+```toml
+[credentials.mcp]
+servers = ["sentry", "linear"]
+```
+
+At creation, `stage_mcp_credentials()` reads the host keychain, filters to the
+listed servers, and stages their `mcpOAuth` tokens into the sandbox so the MCP
+servers authenticate without re-login. Servers with no stored token are skipped.
+
 ## Scoped Git Tokens
 
 When a profile lists repositories, sandboxctl resolves credentials per provider

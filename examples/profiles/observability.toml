@@ -1,0 +1,36 @@
+# Observability + opencode sandbox profile
+# Demonstrates MLflow tracking, per-profile skill/agent scoping, MCP credential
+# staging, and (via config.toml [opencode]) named OpenAI accounts.
+# Usage: sandboxctl create --profile observability
+
+[sandbox]
+# default_repo = "my-project"
+
+[workspace]
+theme = "Default Dark Modern"
+zoom = -1
+
+[repos]
+github = [
+    # "owner/repo-name",
+]
+
+# Wire this sandbox to MLflow tracking (default is already true; shown for clarity).
+# Configure the server itself in config.toml's [mlflow] section.
+mlflow = true
+
+# Stage only the skills/agents this profile needs (empty = stage all).
+skills = ["general-purpose"]
+agents = []
+
+# Opt into the GSD runtime for this profile.
+[gsd]
+enabled = false
+# model_profile = "balanced"
+
+# Stage OAuth tokens for these MCP servers from the host Claude Code keychain.
+[credentials.mcp]
+servers = [
+    # "sentry",
+    # "linear",
+]

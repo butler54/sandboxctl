@@ -118,6 +118,50 @@ connection parameters as values.
 | `user` | `"root"` | SSH username |
 | `proxy_host` | `""` | Jump host for ProxyJump connections |
 
+#### `skills` and `agents`
+
+By default every skill under `~/.claude/skills` and every agent under
+`~/.claude/agents` is staged into the sandbox. Set these top-level allowlists to
+stage only the named entries — useful for narrowly-scoped profiles that don't
+need your whole skill/agent library. An empty list (the default) stages
+everything.
+
+```toml
+# Stage only these skills/agents (by directory or file name); empty = stage all
+skills = ["general-purpose", "container-hardening"]
+agents = ["code-reviewer.md"]
+```
+
+#### `mlflow`
+
+Whether to wire this sandbox up to MLflow tracking. Defaults to `true`. When
+enabled, `sandboxctl create` validates (and, in managed mode, starts) the MLflow
+server and injects `MLFLOW_TRACKING_URI` plus Claude Code tracing env vars into
+the sandbox. Set to `false` to opt a profile out entirely. See the
+[`mlflow` command](../commands/mlflow.md) and the `[mlflow]` section of
+`config.toml`.
+
+```toml
+mlflow = true
+```
+
+#### `[gsd]`
+
+Opt into the GSD runtime for this profile (off by default). When `enabled`, the
+GSD runtime is installed in the sandbox if missing, and `model_profile` (when
+set) is written to `/sandbox/.gsd/defaults.json`, overriding the image default.
+
+```toml
+[gsd]
+enabled = true
+model_profile = "balanced"   # quality | balanced | budget | adaptive | inherit
+```
+
+| Key | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Install the GSD runtime into the sandbox |
+| `model_profile` | `""` | GSD model profile written to `defaults.json` |
+
 ## Creating a Profile
 
 Generate a new profile skeleton:

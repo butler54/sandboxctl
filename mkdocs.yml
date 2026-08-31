@@ -47,6 +47,7 @@ nav:
     - upgrade: commands/upgrade.md
     - doctor: commands/doctor.md
     - config: commands/config.md
+    - mlflow: commands/mlflow.md
   - Configuration:
     - Overview: configuration/index.md
     - Profiles: configuration/profiles.md

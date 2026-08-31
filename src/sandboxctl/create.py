@@ -181,6 +181,7 @@ def _ensure_vertex_provider_yaml(config_dir: Path) -> Path:
     yaml_path = providers_dir / "vertex-claude.yaml"
     yaml_content = """\
 id: vertex-claude
+display_name: Vertex Claude
 endpoints:
   - host: oauth2.googleapis.com
     port: 443
@@ -195,8 +196,10 @@ endpoints:
     enforcement: enforce
     access: read-write
 """
-    # Regenerate if missing or if it has the old format (missing `id:` field)
-    if not yaml_path.exists() or "id:" not in yaml_path.read_text():
+    # Regenerate if missing or if it has an old format (missing `id:` or the
+    # now-required `display_name:` field — #120).
+    existing = yaml_path.read_text() if yaml_path.exists() else ""
+    if "id:" not in existing or "display_name:" not in existing:
         yaml_path.write_text(yaml_content)
     return yaml_path
 

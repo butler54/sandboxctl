@@ -186,11 +186,16 @@ def provider_create(
     _run(["openshell", "provider", "delete", name], check=False, capture=True)
     cmd = ["openshell", "provider", "create", "--name", name, "--type", provider_type]
     cmd += ["--from-gcloud-adc"] if from_gcloud_adc else ["--credential", credential]
-    _run(
-        cmd,
-        check=False,
-        capture=False,
-    )
+    # Capture output so we can suppress the benign "already exists" case (#121):
+    # the preceding delete can no-op when the provider is still attached to a running
+    # sandbox, leaving the create to report an already-exists error. That's harmless —
+    # the existing provider is reused — so it should not surface as a raw error. Any
+    # other failure is surfaced to the user.
+    result = _run(cmd, check=False, capture=True)
+    if result.returncode != 0:
+        combined = f"{result.stdout}\n{result.stderr}"
+        if "already exists" not in combined:
+            print(combined.strip())
 
 
 def provider_delete(name: str) -> None:

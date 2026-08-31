@@ -271,6 +271,7 @@ class TestEnsureSshKeepalive:
 class TestProviderCreate:
     def test_creates_provider(self) -> None:
         with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             provider_create("github", "github-app", "token123")
             cmd = mock_run.call_args[0][0]
             assert "--name" in cmd
@@ -281,6 +282,7 @@ class TestProviderCreate:
     def test_deletes_before_create(self) -> None:
         """provider_create deletes first so stale credentials are never inherited (#92)."""
         with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             provider_create("vertex-claude", "vertex", "CRED=new-project-id")
 
             calls = mock_run.call_args_list
@@ -294,6 +296,7 @@ class TestProviderCreate:
     def test_from_gcloud_adc_omits_credential_flag(self) -> None:
         """from_gcloud_adc=True uses --from-gcloud-adc instead of --credential."""
         with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             provider_create("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
 
             create_cmd = mock_run.call_args_list[1][0][0]
@@ -301,3 +304,25 @@ class TestProviderCreate:
             assert "--credential" not in create_cmd
             assert "--type" in create_cmd
             assert "google-vertex-ai" in create_cmd
+
+    def test_already_exists_is_suppressed(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """A benign 'already exists' create failure is not surfaced as an error (#121)."""
+        with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1,
+                stdout="",
+                stderr="message: provider already exists",
+            )
+            provider_create("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
+
+        out = capsys.readouterr().out
+        assert "already exists" not in out
+
+    def test_unexpected_error_is_surfaced(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """A non-benign create failure is printed for the user (#121)."""
+        with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="unsupported provider type")
+            provider_create("vertex-claude", "bogus-type")
+
+        out = capsys.readouterr().out
+        assert "unsupported provider type" in out

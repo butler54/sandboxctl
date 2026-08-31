@@ -237,6 +237,22 @@ class TestGenerateProviderYaml:
         assert "tls: skip" in yaml_content
         assert "oauth2.googleapis" in yaml_content and ".com" in yaml_content
         assert "accounts.google" in yaml_content and ".com" in yaml_content
+        # #120: provider profile import requires both id and display_name
+        assert "id: vertex-claude" in yaml_content
+        assert "display_name:" in yaml_content
+
+    def test_vertex_provider_yaml_regenerated_when_missing_display_name(self, tmp_path: Path) -> None:
+        """A stale YAML with id but no display_name is regenerated (#120)."""
+        from sandboxctl.create import _ensure_vertex_provider_yaml
+
+        providers_dir = tmp_path / "providers"
+        providers_dir.mkdir(parents=True)
+        stale = providers_dir / "vertex-claude.yaml"
+        stale.write_text("id: vertex-claude\nendpoints: []\n")  # old format, no display_name
+
+        _ensure_vertex_provider_yaml(tmp_path)
+
+        assert "display_name:" in stale.read_text()
 
     def test_anthropic_direct_provider(self, tmp_path: Path) -> None:
         config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)

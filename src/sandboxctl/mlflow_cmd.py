@@ -77,6 +77,14 @@ def start_mlflow_container(data_dir: Path, port: int = 5050) -> None:
         "0.0.0.0",  # noqa: S104
         "--port",
         str(port),
+        # MLflow's Host-header allowlist replaces the default (localhost-only) list rather
+        # than extending it, and matches the full header including port. Without this,
+        # requests via the host-gateway hostname (host.openshell.internal, used to reach
+        # this container from inside sandboxes — see #138) are rejected as a DNS-rebinding
+        # attempt, and *plain* localhost access (used by `sandboxctl mlflow status`/`doctor`)
+        # would break too if the default list were dropped without re-adding it explicitly.
+        "--allowed-hosts",
+        f"localhost,localhost:{port},127.0.0.1,127.0.0.1:{port},host.openshell.internal,host.openshell.internal:{port}",
     ]
 
     result = _run(cmd, check=False)

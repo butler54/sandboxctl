@@ -519,8 +519,11 @@ def post_launch_setup(
                         "after start attempt. Create aborted (fail-closed)."
                     )
                     raise RuntimeError(msg)
-            # Inject gateway IP URI (not localhost — 10.200.0.1 is the host gateway reachable from sandbox)
-            injected_uri = f"http://10.200.0.1:{config.mlflow.port}"
+            # Inject host-gateway hostname (not localhost, not 10.200.0.1 — that address only
+            # forwards the supervisor's own proxy port, not arbitrary ports; see #138).
+            # host.openshell.internal is the gvproxy host-gateway hostname, genuinely routable
+            # from inside the sandbox to the macOS host (resolves to 192.168.127.254).
+            injected_uri = f"http://host.openshell.internal:{config.mlflow.port}"
         else:
             # External mode (D-12): health-check user URI, fail if unreachable, inject user URI
             if not mlflow_cmd.check_mlflow_health(config.mlflow.tracking_uri):

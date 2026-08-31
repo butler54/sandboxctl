@@ -82,6 +82,17 @@ def test_start_mlflow_container(tmp_path: Path) -> None:
         assert "0.0.0.0" in call_args  # noqa: S104
         assert "--port" in call_args
         assert str(port) in call_args
+        # Allowed hosts (#138): must include localhost (host-side status/doctor checks) and
+        # the host-gateway hostname (sandbox-side access), each with and without port, since
+        # this list replaces MLflow's default rather than extending it.
+        assert "--allowed-hosts" in call_args
+        allowed_hosts_arg = call_args[call_args.index("--allowed-hosts") + 1]
+        assert "localhost" in allowed_hosts_arg
+        assert f"localhost:{port}" in allowed_hosts_arg
+        assert "127.0.0.1" in allowed_hosts_arg
+        assert f"127.0.0.1:{port}" in allowed_hosts_arg
+        assert "host.openshell.internal" in allowed_hosts_arg
+        assert f"host.openshell.internal:{port}" in allowed_hosts_arg
 
         # Verify check=False was passed
         assert mock_run.call_args[1]["check"] is False

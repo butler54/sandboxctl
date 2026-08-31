@@ -53,6 +53,40 @@ class TestStageSkills:
 
         assert count == 0
 
+    def test_allowlist_stages_only_selected(self, tmp_path: Path) -> None:
+        """A non-empty allowlist stages only the named skills (#118)."""
+        skills_src = tmp_path / "home" / ".claude" / "skills"
+        skills_src.mkdir(parents=True)
+        for skill in ("wanted", "unwanted", "also-unwanted"):
+            (skills_src / skill).mkdir()
+            (skills_src / skill / "SKILL.md").write_text("x")
+
+        stage_dir = tmp_path / "stage"
+        stage_dir.mkdir()
+
+        with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+            count = stage_skills(stage_dir, ["wanted"])
+
+        assert count == 1
+        assert (stage_dir / ".claude" / "skills" / "wanted" / "SKILL.md").exists()
+        assert not (stage_dir / ".claude" / "skills" / "unwanted").exists()
+
+    def test_empty_allowlist_stages_all(self, tmp_path: Path) -> None:
+        """An empty allowlist preserves the stage-all default (#118)."""
+        skills_src = tmp_path / "home" / ".claude" / "skills"
+        skills_src.mkdir(parents=True)
+        for skill in ("a", "b"):
+            (skills_src / skill).mkdir()
+            (skills_src / skill / "SKILL.md").write_text("x")
+
+        stage_dir = tmp_path / "stage"
+        stage_dir.mkdir()
+
+        with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+            count = stage_skills(stage_dir, [])
+
+        assert count == 2
+
 
 class TestStageAgents:
     def test_copies_agents(self, tmp_path: Path) -> None:
@@ -77,6 +111,23 @@ class TestStageAgents:
             count = stage_agents(stage_dir)
 
         assert count == 0
+
+    def test_allowlist_stages_only_selected(self, tmp_path: Path) -> None:
+        """A non-empty allowlist stages only the named agents (#119)."""
+        agents_src = tmp_path / "home" / ".claude" / "agents"
+        agents_src.mkdir(parents=True)
+        for agent in ("keep.md", "drop.md"):
+            (agents_src / agent).write_text("agent")
+
+        stage_dir = tmp_path / "stage"
+        stage_dir.mkdir()
+
+        with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+            count = stage_agents(stage_dir, ["keep.md"])
+
+        assert count == 1
+        assert (stage_dir / ".claude" / "agents" / "keep.md").exists()
+        assert not (stage_dir / ".claude" / "agents" / "drop.md").exists()
 
 
 class TestStageClaudeSettings:

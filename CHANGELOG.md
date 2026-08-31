@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.16.0 (2026-08-31)
+
+### Features
+
+- Per-profile skill and agent selection (#118, #119)
+  ([#132](https://github.com/butler54/sandboxctl/pull/132),
+  [`80e90fe`](https://github.com/butler54/sandboxctl/commit/80e90fe8e781f5d062e61a266a66ce33816b1288))
+
+
 ## v1.15.2 (2026-08-31)
 
 ### Bug Fixes

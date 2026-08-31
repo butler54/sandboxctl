@@ -335,6 +335,43 @@ def post_launch_setup(
             'echo "Vertex AI env: configured"',
         )
 
+    # OpenCode autonomous ("YOLO") mode (#128): auto-approve all tool actions inside
+    # the isolated sandbox. opencode reads OPENCODE_PERMISSION as JSON; "*" applies to
+    # every tool. Mirrors Claude Code's staged defaultMode=bypassPermissions.
+    osh.sandbox_exec_pipe(
+        name,
+        "grep -q OPENCODE_PERMISSION /sandbox/.bashrc 2>/dev/null || "
+        'echo "export OPENCODE_PERMISSION=\'{\\"*\\":\\"allow\\"}\'" >> /sandbox/.bashrc; '
+        'echo "OpenCode YOLO: configured"',
+    )
+
+    # OpenAI API keys for opencode (#129): stage named accounts from the host keychain
+    # as OPENAI_API_KEY_<NAME> env vars (base64 to survive arbitrary key chars). The
+    # first account also sets OPENAI_API_KEY (opencode's built-in openai default).
+    # Users switch accounts by referencing {env:OPENAI_API_KEY_<NAME>} in opencode config.
+    openai_accounts = list(config.opencode.openai_accounts)
+    account_user = os.environ.get("USER", "sandboxctl")
+    for index, account in enumerate(openai_accounts):
+        _validate_repo_ref(account)  # reuse safe-name validation for the env var suffix
+        key = get_credential(f"sandboxctl-openai-{account}", account_user)
+        if not key:
+            typer.echo(f"  OpenAI ({account}): no keychain entry, skipped")
+            continue
+        env_suffix = re.sub(r"[^A-Z0-9]", "_", account.upper())
+        encoded = base64.b64encode(key.encode()).decode()
+        var_names = [f"OPENAI_API_KEY_{env_suffix}"]
+        if index == 0:
+            var_names.append("OPENAI_API_KEY")
+        for var in var_names:
+            osh.sandbox_exec_pipe(
+                name,
+                f"grep -q {var}= /sandbox/.bashrc 2>/dev/null || "
+                f"{{ printf 'export {var}=' >> /sandbox/.bashrc && "
+                f"echo {encoded} | base64 -d >> /sandbox/.bashrc && "
+                "echo >> /sandbox/.bashrc; }; "
+                f'echo "  OpenAI ({account}): {var} configured"',
+            )
+
     if profile.ssh:
         typer.echo("Configuring SSH proxy hosts...")
         ssh_lines: list[str] = []

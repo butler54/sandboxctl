@@ -882,7 +882,8 @@ def test_create_injects_mlflow_uri() -> None:
             return "MLflow tracing: plugin installed" if "claude plugin marketplace add" in script else ""
 
         with (
-            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", side_effect=[False, True]) as mock_health,
+            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=False) as mock_health,
+            patch("sandboxctl.create.mlflow_cmd.wait_for_mlflow_health", return_value=True) as mock_wait,
             patch("sandboxctl.create.mlflow_cmd.start_mlflow_container") as mock_start,
             patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=_exec_plugin_ok_s2) as mock_exec,
             patch("sandboxctl.openshell.sandbox_upload"),
@@ -894,8 +895,9 @@ def test_create_injects_mlflow_uri() -> None:
             mock_home.return_value = Path(tmpdir) / "nonexistent"
             post_launch_setup("test-sandbox", profile, config)
 
-            # Two health checks, one start
-            assert mock_health.call_count == 2
+            # Initial check down → start → retry loop reports healthy
+            assert mock_health.call_count == 1
+            mock_wait.assert_called_once()
             mock_start.assert_called_once_with(Path(tmpdir), 5050)
 
             # Injection still happened
@@ -911,6 +913,7 @@ def test_create_injects_mlflow_uri() -> None:
 
         with (
             patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=False),
+            patch("sandboxctl.create.mlflow_cmd.wait_for_mlflow_health", return_value=False),
             patch("sandboxctl.create.mlflow_cmd.start_mlflow_container"),
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
             patch("sandboxctl.openshell.sandbox_upload"),

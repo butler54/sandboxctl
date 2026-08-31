@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.18.0 (2026-08-31)
+
+### Features
+
+- Generate selectable opencode OpenAI providers (zero-config switching)
+  ([#134](https://github.com/butler54/sandboxctl/pull/134),
+  [`778ee67`](https://github.com/butler54/sandboxctl/commit/778ee6797569fa8529fd69181d0ad23e46dd41ad))
+
+- Opencode YOLO mode and OpenAI key staging (#128, #129)
+  ([#134](https://github.com/butler54/sandboxctl/pull/134),
+  [`778ee67`](https://github.com/butler54/sandboxctl/commit/778ee6797569fa8529fd69181d0ad23e46dd41ad))
+
+
 ## v1.17.0 (2026-08-31)
 
 ### Features

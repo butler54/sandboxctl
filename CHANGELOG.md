@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.19.1 (2026-08-31)
+
+### Bug Fixes
+
+- **mlflow**: Use host.openshell.internal gateway + allowed-hosts so tracing is reachable from
+  sandboxes ([#139](https://github.com/butler54/sandboxctl/pull/139),
+  [`1b9f55e`](https://github.com/butler54/sandboxctl/commit/1b9f55e81ee9cebe01779a253b7d25db2a7e4ed6))
+
+
 ## v1.19.0 (2026-08-31)
 
 ### Bug Fixes

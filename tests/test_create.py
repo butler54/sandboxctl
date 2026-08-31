@@ -326,6 +326,7 @@ class TestPostLaunchSetup:
             ca_bundle=None,
             ca_paths=[],
             keychain_gitlab="sandboxctl-gitlab-token",
+            opencode=MagicMock(openai_accounts=[]),
         )
         return config
 
@@ -362,6 +363,100 @@ class TestPostLaunchSetup:
 
         vertex_calls = [c for c in mock_pipe.call_args_list if "CLAUDE_CODE_USE_VERTEX" in str(c)]
         assert len(vertex_calls) == 0
+
+    def test_opencode_yolo_permission_injected(self, tmp_path: Path) -> None:
+        """OPENCODE_PERMISSION is always injected for autonomous opencode (#128)."""
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        perm_calls = [c for c in mock_pipe.call_args_list if "OPENCODE_PERMISSION" in str(c)]
+        assert len(perm_calls) == 1
+        script = perm_calls[0][0][1]
+        assert '\\"*\\":\\"allow\\"' in script
+
+    def test_openai_keys_injected_from_keychain(self, tmp_path: Path) -> None:
+        """Named OpenAI accounts are injected as OPENAI_API_KEY_<NAME>; first sets OPENAI_API_KEY (#129)."""
+        config = self._make_config(tmp_path)
+        config.opencode = MagicMock(openai_accounts=["work", "personal"])
+        profile = Profile(name="test", mlflow=False)
+
+        def fake_get_credential(service: str, account: str) -> str | None:
+            if service == "sandboxctl-openai-work":
+                return "sk-work"
+            if service == "sandboxctl-openai-personal":
+                return "sk-personal"
+            return None
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", side_effect=fake_get_credential),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        scripts = [c[0][1] for c in mock_pipe.call_args_list]
+        assert any("OPENAI_API_KEY_WORK=" in s for s in scripts)
+        assert any("OPENAI_API_KEY_PERSONAL=" in s for s in scripts)
+        # First account (work) also sets the default OPENAI_API_KEY
+        assert any("OPENAI_API_KEY=" in s and "base64" in s for s in scripts)
+        # Keys never appear in plaintext in the scripts (base64-encoded)
+        assert not any("sk-work" in s or "sk-personal" in s for s in scripts)
+
+    def test_openai_accounts_generate_selectable_providers(self, tmp_path: Path) -> None:
+        """Named accounts become opencode providers via OPENCODE_CONFIG_CONTENT (#129)."""
+        import base64 as _b64
+        import json as _json
+
+        config = self._make_config(tmp_path)
+        config.opencode = MagicMock(openai_accounts=["work", "personal"])
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value="sk-x"),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        cfg_calls = [c for c in mock_pipe.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(c)]
+        assert len(cfg_calls) == 1
+        # Decode the base64 JSON payload embedded in the injection script.
+        script = cfg_calls[0][0][1]
+        b64 = next(tok for tok in script.split() if tok.startswith("eyJ"))  # base64 of {"...
+        patch_obj = _json.loads(_b64.b64decode(b64).decode())
+        providers = patch_obj["provider"]
+        assert "openai-work" in providers and "openai-personal" in providers
+        assert providers["openai-work"]["options"]["apiKey"] == "{env:OPENAI_API_KEY_WORK}"
+        assert providers["openai-work"]["npm"] == "@ai-sdk/openai"
+        assert "gpt-5.6-sol" in providers["openai-work"]["models"]
+        assert "gpt-5.6-luna" in providers["openai-work"]["models"]
+
+    def test_openai_account_without_keychain_entry_skipped(self, tmp_path: Path) -> None:
+        """An account with no keychain entry is skipped, not injected (#129)."""
+        config = self._make_config(tmp_path)
+        config.opencode = MagicMock(openai_accounts=["ghost"])
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        scripts = [c[0][1] for c in mock_pipe.call_args_list]
+        assert not any("OPENAI_API_KEY_GHOST" in s for s in scripts)
 
     def test_gitlab_token_injected_without_shell_expansion(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)

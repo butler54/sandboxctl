@@ -21,6 +21,17 @@ from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Pr
 
 _REPO_RE = re.compile(r"^[a-zA-Z0-9._/-]+$")
 
+# Curated OpenAI model ids exposed for each named opencode provider (#129). The GPT-5.6
+# family: sol (flagship), terra (balanced), luna (fast/cheap); bare gpt-5.6 aliases to sol.
+# opencode resolves the rest of each model's metadata from models.dev; empty {} values are
+# valid. Extend this list (or add models in your own opencode config) as OpenAI ships more.
+_OPENAI_CURATED_MODELS = (
+    "gpt-5.6",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+)
+
 
 def _validate_repo_ref(value: str) -> str:
     """Validate a server or repo reference for safe shell interpolation."""
@@ -131,6 +142,25 @@ def stage_opencode_agents(stage_dir: Path) -> int:
             shutil.copytree(agents_src, agents_dst, symlinks=False, dirs_exist_ok=True)
             return len(list(agents_dst.glob("*.md")))
     return 0
+
+
+def _inject_opencode_config_content(name: str, patch: dict) -> None:
+    """Inject an opencode config patch via the OPENCODE_CONFIG_CONTENT env var.
+
+    opencode merges the JSON in OPENCODE_CONFIG_CONTENT into the user's own config at
+    load time, so this adds providers/mcp/etc. without touching (or clobbering) a staged
+    host opencode.jsonc. The JSON is base64-encoded into /sandbox/.bashrc to avoid any
+    shell-quoting issues. Idempotent: skipped if the export already exists.
+    """
+    encoded = base64.b64encode(json.dumps(patch).encode()).decode()
+    osh.sandbox_exec_pipe(
+        name,
+        "grep -q OPENCODE_CONFIG_CONTENT /sandbox/.bashrc 2>/dev/null || "
+        '{ printf "export OPENCODE_CONFIG_CONTENT=\'" >> /sandbox/.bashrc && '
+        f"echo {encoded} | base64 -d >> /sandbox/.bashrc && "
+        'printf "\'\\n" >> /sandbox/.bashrc; }; '
+        'echo "OpenCode config content: configured"',
+    )
 
 
 def stage_credentials(stage_dir: Path, config: SandboxctlConfig) -> list[str]:
@@ -334,6 +364,60 @@ def post_launch_setup(
             " >> /sandbox/.bashrc; "
             'echo "Vertex AI env: configured"',
         )
+
+    # OpenCode autonomous ("YOLO") mode (#128): auto-approve all tool actions inside
+    # the isolated sandbox. opencode reads OPENCODE_PERMISSION as JSON; "*" applies to
+    # every tool. Mirrors Claude Code's staged defaultMode=bypassPermissions.
+    osh.sandbox_exec_pipe(
+        name,
+        "grep -q OPENCODE_PERMISSION /sandbox/.bashrc 2>/dev/null || "
+        'echo "export OPENCODE_PERMISSION=\'{\\"*\\":\\"allow\\"}\'" >> /sandbox/.bashrc; '
+        'echo "OpenCode YOLO: configured"',
+    )
+
+    # OpenAI API keys for opencode (#129): stage named accounts from the host keychain
+    # as OPENAI_API_KEY_<NAME> env vars (base64 to survive arbitrary key chars). The
+    # first account also sets OPENAI_API_KEY (opencode's built-in openai default).
+    # Each account also becomes a ready-to-use opencode provider (openai-<name>) so it
+    # is selectable in opencode's model picker with zero manual config (see below).
+    openai_accounts = list(config.opencode.openai_accounts)
+    account_user = os.environ.get("USER", "sandboxctl")
+    opencode_providers: dict[str, dict] = {}
+    for index, account in enumerate(openai_accounts):
+        _validate_repo_ref(account)  # reuse safe-name validation for the env var suffix
+        key = get_credential(f"sandboxctl-openai-{account}", account_user)
+        if not key:
+            typer.echo(f"  OpenAI ({account}): no keychain entry, skipped")
+            continue
+        env_suffix = re.sub(r"[^A-Z0-9]", "_", account.upper())
+        encoded = base64.b64encode(key.encode()).decode()
+        var_names = [f"OPENAI_API_KEY_{env_suffix}"]
+        if index == 0:
+            var_names.append("OPENAI_API_KEY")
+        for var in var_names:
+            osh.sandbox_exec_pipe(
+                name,
+                f"grep -q {var}= /sandbox/.bashrc 2>/dev/null || "
+                f"{{ printf 'export {var}=' >> /sandbox/.bashrc && "
+                f"echo {encoded} | base64 -d >> /sandbox/.bashrc && "
+                "echo >> /sandbox/.bashrc; }; "
+                f'echo "  OpenAI ({account}): {var} configured"',
+            )
+        # Build a selectable provider block for this account (#129). apiKey uses
+        # opencode's {env:VAR} interpolation so the secret stays in the env var.
+        provider_id = re.sub(r"[^a-z0-9-]", "-", f"openai-{account.lower()}")
+        opencode_providers[provider_id] = {
+            "npm": "@ai-sdk/openai",
+            "name": f"OpenAI ({account})",
+            "options": {"apiKey": f"{{env:OPENAI_API_KEY_{env_suffix}}}"},
+            "models": {model: {} for model in _OPENAI_CURATED_MODELS},
+        }
+
+    # Inject the generated providers via OPENCODE_CONFIG_CONTENT — opencode merges this
+    # JSON env var into the user's own config at load time, so named OpenAI accounts are
+    # immediately selectable in the model picker without editing opencode.jsonc (#129).
+    if opencode_providers:
+        _inject_opencode_config_content(name, {"provider": opencode_providers})
 
     if profile.ssh:
         typer.echo("Configuring SSH proxy hosts...")

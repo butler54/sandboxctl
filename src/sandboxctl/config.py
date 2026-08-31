@@ -104,6 +104,14 @@ class MlflowConfig(_SubConfig):
         return self
 
 
+class OpencodeConfig(_SubConfig):
+    # Named OpenAI accounts. Each name maps to a host keychain entry
+    # "sandboxctl-openai-<name>"; the key is injected into the sandbox as
+    # OPENAI_API_KEY_<NAME> (uppercased), and the first account also sets
+    # OPENAI_API_KEY (opencode's built-in openai provider default). #129
+    openai_accounts: list[str] = Field(default_factory=list)
+
+
 class SandboxctlConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SANDBOXCTL_",
@@ -122,6 +130,7 @@ class SandboxctlConfig(BaseSettings):
     tls: TlsConfig = Field(default_factory=TlsConfig)
     backup: BackupConfig = Field(default_factory=BackupConfig)
     mlflow: MlflowConfig = Field(default_factory=MlflowConfig)
+    opencode: OpencodeConfig = Field(default_factory=OpencodeConfig)
 
     _config_dir_override: ClassVar[Path | None] = None
 

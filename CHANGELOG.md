@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.21.1 (2026-09-05)
+
+### Bug Fixes
+
+- **policy**: Render OpenShell binary objects
+  ([#153](https://github.com/butler54/sandboxctl/pull/153),
+  [`0da5530`](https://github.com/butler54/sandboxctl/commit/0da5530b1d45dcef0729e80936d128b2f9182aaa))
+
+
 ## v1.21.0 (2026-09-05)
 
 ### Features

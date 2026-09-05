@@ -36,6 +36,15 @@ def test_load_profile_fills_default_model(tmp_path: Path) -> None:
     assert profile.sandbox.model == cfg.default_model
 
 
+def test_load_profile_opencode_settings(tmp_path: Path) -> None:
+    profiles_dir = tmp_path / "profiles"
+    profiles_dir.mkdir()
+    (profiles_dir / "test.toml").write_text('[opencode]\nenabled_providers = ["openai"]\nmodel = "openai/gpt-5.6"\n')
+    profile = load_profile("test", load_config(config_dir=tmp_path))
+    assert profile.opencode.enabled_providers == ["openai"]
+    assert profile.opencode.model == "openai/gpt-5.6"
+
+
 def test_list_profiles(tmp_path: Path) -> None:
     profiles_dir = tmp_path / "profiles"
     profiles_dir.mkdir()

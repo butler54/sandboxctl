@@ -138,6 +138,24 @@ copied to the same location in the sandbox. Configure their model, permissions,
 and instructions in the OpenCode agent file; sandboxctl preserves those files
 without transformation.
 
+#### `[opencode]`
+
+Set per-profile OpenCode defaults. A non-empty value overrides the matching
+host `[opencode]` setting in `config.toml`; an empty value inherits the host
+setting.
+
+```toml
+[opencode]
+enabled_providers = ["openai-work"]
+disabled_providers = ["github-copilot"]
+model = "openai-work/gpt-5.6"
+build_model = "openai-work/gpt-5.6"
+plan_model = "google-vertex-anthropic/claude-opus-4-5"
+```
+
+`enabled_providers` and `disabled_providers` follow the same precedence rule.
+An empty list inherits the corresponding host list.
+
 ### Shared Policy Fragments
 
 Policies may reuse YAML maps with a `!include` tag. Include paths are relative

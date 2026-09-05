@@ -14,6 +14,22 @@ class PolicyIncludeError(ValueError):
     """A policy fragment is invalid or outside the configured profiles directory."""
 
 
+def prepare_policy_for_apply(path: Path, profiles_dir: Path, target_dir: Path) -> Path:
+    """Return a policy path ready for OpenShell, rendering when required."""
+    root = profiles_dir.resolve()
+    source_path = path.resolve()
+    if not source_path.is_relative_to(root):
+        raise PolicyIncludeError(f"Policy outside profiles directory: {path}")
+    if not source_path.exists():
+        return source_path
+    source = source_path.read_text()
+    if "!include" not in source and not any(launcher in source for launcher in _OPENCODE_LAUNCHERS):
+        return source_path
+    target = target_dir / "policy.yaml"
+    target.write_text(render_policy(source_path, profiles_dir))
+    return target
+
+
 def render_policy(path: Path, profiles_dir: Path) -> str:
     """Render a policy, resolving ``!include`` paths relative to each YAML file.
 

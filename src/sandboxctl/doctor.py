@@ -840,45 +840,79 @@ def check_profile_readiness(config: SandboxctlConfig) -> dict[str, list[str]]:
     return readiness
 
 
-def check_policy_drift(sandbox_name: str, config: SandboxctlConfig) -> CheckResult:
-    """Compare a named profile's desired network policy to the active base policy."""
+def _policy_drift_snapshot(sandbox_name: str, config: SandboxctlConfig) -> tuple[CheckResult, str | None, bool]:
+    """Compare active policy with one rendered profile-policy snapshot."""
     if sandbox_name not in list_profiles(config):
-        return CheckResult(
-            passed=True,
-            name="Policy drift",
-            details="skipped (no profile with the sandbox name)",
-        )
+        return CheckResult(True, "Policy drift", "skipped (no profile with the sandbox name)"), None, False
     try:
         profile = load_profile(sandbox_name, config)
     except FileNotFoundError:
-        return CheckResult(
-            passed=True,
-            name="Policy drift",
-            details="skipped (no profile with the sandbox name)",
-        )
+        return CheckResult(True, "Policy drift", "skipped (no profile with the sandbox name)"), None, False
 
     path = config.profiles_dir / profile.name / profile.sandbox.policy
     if not path.exists():
-        return CheckResult(False, "Policy drift", f"profile policy not found: {path}")
+        return CheckResult(False, "Policy drift", f"profile policy not found: {path}"), None, False
     try:
-        desired = yaml.safe_load(render_policy(path, config.profiles_dir)) or {}
+        rendered = render_policy(path, config.profiles_dir)
+        desired = yaml.safe_load(rendered) or {}
     except PolicyIncludeError as exc:
-        return CheckResult(False, "Policy drift", str(exc))
+        return CheckResult(False, "Policy drift", str(exc)), None, False
 
     output = osh.policy_get_base(sandbox_name)
     try:
         active = json.loads(output)["policy"]
     except (json.JSONDecodeError, KeyError, TypeError):
-        return CheckResult(False, "Policy drift", "could not retrieve the active base policy")
+        return CheckResult(False, "Policy drift", "could not retrieve the active base policy"), None, False
 
-    if active.get("network_policies", {}) == desired.get("network_policies", {}):
-        return CheckResult(True, "Policy drift", "active network policy matches profile")
-    return CheckResult(
-        False,
-        "Policy drift",
-        "active network policy differs from profile; run 'sandboxctl restart "
-        f"{sandbox_name}' or 'openshell policy set --wait {sandbox_name}' to reload",
+    network_drift = active.get("network_policies", {}) != desired.get("network_policies", {})
+    filesystem_keys = ("filesystem", "filesystem_policy", "landlock")
+    filesystem_drift = any(active.get(key) != desired.get(key) for key in filesystem_keys)
+    if not network_drift and not filesystem_drift:
+        return CheckResult(True, "Policy drift", "active network policy matches profile"), rendered, False
+    if filesystem_drift:
+        return (
+            CheckResult(
+                False,
+                "Policy drift",
+                "filesystem policy differs from profile; recreation required — run "
+                f"'sandboxctl restart {sandbox_name}'",
+            ),
+            rendered,
+            False,
+        )
+    return (
+        CheckResult(
+            False,
+            "Policy drift",
+            "active network policy differs from profile; run 'sandboxctl restart "
+            f"{sandbox_name}' or 'openshell policy set --wait {sandbox_name}' to reload",
+        ),
+        rendered,
+        True,
     )
+
+
+def check_policy_drift(sandbox_name: str, config: SandboxctlConfig) -> CheckResult:
+    """Compare a named profile's desired network policy to the active base policy."""
+    return _policy_drift_snapshot(sandbox_name, config)[0]
+
+
+def fix_policy_drift(sandbox_name: str, config: SandboxctlConfig) -> FixResult:
+    """Hot-reload network-only policy drift; filesystem drift requires recreation."""
+    result, rendered, hot_reloadable = _policy_drift_snapshot(sandbox_name, config)
+    if result.passed:
+        return FixResult(True, "Policy drift", "no reload needed")
+    if not hot_reloadable or not rendered:
+        return FixResult(False, "Policy drift", result.details)
+
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "policy.yaml"
+            path.write_text(rendered or "")
+            osh.policy_set(sandbox_name, path)
+    except (OSError, subprocess.CalledProcessError):
+        return FixResult(False, "Policy drift", "policy reload failed")
+    return FixResult(True, "Policy drift", "network policy reloaded")
 
 
 def fix_sandbox_credentials(

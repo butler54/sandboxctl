@@ -6,7 +6,15 @@ import tomllib
 from pathlib import Path
 
 from sandboxctl.config import SandboxctlConfig
-from sandboxctl.models import CredentialConfig, Extensions, Profile, SandboxConfig, SshHostConfig, WorkspaceConfig
+from sandboxctl.models import (
+    CredentialConfig,
+    Extensions,
+    OpencodeProfileConfig,
+    Profile,
+    SandboxConfig,
+    SshHostConfig,
+    WorkspaceConfig,
+)
 
 
 def load_profile(name: str, config: SandboxctlConfig) -> Profile:
@@ -24,6 +32,7 @@ def load_profile(name: str, config: SandboxctlConfig) -> Profile:
     ssh: dict[str, SshHostConfig] = {host: SshHostConfig(**cfg) for host, cfg in data.get("ssh", {}).items()}
     credentials = CredentialConfig(**data.get("credentials", {}))
     extensions = Extensions(**data.get("extensions", {}))
+    opencode = OpencodeProfileConfig(**data.get("opencode", {}))
     mlflow: bool = data.get("mlflow", True)
 
     if not sandbox.model:
@@ -37,6 +46,7 @@ def load_profile(name: str, config: SandboxctlConfig) -> Profile:
         ssh=ssh,
         credentials=credentials,
         extensions=extensions,
+        opencode=opencode,
         mlflow=mlflow,
     )
 

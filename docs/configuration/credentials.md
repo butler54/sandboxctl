@@ -122,6 +122,40 @@ opencode provider `openai-<name>` exposing the GPT-5.6 models. You then switch
 accounts directly in opencode's model picker, e.g. `openai-work/gpt-5.6-sol` vs
 `openai-personal/gpt-5.6-luna`. Accounts without a stored key are skipped.
 
+### OpenCode Providers and Models
+
+Use `[opencode]` to restrict the provider/model picker and set defaults for the
+main, build, and plan agents. These settings are merged as runtime overrides, so
+they do not replace your staged OpenCode configuration.
+
+```toml
+[opencode]
+enabled_providers = ["google-vertex-anthropic", "openai-work"]
+disabled_providers = ["github-copilot"]
+model = "google-vertex-anthropic/claude-sonnet-4-5"
+build_model = "openai-work/gpt-5.6"
+plan_model = "google-vertex-anthropic/claude-opus-4-5"
+```
+
+`enabled_providers` is an allowlist. `disabled_providers` takes precedence if a
+provider is listed in both settings. Leave either list empty to omit that filter.
+
+### OpenCode Go Key
+
+Set `go = true` and store your OpenCode Go API key under the
+`sandboxctl-opencode-go` service. At sandbox creation, sandboxctl injects only
+that key into OpenCode's `OPENCODE_AUTH_CONTENT` runtime configuration; it does
+not copy the host's full `auth.json` file or its unrelated provider credentials.
+
+```toml
+[opencode]
+go = true
+```
+
+```bash
+export SANDBOXCTL_OPENCODE_GO="your-opencode-go-api-key"
+```
+
 ### MCP OAuth Credentials
 
 A profile can stage OAuth credentials for MCP servers from the host's

@@ -12,11 +12,14 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
+
 from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig
 from sandboxctl.credentials import get_credential
 from sandboxctl.health import diagnose
 from sandboxctl.models import CredentialConfig
+from sandboxctl.policy import PolicyIncludeError, render_policy
 from sandboxctl.profile import list_profiles, load_profile
 
 # ---------------------------------------------------------------------------
@@ -835,6 +838,47 @@ def check_profile_readiness(config: SandboxctlConfig) -> dict[str, list[str]]:
                     missing.append(chk.check_name)
         readiness[profile_name] = missing
     return readiness
+
+
+def check_policy_drift(sandbox_name: str, config: SandboxctlConfig) -> CheckResult:
+    """Compare a named profile's desired network policy to the active base policy."""
+    if sandbox_name not in list_profiles(config):
+        return CheckResult(
+            passed=True,
+            name="Policy drift",
+            details="skipped (no profile with the sandbox name)",
+        )
+    try:
+        profile = load_profile(sandbox_name, config)
+    except FileNotFoundError:
+        return CheckResult(
+            passed=True,
+            name="Policy drift",
+            details="skipped (no profile with the sandbox name)",
+        )
+
+    path = config.profiles_dir / profile.name / profile.sandbox.policy
+    if not path.exists():
+        return CheckResult(False, "Policy drift", f"profile policy not found: {path}")
+    try:
+        desired = yaml.safe_load(render_policy(path, config.profiles_dir)) or {}
+    except PolicyIncludeError as exc:
+        return CheckResult(False, "Policy drift", str(exc))
+
+    output = osh.policy_get_base(sandbox_name)
+    try:
+        active = json.loads(output)["policy"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return CheckResult(False, "Policy drift", "could not retrieve the active base policy")
+
+    if active.get("network_policies", {}) == desired.get("network_policies", {}):
+        return CheckResult(True, "Policy drift", "active network policy matches profile")
+    return CheckResult(
+        False,
+        "Policy drift",
+        "active network policy differs from profile; run 'sandboxctl restart "
+        f"{sandbox_name}' or 'openshell policy set --wait {sandbox_name}' to reload",
+    )
 
 
 def fix_sandbox_credentials(

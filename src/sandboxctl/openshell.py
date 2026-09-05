@@ -153,6 +153,16 @@ def policy_set(name: str, policy_path: Path) -> None:
     )
 
 
+def policy_get_base(name: str) -> str:
+    """Return the active, non-provider-composed policy as JSON."""
+    result = _run(
+        ["openshell", "policy", "get", name, "--base", "--output", "json"],
+        check=False,
+        capture=True,
+    )
+    return result.stdout if result.returncode == 0 else ""
+
+
 def gateway_status() -> dict[str, str]:
     result = _run(["openshell", "status"], check=False)
     info: dict[str, str] = {}

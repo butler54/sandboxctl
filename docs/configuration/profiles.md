@@ -132,6 +132,27 @@ skills = ["general-purpose", "container-hardening"]
 agents = ["code-reviewer.md"]
 ```
 
+OpenCode custom agents are staged separately: every entry in
+`~/.config/opencode/agents/` (or the legacy singular `agent/` directory) is
+copied to the same location in the sandbox. Configure their model, permissions,
+and instructions in the OpenCode agent file; sandboxctl preserves those files
+without transformation.
+
+### Shared Policy Fragments
+
+Policies may reuse YAML maps with a `!include` tag. Include paths are relative
+to the file declaring them and must remain under the profiles directory.
+
+```yaml
+network_policies:
+  opencode: !include ../_shared/opencode.yaml
+```
+
+When an included or local policy allowlists `/usr/local/bin/opencode` or
+`/usr/bin/opencode`, sandboxctl also adds OpenCode's kernel-resolved compiled
+binary path. This works around OpenShell deployments that cannot resolve the
+launcher symlink from the sandbox filesystem.
+
 #### `mlflow`
 
 Whether to wire this sandbox up to MLflow tracking. Defaults to `true`. When

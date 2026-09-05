@@ -18,6 +18,7 @@ from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig
 from sandboxctl.credentials import get_credential
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile
+from sandboxctl.policy import render_policy
 
 _REPO_RE = re.compile(r"^[a-zA-Z0-9._/-]+$")
 
@@ -161,6 +162,39 @@ def _inject_opencode_config_content(name: str, patch: dict) -> None:
         'printf "\'\\n" >> /sandbox/.bashrc; }; '
         'echo "OpenCode config content: configured"',
     )
+
+
+def _inject_opencode_auth_content(name: str, auth: dict) -> None:
+    """Inject OpenCode auth without copying unrelated host-provider credentials."""
+    encoded = base64.b64encode(json.dumps(auth).encode()).decode()
+    osh.sandbox_exec_pipe(
+        name,
+        "grep -q OPENCODE_AUTH_CONTENT /sandbox/.bashrc 2>/dev/null || "
+        f"{{ printf 'export OPENCODE_AUTH_CONTENT=$(echo {encoded} | base64 -d)\\n' "
+        ">> /sandbox/.bashrc; }; "
+        'echo "OpenCode authentication: configured"',
+    )
+
+
+def _opencode_runtime_config(config: SandboxctlConfig) -> dict:
+    """Return OpenCode settings controlled by sandboxctl's host config."""
+    opencode = config.opencode
+    patch: dict = {}
+    if isinstance(opencode.enabled_providers, list) and opencode.enabled_providers:
+        patch["enabled_providers"] = opencode.enabled_providers
+    if isinstance(opencode.disabled_providers, list) and opencode.disabled_providers:
+        patch["disabled_providers"] = opencode.disabled_providers
+    if isinstance(opencode.model, str) and opencode.model:
+        patch["model"] = opencode.model
+
+    agents: dict[str, dict[str, str]] = {}
+    if isinstance(opencode.build_model, str) and opencode.build_model:
+        agents["build"] = {"model": opencode.build_model}
+    if isinstance(opencode.plan_model, str) and opencode.plan_model:
+        agents["plan"] = {"model": opencode.plan_model}
+    if agents:
+        patch["agent"] = agents
+    return patch
 
 
 def stage_credentials(stage_dir: Path, config: SandboxctlConfig) -> list[str]:
@@ -413,10 +447,18 @@ def post_launch_setup(
             "models": {model: {} for model in _OPENAI_CURATED_MODELS},
         }
 
+    if config.opencode.go:
+        go_key = get_credential("sandboxctl-opencode-go", account_user)
+        if go_key:
+            _inject_opencode_auth_content(name, {"opencode-go": {"type": "api", "key": go_key}})
+            typer.echo("  OpenCode Go: configured")
+        else:
+            typer.echo("  OpenCode Go: no keychain entry, skipped")
+
     # Accumulate all generated opencode config into a single patch so it is injected once
     # (OPENCODE_CONFIG_CONTENT holds one JSON value). Providers (#129) and the MCP server
     # registration below (#123) both contribute to it.
-    opencode_config: dict = {}
+    opencode_config = _opencode_runtime_config(config)
     if opencode_providers:
         opencode_config["provider"] = opencode_providers
 
@@ -718,7 +760,7 @@ def create_sandbox(
     typer.echo(f"Model: {model}")
     typer.echo(f"{'=' * 40}\n")
 
-    with tempfile.TemporaryDirectory() as stage_root:
+    with tempfile.TemporaryDirectory() as stage_root, tempfile.TemporaryDirectory() as policy_root:
         stage_dir = Path(stage_root) / "sandbox"
         stage_dir.mkdir()
 
@@ -751,7 +793,15 @@ def create_sandbox(
             typer.echo(f"  {c}: staged")
 
         build_from, cleanup_dir = resolve_build_context(profile, config)
-        policy_path = (config.profiles_dir or config.config_dir / "profiles") / profile.name / profile.sandbox.policy
+        profiles_dir = config.profiles_dir or config.config_dir / "profiles"
+        policy_path = profiles_dir / profile.name / profile.sandbox.policy
+        if policy_path.exists() and (
+            "!include" in policy_path.read_text()
+            or "/usr/local/bin/opencode" in policy_path.read_text()
+            or "/usr/bin/opencode" in policy_path.read_text()
+        ):
+            policy_path = Path(policy_root) / "policy.yaml"
+            policy_path.write_text(render_policy(profiles_dir / profile.name / profile.sandbox.policy, profiles_dir))
 
         providers = setup_providers(config)
         typer.echo(f"  Providers: {', '.join(providers)}")
@@ -770,14 +820,14 @@ def create_sandbox(
             if cleanup_dir:
                 shutil.rmtree(cleanup_dir, ignore_errors=True)
 
+        if policy_path.exists():
+            osh.policy_set(name, policy_path)
+            typer.echo("  Policy re-applied (TLS directives active)")
+
     typer.echo(f"\nSandbox '{name}' created.")
 
     osh.update_local_ssh_config(name)
     typer.echo("  SSH config: updated")
-
-    if policy_path.exists():
-        osh.policy_set(name, policy_path)
-        typer.echo("  Policy re-applied (TLS directives active)")
 
     post_launch_setup(name, profile, config)
     repo_names = clone_repos(name, profile)

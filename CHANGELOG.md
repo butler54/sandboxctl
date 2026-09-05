@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.21.0 (2026-09-05)
+
+### Features
+
+- **opencode**: Add profile policy overrides
+  ([#152](https://github.com/butler54/sandboxctl/pull/152),
+  [`b4a7a04`](https://github.com/butler54/sandboxctl/commit/b4a7a048ccfbe61f9a06cd8e8ecdfce073ea8c3b))
+
+
 ## v1.20.0 (2026-09-05)
 
 ### Chores

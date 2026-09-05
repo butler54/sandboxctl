@@ -2,6 +2,37 @@
 
 <!-- version list -->
 
+## v1.20.0 (2026-09-05)
+
+### Chores
+
+- Bump github/codeql-action/analyze from 4.37.8 to 4.37.9
+  ([#147](https://github.com/butler54/sandboxctl/pull/147),
+  [`8962b90`](https://github.com/butler54/sandboxctl/commit/8962b901809e820eb25351aa725d97df67187b9c))
+
+- Bump github/codeql-action/init from 4.37.8 to 4.37.9
+  ([#145](https://github.com/butler54/sandboxctl/pull/145),
+  [`60e232f`](https://github.com/butler54/sandboxctl/commit/60e232fe9d9b1dfb45dbd12c46384ce33bf52500))
+
+- Bump github/codeql-action/upload-sarif from 4.37.8 to 4.37.9
+  ([#144](https://github.com/butler54/sandboxctl/pull/144),
+  [`d01b003`](https://github.com/butler54/sandboxctl/commit/d01b00383c317b22446c117bd41d16dfaa3b9039))
+
+- Bump python-semantic-release/python-semantic-release
+  ([#146](https://github.com/butler54/sandboxctl/pull/146),
+  [`60ad509`](https://github.com/butler54/sandboxctl/commit/60ad5092f8ab022e0a28261b192ea6f9bcfcf9bc))
+
+- Bump step-security/harden-runner from 2.21.0 to 2.21.1
+  ([#148](https://github.com/butler54/sandboxctl/pull/148),
+  [`b7785d4`](https://github.com/butler54/sandboxctl/commit/b7785d415bc1585138c185b446d1396bc8a658a1))
+
+### Features
+
+- **opencode**: Configure providers and detect policy drift
+  ([#151](https://github.com/butler54/sandboxctl/pull/151),
+  [`ad2be75`](https://github.com/butler54/sandboxctl/commit/ad2be7594b7c2c29b619bb0bbc3a99c7bc02a999))
+
+
 ## v1.19.1 (2026-08-31)
 
 ### Bug Fixes

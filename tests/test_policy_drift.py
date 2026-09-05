@@ -19,7 +19,7 @@ def _config_with_policy(tmp_path: Path) -> SandboxctlConfig:
 
 def test_policy_drift_passes_when_active_network_policy_matches(tmp_path: Path) -> None:
     config = _config_with_policy(tmp_path)
-    active = {"policy": {"network_policies": {"example": {"binaries": ["/usr/bin/curl"]}}}}
+    active = {"policy": {"network_policies": {"example": {"binaries": [{"path": "/usr/bin/curl"}]}}}}
     with patch("sandboxctl.doctor.osh.policy_get_base", return_value=json.dumps(active)):
         result = check_policy_drift("dev", config)
     assert result.passed
@@ -83,3 +83,24 @@ def test_fix_policy_drift_reports_policy_set_failure(tmp_path: Path) -> None:
         result = fix_policy_drift("dev", config)
     assert not result.success
     assert result.details == "policy reload failed"
+
+
+def test_fix_policy_drift_renders_openshell_binary_objects(tmp_path: Path) -> None:
+    config = _config_with_policy(tmp_path)
+    policy_path = tmp_path / "profiles" / "dev" / "policy.yaml"
+    policy_path.write_text("network_policies:\n  opencode:\n    binaries:\n      - { path: /usr/local/bin/opencode }\n")
+    active = {"policy": {"network_policies": {}}}
+
+    captured: dict[str, str] = {}
+
+    def capture_policy(_name: str, path: Path) -> None:
+        captured["content"] = path.read_text()
+
+    with (
+        patch("sandboxctl.doctor.osh.policy_get_base", return_value=json.dumps(active)),
+        patch("sandboxctl.doctor.osh.policy_set", side_effect=capture_policy),
+    ):
+        result = fix_policy_drift("dev", config)
+
+    assert result.success
+    assert "- path: /usr/lib/node_modules/opencode-ai/bin/opencode.exe" in captured["content"]

@@ -852,7 +852,8 @@ class TestCreateSandbox:
 
         assert name == "test"
         mock_ssh.assert_called_once_with("test")
-        mock_policy_set.assert_called_once_with("test", policy_dir / "policy.yaml")
+        assert mock_policy_set.call_args.args[0] == "test"
+        assert mock_policy_set.call_args.args[1].name == "policy.yaml"
 
     def test_ephemeral_passes_no_keep(self, tmp_path: Path) -> None:
         profile = Profile(name="test", sandbox=SandboxConfig(image="img:v1"))

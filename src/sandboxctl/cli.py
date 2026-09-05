@@ -480,6 +480,7 @@ def doctor(
         check_host_credentials,
         check_policy_drift,
         check_profile_readiness,
+        fix_policy_drift,
         fix_sandbox_credentials,
     )
     from sandboxctl.health import diagnose as health_diagnose
@@ -546,6 +547,10 @@ def doctor(
             for fr in fix_results:
                 symbol = "✓" if fr.success else "✗"
                 typer.echo(f"    {symbol} {fr.name}: {fr.details}")
+            typer.echo("    Policy reload:")
+            policy_result = fix_policy_drift(sname, cfg)
+            symbol = "✓" if policy_result.success else "✗"
+            typer.echo(f"    {symbol} {policy_result.name}: {policy_result.details}")
 
     # Section 5: Profile Readiness
     typer.echo("\n--- Profile Readiness ---")

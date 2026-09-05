@@ -79,6 +79,18 @@ class GsdConfig(BaseModel):
     model_config = {"extra": "ignore"}
 
 
+class OpencodeProfileConfig(BaseModel):
+    """Optional profile-specific OpenCode settings that override host defaults."""
+
+    enabled_providers: list[str] = Field(default_factory=list)
+    disabled_providers: list[str] = Field(default_factory=list)
+    model: str = ""
+    build_model: str = ""
+    plan_model: str = ""
+
+    model_config = {"extra": "ignore"}
+
+
 class Profile(BaseModel):
     """Sandbox profile loaded from TOML."""
 
@@ -91,6 +103,7 @@ class Profile(BaseModel):
     extensions: Extensions = Field(default_factory=Extensions)
     mlflow: bool = True
     gsd: GsdConfig = Field(default_factory=GsdConfig)
+    opencode: OpencodeProfileConfig = Field(default_factory=OpencodeProfileConfig)
     # Per-profile staging allowlists (empty = stage all, preserving default behavior).
     # Entries are directory/file names under ~/.claude/skills and ~/.claude/agents.
     skills: list[str] = Field(default_factory=list)

@@ -1,11 +1,12 @@
 """Tests for running policy drift detection."""
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 from sandboxctl.config import SandboxctlConfig
-from sandboxctl.doctor import check_policy_drift
+from sandboxctl.doctor import check_policy_drift, fix_policy_drift
 
 
 def _config_with_policy(tmp_path: Path) -> SandboxctlConfig:
@@ -31,3 +32,54 @@ def test_policy_drift_reports_stale_active_policy(tmp_path: Path) -> None:
         result = check_policy_drift("dev", config)
     assert not result.passed
     assert "differs" in result.details
+
+
+def test_policy_drift_flags_filesystem_changes_for_recreation(tmp_path: Path) -> None:
+    config = _config_with_policy(tmp_path)
+    policy_path = tmp_path / "profiles" / "dev" / "policy.yaml"
+    policy_path.write_text("network_policies: {}\nfilesystem_policy: {read_only: [/usr]}\n")
+    active = {"policy": {"network_policies": {}, "filesystem_policy": {"read_only": ["/bin"]}}}
+    with patch("sandboxctl.doctor.osh.policy_get_base", return_value=json.dumps(active)):
+        result = check_policy_drift("dev", config)
+    assert not result.passed
+    assert "recreation required" in result.details
+
+
+def test_fix_policy_drift_reloads_network_only_changes(tmp_path: Path) -> None:
+    config = _config_with_policy(tmp_path)
+    active = {"policy": {"network_policies": {}}}
+    with (
+        patch("sandboxctl.doctor.osh.policy_get_base", return_value=json.dumps(active)),
+        patch("sandboxctl.doctor.osh.policy_set") as policy_set,
+    ):
+        result = fix_policy_drift("dev", config)
+    assert result.success
+    assert "reloaded" in result.details
+    policy_set.assert_called_once()
+
+
+def test_fix_policy_drift_does_not_reload_filesystem_changes(tmp_path: Path) -> None:
+    config = _config_with_policy(tmp_path)
+    policy_path = tmp_path / "profiles" / "dev" / "policy.yaml"
+    policy_path.write_text("network_policies: {}\nfilesystem_policy: {read_only: [/usr]}\n")
+    active = {"policy": {"network_policies": {}, "filesystem_policy": {"read_only": ["/bin"]}}}
+    with (
+        patch("sandboxctl.doctor.osh.policy_get_base", return_value=json.dumps(active)),
+        patch("sandboxctl.doctor.osh.policy_set") as policy_set,
+    ):
+        result = fix_policy_drift("dev", config)
+    assert not result.success
+    assert "recreation required" in result.details
+    policy_set.assert_not_called()
+
+
+def test_fix_policy_drift_reports_policy_set_failure(tmp_path: Path) -> None:
+    config = _config_with_policy(tmp_path)
+    active = {"policy": {"network_policies": {}}}
+    with (
+        patch("sandboxctl.doctor.osh.policy_get_base", return_value=json.dumps(active)),
+        patch("sandboxctl.doctor.osh.policy_set", side_effect=subprocess.CalledProcessError(1, "openshell")),
+    ):
+        result = fix_policy_drift("dev", config)
+    assert not result.success
+    assert result.details == "policy reload failed"

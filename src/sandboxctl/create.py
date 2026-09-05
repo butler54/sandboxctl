@@ -18,7 +18,7 @@ from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig
 from sandboxctl.credentials import get_credential
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile
-from sandboxctl.policy import render_policy
+from sandboxctl.policy import prepare_policy_for_apply
 
 _REPO_RE = re.compile(r"^[a-zA-Z0-9._/-]+$")
 
@@ -176,22 +176,54 @@ def _inject_opencode_auth_content(name: str, auth: dict) -> None:
     )
 
 
-def _opencode_runtime_config(config: SandboxctlConfig) -> dict:
+def _opencode_runtime_config(config: SandboxctlConfig, profile: Profile | None = None) -> dict:
     """Return OpenCode settings controlled by sandboxctl's host config."""
-    opencode = config.opencode
+    host_opencode = config.opencode
+    profile_opencode = profile.opencode if profile else None
+    host_enabled = host_opencode.enabled_providers
+    profile_enabled = profile_opencode.enabled_providers if profile_opencode else []
+    host_disabled = host_opencode.disabled_providers
+    profile_disabled = profile_opencode.disabled_providers if profile_opencode else []
+
+    def value(name: str) -> str:
+        profile_value = getattr(profile_opencode, name, "") if profile_opencode else ""
+        return profile_value or getattr(host_opencode, name)
+
     patch: dict = {}
-    if isinstance(opencode.enabled_providers, list) and opencode.enabled_providers:
-        patch["enabled_providers"] = opencode.enabled_providers
-    if isinstance(opencode.disabled_providers, list) and opencode.disabled_providers:
-        patch["disabled_providers"] = opencode.disabled_providers
-    if isinstance(opencode.model, str) and opencode.model:
-        patch["model"] = opencode.model
+    enabled_providers = profile_enabled or host_enabled
+    if host_enabled and profile_enabled:
+        enabled_providers = [provider for provider in profile_enabled if provider in host_enabled]
+        if not enabled_providers:
+            msg = "Profile enabled_providers has no providers permitted by the host allowlist"
+            raise ValueError(msg)
+    disabled_providers = list(dict.fromkeys([*host_disabled, *profile_disabled]))
+    model = value("model")
+    build_model = value("build_model")
+    plan_model = value("plan_model")
+
+    def validate_model_provider(model_name: str | list[str]) -> None:
+        if not isinstance(model_name, str) or "/" not in model_name:
+            return
+        provider = model_name.split("/", 1)[0]
+        if provider in host_disabled or (host_enabled and provider not in host_enabled):
+            msg = f"OpenCode model provider '{provider}' is not permitted by the host policy"
+            raise ValueError(msg)
+
+    validate_model_provider(model)
+    validate_model_provider(build_model)
+    validate_model_provider(plan_model)
+    if isinstance(enabled_providers, list) and enabled_providers:
+        patch["enabled_providers"] = enabled_providers
+    if isinstance(disabled_providers, list) and disabled_providers:
+        patch["disabled_providers"] = disabled_providers
+    if isinstance(model, str) and model:
+        patch["model"] = model
 
     agents: dict[str, dict[str, str]] = {}
-    if isinstance(opencode.build_model, str) and opencode.build_model:
-        agents["build"] = {"model": opencode.build_model}
-    if isinstance(opencode.plan_model, str) and opencode.plan_model:
-        agents["plan"] = {"model": opencode.plan_model}
+    if isinstance(build_model, str) and build_model:
+        agents["build"] = {"model": build_model}
+    if isinstance(plan_model, str) and plan_model:
+        agents["plan"] = {"model": plan_model}
     if agents:
         patch["agent"] = agents
     return patch
@@ -458,7 +490,7 @@ def post_launch_setup(
     # Accumulate all generated opencode config into a single patch so it is injected once
     # (OPENCODE_CONFIG_CONTENT holds one JSON value). Providers (#129) and the MCP server
     # registration below (#123) both contribute to it.
-    opencode_config = _opencode_runtime_config(config)
+    opencode_config = _opencode_runtime_config(config, profile)
     if opencode_providers:
         opencode_config["provider"] = opencode_providers
 
@@ -795,13 +827,7 @@ def create_sandbox(
         build_from, cleanup_dir = resolve_build_context(profile, config)
         profiles_dir = config.profiles_dir or config.config_dir / "profiles"
         policy_path = profiles_dir / profile.name / profile.sandbox.policy
-        if policy_path.exists() and (
-            "!include" in policy_path.read_text()
-            or "/usr/local/bin/opencode" in policy_path.read_text()
-            or "/usr/bin/opencode" in policy_path.read_text()
-        ):
-            policy_path = Path(policy_root) / "policy.yaml"
-            policy_path.write_text(render_policy(profiles_dir / profile.name / profile.sandbox.policy, profiles_dir))
+        policy_path = prepare_policy_for_apply(policy_path, profiles_dir, Path(policy_root))
 
         providers = setup_providers(config)
         typer.echo(f"  Providers: {', '.join(providers)}")

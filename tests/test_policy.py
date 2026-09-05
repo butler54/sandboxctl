@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from sandboxctl.policy import PolicyIncludeError, render_policy
+from sandboxctl.policy import PolicyIncludeError, prepare_policy_for_apply, render_policy
 
 
 def test_render_policy_includes_fragment(tmp_path: Path) -> None:
@@ -58,3 +58,29 @@ def test_render_policy_rejects_recursive_include(tmp_path: Path) -> None:
 
     with pytest.raises(PolicyIncludeError, match="Recursive policy include"):
         render_policy(policy, profiles)
+
+
+def test_prepare_policy_for_apply_keeps_plain_policy(tmp_path: Path) -> None:
+    policy = tmp_path / "policy.yaml"
+    policy.write_text("network_policies: {}\n")
+    assert prepare_policy_for_apply(policy, tmp_path, tmp_path / "rendered") == policy
+
+
+def test_prepare_policy_for_apply_renders_opencode_policy(tmp_path: Path) -> None:
+    policy = tmp_path / "policy.yaml"
+    policy.write_text("network_policies:\n  opencode: {binaries: [/usr/bin/opencode]}\n")
+    target_dir = tmp_path / "rendered"
+    target_dir.mkdir()
+    rendered = prepare_policy_for_apply(policy, tmp_path, target_dir)
+    assert rendered == target_dir / "policy.yaml"
+    assert "/usr/lib/node_modules/opencode-ai/bin/opencode.exe" in rendered.read_text()
+
+
+def test_prepare_policy_for_apply_rejects_path_outside_profiles(tmp_path: Path) -> None:
+    profiles = tmp_path / "profiles"
+    profiles.mkdir()
+    policy = tmp_path / "outside.yaml"
+    policy.write_text("network_policies: {}\n")
+
+    with pytest.raises(PolicyIncludeError, match="outside profiles directory"):
+        prepare_policy_for_apply(policy, profiles, tmp_path)

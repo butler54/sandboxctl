@@ -95,6 +95,23 @@ def test_nested_model_from_toml(tmp_path: Path) -> None:
     assert cfg.keychain.gitlab_service == "sandboxctl-gitlab-token"
 
 
+def test_opencode_config_from_toml(tmp_path: Path) -> None:
+    """OpenCode provider and agent defaults load from their own config section."""
+    (tmp_path / "config.toml").write_text(
+        '[opencode]\nenabled_providers = ["vertex", "openai-work"]\n'
+        'disabled_providers = ["github-copilot"]\n'
+        'model = "vertex/claude-sonnet"\n'
+        'build_model = "openai-work/gpt-5.6"\n'
+        'plan_model = "vertex/claude-opus"\n'
+    )
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.opencode.enabled_providers == ["vertex", "openai-work"]
+    assert cfg.opencode.disabled_providers == ["github-copilot"]
+    assert cfg.opencode.model == "vertex/claude-sonnet"
+    assert cfg.opencode.build_model == "openai-work/gpt-5.6"
+    assert cfg.opencode.plan_model == "vertex/claude-opus"
+
+
 def test_extra_fields_ignored(tmp_path: Path) -> None:
     """Unknown TOML fields don't cause errors."""
     config_file = tmp_path / "config.toml"

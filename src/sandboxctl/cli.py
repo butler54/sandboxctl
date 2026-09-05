@@ -478,6 +478,7 @@ def doctor(
     from sandboxctl import openshell as osh
     from sandboxctl.doctor import (
         check_host_credentials,
+        check_policy_drift,
         check_profile_readiness,
         fix_sandbox_credentials,
     )
@@ -525,7 +526,15 @@ def doctor(
             if not report.healthy:
                 typer.echo(f"      Recovery: {report.recovery_action}")
 
-    # Section 3: --fix mode
+    # Section 3: Running policy state
+    if sandbox_names:
+        typer.echo("\n--- Policy State ---")
+        for sname in sandbox_names:
+            result = check_policy_drift(sname, cfg)
+            symbol = "✓" if result.passed else "✗"
+            typer.echo(f"  {symbol} {sname}: {result.details}")
+
+    # Section 4: --fix mode
     if fix:
         typer.echo("\n--- Fix: Credential Injection ---")
         targets = sandbox_names if sandbox_names else []
@@ -538,7 +547,7 @@ def doctor(
                 symbol = "✓" if fr.success else "✗"
                 typer.echo(f"    {symbol} {fr.name}: {fr.details}")
 
-    # Section 4: Profile Readiness
+    # Section 5: Profile Readiness
     typer.echo("\n--- Profile Readiness ---")
     readiness = check_profile_readiness(cfg)
     if not readiness:

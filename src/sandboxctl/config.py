@@ -110,6 +110,16 @@ class OpencodeConfig(_SubConfig):
     # OPENAI_API_KEY_<NAME> (uppercased), and the first account also sets
     # OPENAI_API_KEY (opencode's built-in openai provider default). #129
     openai_accounts: list[str] = Field(default_factory=list)
+    # Stage the OpenCode Go API key from the host credential store.
+    go: bool = False
+    # Restrict auto-discovered providers. enabled_providers is an allowlist;
+    # disabled_providers wins when an id appears in both lists.
+    enabled_providers: list[str] = Field(default_factory=list)
+    disabled_providers: list[str] = Field(default_factory=list)
+    # These map directly to OpenCode's global and built-in agent model settings.
+    model: str = ""
+    build_model: str = ""
+    plan_model: str = ""
 
 
 class SandboxctlConfig(BaseSettings):

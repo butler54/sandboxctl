@@ -156,6 +156,7 @@ disabled_providers = ["github-copilot"]
 model = "openai-work/gpt-5.6"
 build_model = "openai-work/gpt-5.6"
 plan_model = "google-vertex-anthropic/claude-opus-4-5"
+review_model = "openai-work/gpt-5.6-sol"
 ```
 
 `enabled_providers` and `disabled_providers` follow the same precedence rule.

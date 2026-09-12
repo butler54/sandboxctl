@@ -87,6 +87,7 @@ class OpencodeProfileConfig(BaseModel):
     model: str = ""
     build_model: str = ""
     plan_model: str = ""
+    review_model: str = ""
 
     model_config = {"extra": "ignore"}
 

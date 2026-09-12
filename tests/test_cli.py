@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from sandboxctl.cli import app
+from sandboxctl.openshell import SandboxError
 
 runner = CliRunner()
 
@@ -101,11 +102,11 @@ class TestListCommand:
         with (
             patch("sandboxctl.cli.load_config", return_value=cfg),
             patch("sandboxctl.profile.list_profiles", return_value=[]),
-            patch("sandboxctl.openshell.sandbox_list", side_effect=Exception("not running")),
+            patch("sandboxctl.openshell.sandbox_list", side_effect=SandboxError("not running")),
         ):
             result = runner.invoke(app, ["list"])
-            assert result.exit_code == 0
-            assert "Could not list" in result.output
+            assert result.exit_code == 1
+            assert "Could not list sandboxes: not running" in result.output
 
 
 class TestStatusCommand:
@@ -116,10 +117,19 @@ class TestStatusCommand:
             assert result.exit_code == 0
 
     def test_status_unreachable(self) -> None:
-        with patch("sandboxctl.openshell.gateway_status", side_effect=Exception("down")):
+        with patch("sandboxctl.openshell.gateway_status", side_effect=SandboxError("down")):
             result = runner.invoke(app, ["status"])
-            assert result.exit_code == 0
-            assert "Could not reach" in result.output
+            assert result.exit_code == 1
+            assert "Could not reach gateway: down" in result.output
+
+    def test_status_stderr_error(self) -> None:
+        with patch(
+            "sandboxctl.openshell.gateway_status",
+            side_effect=SandboxError("gateway status reported an error: connection warning"),
+        ):
+            result = runner.invoke(app, ["status"])
+            assert result.exit_code == 1
+            assert "connection warning" in result.output
 
 
 class TestDeleteCommand:

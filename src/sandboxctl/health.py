@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -54,6 +55,28 @@ class DiskUsage:
     percent: int
     severity: str
     details: str
+
+
+@dataclass(frozen=True)
+class StorageSummary:
+    kind: str
+    size_bytes: int
+    reclaimable_bytes: int
+
+
+@dataclass(frozen=True)
+class SandboxVolumeUsage:
+    sandbox_name: str
+    volume_names: tuple[str, ...]
+    size_bytes: int | None
+
+
+@dataclass(frozen=True)
+class StorageBreakdown:
+    summaries: tuple[StorageSummary, ...]
+    sandboxes: tuple[SandboxVolumeUsage, ...]
+    shared_volumes: tuple[str, ...] = ()
+    errors: tuple[str, ...] = ()
 
 
 @dataclass
@@ -119,6 +142,121 @@ def check_disk_usage(warn_percent: int = 80, fail_percent: int = 90) -> DiskUsag
         return None
     severity = "fail" if percent >= fail_percent else "warn" if percent >= warn_percent else "ok"
     return DiskUsage(percent, severity, f"Podman storage filesystem: {percent}% used")
+
+
+def _sandbox_name_from_container(container_name: str) -> str | None:
+    if container_name.startswith(_CONTAINER_PREFIX):
+        return container_name.removeprefix(_CONTAINER_PREFIX)
+    match = re.match(r"^openshell-(.+?)--(.+)-[0-9a-f-]{36}$", container_name)
+    return f"{match.group(1)}/{match.group(2)}" if match else None
+
+
+def _measure_volumes(mountpoints: dict[str, str]) -> dict[str, int | None]:
+    command = ["du", "-sk", "--", *mountpoints.values()]
+    if sys.platform == "darwin":
+        command = ["podman", "machine", "ssh", "--", *command]
+    try:
+        result = _run(command, env=_podman_env())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return dict.fromkeys(mountpoints)
+    if result.returncode != 0:
+        return dict.fromkeys(mountpoints)
+    sizes = dict.fromkeys(mountpoints)
+    by_path = {path: name for name, path in mountpoints.items()}
+    for line in result.stdout.splitlines():
+        fields = line.split(maxsplit=1)
+        if len(fields) == 2 and fields[1] in by_path:
+            try:
+                sizes[by_path[fields[1]]] = int(fields[0]) * 1024
+            except ValueError:
+                pass
+    return sizes
+
+
+def check_storage_breakdown(sandbox_name: str | None = None) -> StorageBreakdown | None:
+    """Inspect Podman totals and sandbox-owned persistent volumes without mutating them."""
+    try:
+        df = _run(["podman", "system", "df", "--format", "json"], env=_podman_env())
+        containers = _run(["podman", "ps", "--all", "--format", "{{.Names}}"], env=_podman_env())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+    errors: list[str] = []
+    summaries: list[StorageSummary] = []
+    if df.returncode == 0:
+        try:
+            for entry in json.loads(df.stdout):
+                summaries.append(StorageSummary(entry["Type"], int(entry["RawSize"]), int(entry["RawReclaimable"])))
+        except (ValueError, KeyError, TypeError):
+            errors.append("Podman storage totals: unavailable")
+    else:
+        errors.append("Podman storage totals: unavailable")
+    if containers.returncode != 0:
+        return StorageBreakdown(tuple(summaries), (), errors=(*errors, "Sandbox volumes: unavailable"))
+    names = [name for name in containers.stdout.splitlines() if _sandbox_name_from_container(name)]
+    if sandbox_name:
+        exact = [name for name in names if _sandbox_name_from_container(name) == sandbox_name]
+        matches = exact or [name for name in names if _sandbox_name_from_container(name).endswith(f"/{sandbox_name}")]
+        if len(matches) > 1:
+            return StorageBreakdown(
+                tuple(summaries),
+                (),
+                errors=(*errors, f"Sandbox '{sandbox_name}' is ambiguous; use workspace/name"),
+            )
+        names = matches
+    if not names:
+        return StorageBreakdown(tuple(summaries), (), errors=tuple(errors))
+    try:
+        inspected = _run(["podman", "container", "inspect", *names], env=_podman_env())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return StorageBreakdown(tuple(summaries), (), errors=(*errors, "Sandbox volumes: unavailable"))
+    if inspected.returncode != 0:
+        return StorageBreakdown(tuple(summaries), (), errors=(*errors, "Sandbox volumes: unavailable"))
+    try:
+        mounts_by_sandbox = {
+            item["Name"].lstrip("/"): [
+                mount["Name"] for mount in item.get("Mounts", []) if mount.get("Type") == "volume"
+            ]
+            for item in json.loads(inspected.stdout)
+            if _sandbox_name_from_container(item["Name"].lstrip("/"))
+        }
+    except (ValueError, KeyError, TypeError):
+        return StorageBreakdown(tuple(summaries), (), errors=(*errors, "Sandbox volumes: unavailable"))
+    volumes = sorted({volume for mounted in mounts_by_sandbox.values() for volume in mounted})
+    if not volumes:
+        return StorageBreakdown(tuple(summaries), (), errors=tuple(errors))
+    try:
+        volume_inspect = _run(["podman", "volume", "inspect", *volumes], env=_podman_env())
+        mountpoints = (
+            {item["Name"]: item["Mountpoint"] for item in json.loads(volume_inspect.stdout)}
+            if volume_inspect.returncode == 0
+            else {}
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError):
+        mountpoints = {}
+    volume_owners: dict[str, list[str]] = {}
+    for container, mounted in mounts_by_sandbox.items():
+        for volume in mounted:
+            volume_owners.setdefault(volume, []).append(container)
+    shared_volumes = tuple(sorted(volume for volume, owners in volume_owners.items() if len(owners) > 1))
+    measured = _measure_volumes(mountpoints)
+    usage = []
+    for container, mounted in mounts_by_sandbox.items():
+        owned = [volume for volume in mounted if volume not in shared_volumes]
+        sizes = [measured.get(volume) for volume in owned]
+        usage.append(
+            SandboxVolumeUsage(
+                _sandbox_name_from_container(container) or container,
+                tuple(mounted),
+                None if len(sizes) != len(owned) or None in sizes else sum(sizes),
+            )
+        )
+    return StorageBreakdown(
+        tuple(summaries),
+        tuple(sorted(usage, key=lambda item: item.size_bytes or -1, reverse=True)),
+        shared_volumes,
+        tuple(errors),
+    )
 
 
 def check_compute_state() -> ComputeState:

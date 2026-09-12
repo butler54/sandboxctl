@@ -218,6 +218,7 @@ def _opencode_runtime_config(config: SandboxctlConfig, profile: Profile | None =
     model = value("model")
     build_model = value("build_model")
     plan_model = value("plan_model")
+    review_model = value("review_model")
 
     def validate_model_provider(model_name: str | list[str]) -> None:
         if not isinstance(model_name, str) or "/" not in model_name:
@@ -230,6 +231,7 @@ def _opencode_runtime_config(config: SandboxctlConfig, profile: Profile | None =
     validate_model_provider(model)
     validate_model_provider(build_model)
     validate_model_provider(plan_model)
+    validate_model_provider(review_model)
     if isinstance(enabled_providers, list) and enabled_providers:
         patch["enabled_providers"] = enabled_providers
     if isinstance(disabled_providers, list) and disabled_providers:
@@ -237,11 +239,32 @@ def _opencode_runtime_config(config: SandboxctlConfig, profile: Profile | None =
     if isinstance(model, str) and model:
         patch["model"] = model
 
-    agents: dict[str, dict[str, str]] = {}
+    agents: dict[str, dict] = {
+        "reviewer": {
+            "mode": "all",
+            "description": "Review changes for correctness, security, regressions, and test coverage.",
+            "prompt": (
+                "Review the requested work for correctness, security, regressions, edge cases, and test coverage. "
+                "For Spec Kit Converge, record only substantiated, actionable findings in tasks.md."
+            ),
+            "permission": {
+                "*": "deny",
+                "read": "allow",
+                "glob": "allow",
+                "grep": "allow",
+                "list": "allow",
+                "lsp": "deny",
+                "edit": {"*": "deny", "tasks.md": "allow", "**/tasks.md": "allow"},
+                "bash": "deny",
+            },
+        }
+    }
     if isinstance(build_model, str) and build_model:
         agents["build"] = {"model": build_model}
     if isinstance(plan_model, str) and plan_model:
         agents["plan"] = {"model": plan_model}
+    if isinstance(review_model, str) and review_model:
+        agents["reviewer"]["model"] = review_model
     if agents:
         patch["agent"] = agents
     return patch
@@ -814,7 +837,7 @@ def create_sandbox(
     if opencode_model := opencode_config.get("model"):
         typer.echo(f"OpenCode model: {opencode_model}")
     agents = opencode_config.get("agent", {})
-    for agent in ("plan", "build"):
+    for agent in ("plan", "build", "reviewer"):
         if agent_model := agents.get(agent, {}).get("model"):
             typer.echo(f"OpenCode {agent} model: {agent_model}")
     typer.echo(f"{'=' * 40}\n")

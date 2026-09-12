@@ -511,7 +511,7 @@ class TestPostLaunchSetup:
 
         scripts = [c[0][1] for c in mock_pipe.call_args_list]
         assert not any(".mcp.json" in s for s in scripts)
-        assert not any("OPENCODE_CONFIG_CONTENT" in s for s in scripts)
+        assert any("OPENCODE_CONFIG_CONTENT" in s for s in scripts)
 
     def test_gitlab_token_injected_without_shell_expansion(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path)

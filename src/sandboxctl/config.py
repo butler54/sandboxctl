@@ -120,6 +120,7 @@ class OpencodeConfig(_SubConfig):
     model: str = ""
     build_model: str = ""
     plan_model: str = ""
+    review_model: str = ""
 
 
 class SandboxctlConfig(BaseSettings):

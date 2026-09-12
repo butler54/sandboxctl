@@ -12,8 +12,12 @@ from sandboxctl.create import _inject_opencode_auth_content, _opencode_runtime_c
 from sandboxctl.models import OpencodeProfileConfig, Profile
 
 
-def test_runtime_config_is_empty_by_default(tmp_path: Path) -> None:
-    assert _opencode_runtime_config(SandboxctlConfig(config_dir=tmp_path)) == {}
+def test_runtime_config_includes_restricted_reviewer_by_default(tmp_path: Path) -> None:
+    reviewer = _opencode_runtime_config(SandboxctlConfig(config_dir=tmp_path))["agent"]["reviewer"]
+    assert reviewer["mode"] == "all"
+    assert reviewer["permission"]["bash"] == "deny"
+    assert reviewer["permission"]["lsp"] == "deny"
+    assert reviewer["permission"]["edit"] == {"*": "deny", "tasks.md": "allow", "**/tasks.md": "allow"}
 
 
 def test_runtime_config_limits_providers_and_models(tmp_path: Path) -> None:
@@ -25,18 +29,17 @@ def test_runtime_config_limits_providers_and_models(tmp_path: Path) -> None:
             model="vertex/claude-sonnet",
             build_model="openai-work/gpt-5.6",
             plan_model="vertex/claude-opus",
+            review_model="openai-work/gpt-5.6-sol",
         ),
     )
 
-    assert _opencode_runtime_config(config) == {
-        "enabled_providers": ["vertex", "openai-work"],
-        "disabled_providers": ["github-copilot"],
-        "model": "vertex/claude-sonnet",
-        "agent": {
-            "build": {"model": "openai-work/gpt-5.6"},
-            "plan": {"model": "vertex/claude-opus"},
-        },
-    }
+    runtime = _opencode_runtime_config(config)
+    assert runtime["enabled_providers"] == ["vertex", "openai-work"]
+    assert runtime["disabled_providers"] == ["github-copilot"]
+    assert runtime["model"] == "vertex/claude-sonnet"
+    assert runtime["agent"]["build"] == {"model": "openai-work/gpt-5.6"}
+    assert runtime["agent"]["plan"] == {"model": "vertex/claude-opus"}
+    assert runtime["agent"]["reviewer"]["model"] == "openai-work/gpt-5.6-sol"
 
 
 def test_profile_runtime_config_overrides_host_settings(tmp_path: Path) -> None:
@@ -51,11 +54,10 @@ def test_profile_runtime_config_overrides_host_settings(tmp_path: Path) -> None:
         ),
     )
 
-    assert _opencode_runtime_config(config, profile) == {
-        "enabled_providers": ["openai"],
-        "model": "openai/gpt-5.6",
-        "agent": {"build": {"model": "openai/gpt-5.6"}},
-    }
+    runtime = _opencode_runtime_config(config, profile)
+    assert runtime["enabled_providers"] == ["openai"]
+    assert runtime["model"] == "openai/gpt-5.6"
+    assert runtime["agent"]["build"] == {"model": "openai/gpt-5.6"}
 
 
 def test_profile_provider_settings_cannot_weaken_host_restrictions(tmp_path: Path) -> None:
@@ -68,10 +70,9 @@ def test_profile_provider_settings_cannot_weaken_host_restrictions(tmp_path: Pat
         opencode=OpencodeProfileConfig(enabled_providers=["vertex", "openai"], disabled_providers=["openai"]),
     )
 
-    assert _opencode_runtime_config(config, profile) == {
-        "enabled_providers": ["vertex"],
-        "disabled_providers": ["github-copilot", "openai"],
-    }
+    runtime = _opencode_runtime_config(config, profile)
+    assert runtime["enabled_providers"] == ["vertex"]
+    assert runtime["disabled_providers"] == ["github-copilot", "openai"]
 
 
 def test_disjoint_profile_provider_allowlist_is_rejected(tmp_path: Path) -> None:
@@ -95,7 +96,7 @@ def test_runtime_config_ignores_partial_mock_attributes() -> None:
     config = MagicMock()
     config.opencode.openai_accounts = []
 
-    assert _opencode_runtime_config(config) == {}
+    assert "reviewer" in _opencode_runtime_config(config)["agent"]
 
 
 def test_go_auth_uses_opencode_runtime_auth_override() -> None:

@@ -475,6 +475,7 @@ def doctor(
     fix: bool = typer.Option(False, "--fix", help="Re-inject credentials into running sandbox(es)."),
     no_recover: bool = typer.Option(False, "--no-recover", help="Skip auto-recovery, diagnose only."),
     all_sandboxes: bool = typer.Option(False, "--all", help="Check/fix all running sandboxes."),
+    storage: bool = typer.Option(False, "--storage", help="Show read-only Podman and sandbox volume usage."),
 ) -> None:
     """Diagnose sandbox health, credentials, and profile readiness."""
     from sandboxctl import openshell as osh
@@ -485,7 +486,7 @@ def doctor(
         fix_policy_drift,
         fix_sandbox_credentials,
     )
-    from sandboxctl.health import check_disk_usage
+    from sandboxctl.health import check_disk_usage, check_storage_breakdown
     from sandboxctl.health import diagnose as health_diagnose
 
     cfg = load_config()
@@ -511,6 +512,23 @@ def doctor(
     else:
         symbol = "✓" if disk_usage.severity == "ok" else "!" if disk_usage.severity == "warn" else "✗"
         typer.echo(f"  {symbol} {disk_usage.details}")
+    if storage:
+        typer.echo("\n--- Storage Breakdown ---")
+        breakdown = check_storage_breakdown(name)
+        if breakdown is None:
+            typer.echo("  Podman storage inventory: unavailable")
+        else:
+            for summary in breakdown.summaries:
+                typer.echo(
+                    f"  Podman {summary.kind}: {summary.size_bytes} bytes ({summary.reclaimable_bytes} reclaimable)"
+                )
+            for volume in breakdown.sandboxes:
+                size = f"{volume.size_bytes} bytes" if volume.size_bytes is not None else "unavailable"
+                typer.echo(f"  {volume.sandbox_name}: {size} ({', '.join(volume.volume_names)})")
+            for volume in breakdown.shared_volumes:
+                typer.echo(f"  Shared volume: {volume} (not charged to an individual sandbox)")
+            for error in breakdown.errors:
+                typer.echo(f"  {error}")
     if name:
         sandbox_names = [name]
     elif all_sandboxes:

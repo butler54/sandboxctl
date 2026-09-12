@@ -18,6 +18,7 @@ from sandboxctl.health import (
     check_gateway_api_state,
     check_gateway_state,
     check_ssh_connectivity,
+    check_storage_breakdown,
     diagnose,
     recover_container,
     recover_gateway,
@@ -117,6 +118,47 @@ class TestDiskUsage:
             result = check_disk_usage()
         assert result is not None
         assert result.severity == "fail"
+
+
+class TestStorageBreakdown:
+    def test_reports_owned_and_shared_volumes(self) -> None:
+        responses = [
+            MagicMock(returncode=0, stdout='[{"Type":"Images","RawSize":100,"RawReclaimable":5}]'),
+            MagicMock(
+                returncode=0,
+                stdout="openshell-sandbox-one\nopenshell-work-space--two-12345678-1234-1234-1234-123456789abc\n",
+            ),
+            MagicMock(
+                returncode=0,
+                stdout='[{"Name":"/openshell-sandbox-one","Mounts":[{"Type":"volume","Name":"owned"},{"Type":"volume","Name":"shared"}]},{"Name":"/openshell-work-space--two-12345678-1234-1234-1234-123456789abc","Mounts":[{"Type":"volume","Name":"shared"}]}]',
+            ),
+            MagicMock(
+                returncode=0,
+                stdout='[{"Name":"owned","Mountpoint":"/vol/owned"},{"Name":"shared","Mountpoint":"/vol/shared"}]',
+            ),
+            MagicMock(returncode=0, stdout="4 /vol/owned\n8 /vol/shared\n"),
+        ]
+        with patch("sandboxctl.health._run", side_effect=responses):
+            result = check_storage_breakdown()
+        assert result is not None
+        assert result.shared_volumes == ("shared",)
+        assert result.sandboxes[0].sandbox_name == "one"
+        assert result.sandboxes[0].size_bytes == 4096
+        assert result.sandboxes[1].sandbox_name == "work-space/two"
+        assert result.sandboxes[1].size_bytes == 0
+
+    def test_rejects_ambiguous_scoped_name(self) -> None:
+        responses = [
+            MagicMock(returncode=0, stdout="[]"),
+            MagicMock(
+                returncode=0,
+                stdout="openshell-one--dev-12345678-1234-1234-1234-123456789abc\nopenshell-two--dev-12345678-1234-1234-1234-123456789abc\n",
+            ),
+        ]
+        with patch("sandboxctl.health._run", side_effect=responses):
+            result = check_storage_breakdown("dev")
+        assert result is not None
+        assert result.errors == ("Sandbox 'dev' is ambiguous; use workspace/name",)
 
 
 class TestResolveContainerName:

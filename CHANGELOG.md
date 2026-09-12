@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.25.0 (2026-09-12)
+
+### Features
+
+- **doctor**: Add sandbox storage breakdown
+  ([#165](https://github.com/butler54/sandboxctl/pull/165),
+  [`f098e85`](https://github.com/butler54/sandboxctl/commit/f098e85192324f49d083193f93b218e80ae51f88))
+
+
 ## v1.24.0 (2026-09-12)
 
 ### Features

@@ -113,7 +113,7 @@ class TestSandboxList:
             "test2      2026-06-18 11:00     Stopped\n"
         )
         with patch("sandboxctl.openshell._run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout=output)
+            mock_run.return_value = MagicMock(returncode=0, stdout=output, stderr="")
             result = sandbox_list()
             assert len(result) == 2
             assert result[0]["name"] == "test1"
@@ -121,9 +121,21 @@ class TestSandboxList:
 
     def test_empty_output(self) -> None:
         with patch("sandboxctl.openshell._run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="")
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             result = sandbox_list()
             assert result == []
+
+    def test_failure_raises_with_stderr(self) -> None:
+        with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="gateway unavailable\n")
+            with pytest.raises(SandboxError, match=r"sandbox list failed \(exit 1\): gateway unavailable"):
+                sandbox_list()
+
+    def test_success_with_stderr_raises(self) -> None:
+        with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="gateway unavailable\n")
+            with pytest.raises(SandboxError, match="sandbox list reported an error: gateway unavailable"):
+                sandbox_list()
 
 
 class TestSandboxGet:
@@ -142,11 +154,28 @@ class TestGatewayStatus:
     def test_parses_status(self) -> None:
         output = "Gateway: running\nServer: localhost:8080\nStatus: Connected\nVersion: 1.2.3\n"
         with patch("sandboxctl.openshell._run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout=output)
+            mock_run.return_value = MagicMock(returncode=0, stdout=output, stderr="")
             result = gateway_status()
             assert result["gateway"] == "running"
             assert result["status"] == "Connected"
             assert result["version"] == "1.2.3"
+
+    def test_failure_raises_with_stderr(self) -> None:
+        with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="connection refused\n")
+            with pytest.raises(SandboxError, match=r"gateway status failed \(exit 1\): connection refused"):
+                gateway_status()
+
+    def test_success_with_stderr_raises(self) -> None:
+        with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="Gateway: running\n", stderr="connection warning\n")
+            with pytest.raises(SandboxError, match="gateway status reported an error: connection warning"):
+                gateway_status()
+
+    def test_missing_executable_raises(self) -> None:
+        with patch("sandboxctl.openshell._run", side_effect=FileNotFoundError):
+            with pytest.raises(SandboxError, match="openshell executable not found"):
+                gateway_status()
 
 
 class TestSandboxSshConfig:

@@ -7,10 +7,14 @@ from unittest.mock import MagicMock, patch
 
 from sandboxctl.health import (
     _CONTAINER_PREFIX,
+    ComputeState,
     ContainerState,
+    GatewayApiState,
     GatewayState,
     HealthReport,
+    check_compute_state,
     check_container_state,
+    check_gateway_api_state,
     check_gateway_state,
     check_ssh_connectivity,
     diagnose,
@@ -19,6 +23,7 @@ from sandboxctl.health import (
     resolve_container_name,
     resolve_ssh_host,
 )
+from sandboxctl.openshell import SandboxError
 
 
 class TestGatewayState:
@@ -29,7 +34,7 @@ class TestGatewayState:
         ):
             mock_sys.platform = "darwin"
             mock_run.return_value = MagicMock(returncode=0)
-            assert check_gateway_state() == GatewayState.RUNNING
+            assert check_compute_state() == ComputeState.RUNNING
 
     def test_stopped_on_darwin(self) -> None:
         with (
@@ -38,12 +43,13 @@ class TestGatewayState:
         ):
             mock_sys.platform = "darwin"
             mock_run.return_value = MagicMock(returncode=1)
-            assert check_gateway_state() == GatewayState.STOPPED
+            assert check_compute_state() == ComputeState.STOPPED
 
-    def test_always_running_on_linux(self) -> None:
-        with patch("sandboxctl.health.sys") as mock_sys:
+    def test_running_on_linux(self) -> None:
+        with patch("sandboxctl.health.sys") as mock_sys, patch("sandboxctl.health._run") as mock_run:
             mock_sys.platform = "linux"
-            assert check_gateway_state() == GatewayState.RUNNING
+            mock_run.return_value = MagicMock(returncode=0)
+            assert check_compute_state() == ComputeState.RUNNING
 
     def test_missing(self) -> None:
         with (
@@ -51,7 +57,7 @@ class TestGatewayState:
             patch("sandboxctl.health._run", side_effect=FileNotFoundError),
         ):
             mock_sys.platform = "darwin"
-            assert check_gateway_state() == GatewayState.MISSING
+            assert check_compute_state() == ComputeState.MISSING
 
     def test_timeout(self) -> None:
         with (
@@ -59,7 +65,31 @@ class TestGatewayState:
             patch("sandboxctl.health._run", side_effect=subprocess.TimeoutExpired("cmd", 10)),
         ):
             mock_sys.platform = "darwin"
-            assert check_gateway_state() == GatewayState.UNKNOWN
+            assert check_compute_state() == ComputeState.UNKNOWN
+
+    def test_service_running_on_linux(self) -> None:
+        with patch("sandboxctl.health.sys") as mock_sys, patch("sandboxctl.health._run") as mock_run:
+            mock_sys.platform = "linux"
+            mock_run.return_value = MagicMock(returncode=0, stdout="LoadState=loaded\nActiveState=active\n")
+            assert check_gateway_state() == GatewayState.RUNNING
+
+    def test_service_missing_on_linux(self) -> None:
+        with patch("sandboxctl.health.sys") as mock_sys, patch("sandboxctl.health._run") as mock_run:
+            mock_sys.platform = "linux"
+            mock_run.return_value = MagicMock(returncode=0, stdout="LoadState=not-found\nActiveState=inactive\n")
+            assert check_gateway_state() == GatewayState.MISSING
+
+    def test_api_unreachable(self) -> None:
+        with patch("sandboxctl.openshell.gateway_status", side_effect=SandboxError):
+            assert check_gateway_api_state() == GatewayApiState.UNREACHABLE
+
+    def test_api_disconnected(self) -> None:
+        with patch("sandboxctl.openshell.gateway_status", return_value={"status": "Disconnected"}):
+            assert check_gateway_api_state() == GatewayApiState.UNREACHABLE
+
+    def test_api_connected(self) -> None:
+        with patch("sandboxctl.openshell.gateway_status", return_value={"status": "Connected"}):
+            assert check_gateway_api_state() == GatewayApiState.RUNNING
 
 
 class TestResolveContainerName:
@@ -136,7 +166,9 @@ class TestHealthReport:
         report = HealthReport(
             sandbox_name="test",
             container_state=ContainerState.RUNNING,
+            compute_state=ComputeState.RUNNING,
             gateway_state=GatewayState.RUNNING,
+            gateway_api_state=GatewayApiState.RUNNING,
             ssh_reachable=True,
             recovery_action="none",
             details=[],
@@ -147,7 +179,9 @@ class TestHealthReport:
         report = HealthReport(
             sandbox_name="test",
             container_state=ContainerState.STOPPED,
+            compute_state=ComputeState.RUNNING,
             gateway_state=GatewayState.RUNNING,
+            gateway_api_state=GatewayApiState.RUNNING,
             ssh_reachable=False,
             recovery_action="container_restarted",
             details=[],
@@ -159,6 +193,8 @@ class TestDiagnose:
     def test_healthy_sandbox(self) -> None:
         with (
             patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING),
+            patch("sandboxctl.health.check_compute_state", return_value=ComputeState.RUNNING),
+            patch("sandboxctl.health.check_gateway_api_state", return_value=GatewayApiState.RUNNING),
             patch("sandboxctl.health.check_container_state", return_value=ContainerState.RUNNING),
             patch("sandboxctl.health.check_ssh_connectivity", return_value=True),
         ):
@@ -169,6 +205,8 @@ class TestDiagnose:
     def test_stopped_container_auto_recovers(self) -> None:
         with (
             patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING),
+            patch("sandboxctl.health.check_compute_state", return_value=ComputeState.RUNNING),
+            patch("sandboxctl.health.check_gateway_api_state", return_value=GatewayApiState.RUNNING),
             patch("sandboxctl.health.check_container_state", return_value=ContainerState.STOPPED),
             patch("sandboxctl.health.recover_container", return_value=True),
             patch("sandboxctl.health.check_ssh_connectivity", return_value=True),
@@ -179,6 +217,8 @@ class TestDiagnose:
     def test_missing_container_needs_recreate(self) -> None:
         with (
             patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING),
+            patch("sandboxctl.health.check_compute_state", return_value=ComputeState.RUNNING),
+            patch("sandboxctl.health.check_gateway_api_state", return_value=GatewayApiState.RUNNING),
             patch("sandboxctl.health.check_container_state", return_value=ContainerState.MISSING),
         ):
             report = diagnose("test")
@@ -187,8 +227,13 @@ class TestDiagnose:
 
     def test_gateway_down_auto_recovers(self) -> None:
         with (
-            patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.STOPPED),
+            patch(
+                "sandboxctl.health.check_gateway_state",
+                side_effect=[GatewayState.STOPPED, GatewayState.RUNNING],
+            ),
+            patch("sandboxctl.health.check_compute_state", return_value=ComputeState.RUNNING),
             patch("sandboxctl.health.recover_gateway", return_value=True),
+            patch("sandboxctl.health.check_gateway_api_state", return_value=GatewayApiState.RUNNING),
             patch("sandboxctl.health.check_container_state", return_value=ContainerState.RUNNING),
             patch("sandboxctl.health.check_ssh_connectivity", return_value=True),
         ):
@@ -196,7 +241,10 @@ class TestDiagnose:
             assert report.recovery_action == "gateway_restarted"
 
     def test_no_auto_recover(self) -> None:
-        with patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.STOPPED):
+        with (
+            patch("sandboxctl.health.check_compute_state", return_value=ComputeState.RUNNING),
+            patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.STOPPED),
+        ):
             report = diagnose("test", auto_recover=False)
             assert report.recovery_action == "gateway_not_running"
             assert not report.healthy
@@ -204,6 +252,7 @@ class TestDiagnose:
     def test_gateway_recovery_failure(self) -> None:
         with (
             patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.STOPPED),
+            patch("sandboxctl.health.check_compute_state", return_value=ComputeState.RUNNING),
             patch("sandboxctl.health.recover_gateway", return_value=False),
         ):
             report = diagnose("test", auto_recover=True)
@@ -213,6 +262,8 @@ class TestDiagnose:
     def test_container_recovery_failure(self) -> None:
         with (
             patch("sandboxctl.health.check_gateway_state", return_value=GatewayState.RUNNING),
+            patch("sandboxctl.health.check_compute_state", return_value=ComputeState.RUNNING),
+            patch("sandboxctl.health.check_gateway_api_state", return_value=GatewayApiState.RUNNING),
             patch("sandboxctl.health.check_container_state", return_value=ContainerState.STOPPED),
             patch("sandboxctl.health.recover_container", return_value=False),
         ):
@@ -275,10 +326,12 @@ class TestRecoveryFunctions:
             mock_run.return_value = MagicMock(returncode=0)
             assert recover_gateway() is True
 
-    def test_recover_gateway_noop_on_linux(self) -> None:
-        with patch("sandboxctl.health.sys") as mock_sys:
+    def test_recover_gateway_restarts_service_on_linux(self) -> None:
+        with patch("sandboxctl.health.sys") as mock_sys, patch("sandboxctl.health._run") as mock_run:
             mock_sys.platform = "linux"
+            mock_run.return_value = MagicMock(returncode=0)
             assert recover_gateway() is True
+            assert mock_run.call_args.args[0] == ["systemctl", "--user", "restart", "openshell-gateway"]
 
     def test_recover_gateway_failure(self) -> None:
         with (

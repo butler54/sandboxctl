@@ -121,8 +121,9 @@ def list_cmd() -> None:
             Console().print(table)
         else:
             typer.echo("No running sandboxes.")
-    except Exception:
-        typer.echo("Could not list sandboxes (is openshell running?).")
+    except osh.SandboxError as exc:
+        typer.echo(f"Could not list sandboxes: {exc}")
+        raise typer.Exit(1) from None
 
 
 @app.command()
@@ -140,8 +141,9 @@ def status() -> None:
         from rich.console import Console
 
         Console().print(table)
-    except Exception:
-        typer.echo("Could not reach gateway.")
+    except osh.SandboxError as exc:
+        typer.echo(f"Could not reach gateway: {exc}")
+        raise typer.Exit(1) from None
 
 
 @app.command()
@@ -242,8 +244,8 @@ def backup(
     if all_sandboxes:
         try:
             sandboxes = osh.sandbox_list()
-        except Exception:
-            typer.echo("Could not list sandboxes.")
+        except osh.SandboxError as exc:
+            typer.echo(f"Could not list sandboxes: {exc}")
             raise typer.Exit(1) from None
         if not sandboxes:
             typer.echo("No running sandboxes.")
@@ -335,9 +337,9 @@ def recover(
         try:
             sandboxes = osh.sandbox_list()
             targets = [sb["name"] for sb in sandboxes]
-        except Exception:
+        except osh.SandboxError as exc:
             targets = []
-            typer.echo("Could not list sandboxes (is openshell running?).")
+            typer.echo(f"Could not list sandboxes: {exc}")
             raise typer.Exit(1) from None
 
     if not targets:
@@ -508,9 +510,10 @@ def doctor(
         try:
             sandboxes = osh.sandbox_list()
             sandbox_names = [sb["name"] for sb in sandboxes]
-        except Exception:
+        except osh.SandboxError as exc:
             sandbox_names = []
-            typer.echo("  Could not list sandboxes.")
+            typer.echo(f"  Could not list sandboxes: {exc}")
+            raise typer.Exit(1) from None
     else:
         sandbox_names = []
 

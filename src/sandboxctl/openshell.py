@@ -10,6 +10,28 @@ class SandboxError(Exception):
     """Raised when an openshell command fails."""
 
 
+def _run_checked_status(args: list[str], action: str) -> subprocess.CompletedProcess[str]:
+    """Run a read-only OpenShell command and retain meaningful failure details."""
+    try:
+        result = _run(args, check=False)
+    except FileNotFoundError as exc:
+        raise SandboxError("openshell executable not found") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise SandboxError(f"{action} timed out") from exc
+    except OSError as exc:
+        raise SandboxError(f"{action} could not start: {exc}") from exc
+
+    if result.returncode != 0:
+        details = result.stderr.strip() or result.stdout.strip()
+        message = f"{action} failed (exit {result.returncode})"
+        if details:
+            message = f"{message}: {details}"
+        raise SandboxError(message)
+    if result.stderr.strip():
+        raise SandboxError(f"{action} reported an error: {result.stderr.strip()}")
+    return result
+
+
 def _run(
     args: list[str],
     check: bool = True,
@@ -101,7 +123,7 @@ def sandbox_delete(name: str) -> None:
 
 
 def sandbox_list() -> list[dict[str, str]]:
-    result = _run(["openshell", "sandbox", "list"], check=False)
+    result = _run_checked_status(["openshell", "sandbox", "list"], "sandbox list")
     lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
     sandboxes: list[dict[str, str]] = []
     for line in lines[1:]:
@@ -164,7 +186,7 @@ def policy_get_base(name: str) -> str:
 
 
 def gateway_status() -> dict[str, str]:
-    result = _run(["openshell", "status"], check=False)
+    result = _run_checked_status(["openshell", "status"], "gateway status")
     info: dict[str, str] = {}
     for line in result.stdout.split("\n"):
         line = line.strip()

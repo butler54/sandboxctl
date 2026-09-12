@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.22.0 (2026-09-12)
+
+### Features
+
+- **opencode**: Stage global command directories
+  ([#161](https://github.com/butler54/sandboxctl/pull/161),
+  [`b822f80`](https://github.com/butler54/sandboxctl/commit/b822f80e3fba2946b1d9716ddc85f38dced9fdae))
+
+
 ## v1.21.1 (2026-09-05)
 
 ### Bug Fixes

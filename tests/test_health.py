@@ -14,6 +14,7 @@ from sandboxctl.health import (
     HealthReport,
     check_compute_state,
     check_container_state,
+    check_disk_usage,
     check_gateway_api_state,
     check_gateway_state,
     check_ssh_connectivity,
@@ -90,6 +91,32 @@ class TestGatewayState:
     def test_api_connected(self) -> None:
         with patch("sandboxctl.openshell.gateway_status", return_value={"status": "Connected"}):
             assert check_gateway_api_state() == GatewayApiState.RUNNING
+
+
+class TestDiskUsage:
+    def test_warn_threshold(self) -> None:
+        with patch(
+            "sandboxctl.health._run",
+            return_value=MagicMock(
+                returncode=0,
+                stdout="Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda 100 80 20 80% /\n",
+            ),
+        ):
+            result = check_disk_usage()
+        assert result is not None
+        assert result.severity == "warn"
+
+    def test_fail_threshold(self) -> None:
+        with patch(
+            "sandboxctl.health._run",
+            return_value=MagicMock(
+                returncode=0,
+                stdout="Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda 100 90 10 90% /\n",
+            ),
+        ):
+            result = check_disk_usage()
+        assert result is not None
+        assert result.severity == "fail"
 
 
 class TestResolveContainerName:

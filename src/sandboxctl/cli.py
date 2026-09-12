@@ -485,6 +485,7 @@ def doctor(
         fix_policy_drift,
         fix_sandbox_credentials,
     )
+    from sandboxctl.health import check_disk_usage
     from sandboxctl.health import diagnose as health_diagnose
 
     cfg = load_config()
@@ -504,6 +505,12 @@ def doctor(
 
     # Section 2: Infrastructure
     typer.echo("\n--- Infrastructure ---")
+    disk_usage = check_disk_usage()
+    if disk_usage is None:
+        typer.echo("  ? Podman storage filesystem: unavailable")
+    else:
+        symbol = "✓" if disk_usage.severity == "ok" else "!" if disk_usage.severity == "warn" else "✗"
+        typer.echo(f"  {symbol} {disk_usage.details}")
     if name:
         sandbox_names = [name]
     elif all_sandboxes:

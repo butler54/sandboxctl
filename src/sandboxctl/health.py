@@ -49,6 +49,13 @@ class GatewayApiState(Enum):
     UNKNOWN = "unknown"
 
 
+@dataclass(frozen=True)
+class DiskUsage:
+    percent: int
+    severity: str
+    details: str
+
+
 @dataclass
 class HealthReport:
     """Diagnostic report for a sandbox."""
@@ -89,6 +96,29 @@ def _run(
 ) -> subprocess.CompletedProcess[str]:
     """Run a command with timeout, capturing output."""
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+
+
+def check_disk_usage(warn_percent: int = 80, fail_percent: int = 90) -> DiskUsage | None:
+    """Return Podman backing-store pressure without scanning sandbox volumes."""
+    command = ["podman", "machine", "ssh", "--", "df", "-Pk", "/"] if sys.platform == "darwin" else ["df", "-Pk", "/"]
+    try:
+        result = _run(command, env=_podman_env())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    lines = result.stdout.splitlines()
+    if len(lines) < 2:
+        return None
+    fields = lines[-1].split()
+    if len(fields) < 5 or not fields[4].endswith("%"):
+        return None
+    try:
+        percent = int(fields[4][:-1])
+    except ValueError:
+        return None
+    severity = "fail" if percent >= fail_percent else "warn" if percent >= warn_percent else "ok"
+    return DiskUsage(percent, severity, f"Podman storage filesystem: {percent}% used")
 
 
 def check_compute_state() -> ComputeState:

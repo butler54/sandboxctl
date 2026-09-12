@@ -138,6 +138,11 @@ copied to the same location in the sandbox. Configure their model, permissions,
 and instructions in the OpenCode agent file; sandboxctl preserves those files
 without transformation.
 
+Global OpenCode commands in `~/.config/opencode/command/` and
+`~/.config/opencode/commands/` are also staged. Claude command files are not
+OpenCode command definitions. Repository-owned OpenCode commands remain in
+the repository's `.opencode/` directory and are not modified by sandboxctl.
+
 #### `[opencode]`
 
 Set per-profile OpenCode defaults. A non-empty value overrides the matching

@@ -22,6 +22,7 @@ from sandboxctl.create import (
     stage_claude_state,
     stage_credentials,
     stage_opencode_agents,
+    stage_opencode_commands,
     stage_opencode_config,
     stage_opencode_plugins,
     stage_skills,
@@ -1519,3 +1520,42 @@ def test_stage_opencode_agents_returns_zero_when_absent(tmp_path: Path) -> None:
         count = stage_opencode_agents(stage_dir)
 
     assert count == 0
+
+
+def test_stage_opencode_commands_copies_both_supported_directories(tmp_path: Path) -> None:
+    opencode_dir = tmp_path / "home" / ".config" / "opencode"
+    (opencode_dir / "command").mkdir(parents=True)
+    (opencode_dir / "commands" / "nested").mkdir(parents=True)
+    (opencode_dir / "command" / "one.md").write_text("one")
+    (opencode_dir / "commands" / "nested" / "two.md").write_text("two")
+
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+        count = stage_opencode_commands(stage_dir)
+
+    assert count == 2
+    assert (stage_dir / ".config" / "opencode" / "command" / "one.md").exists()
+    assert (stage_dir / ".config" / "opencode" / "commands" / "nested" / "two.md").exists()
+
+
+def test_stage_opencode_commands_returns_zero_when_absent(tmp_path: Path) -> None:
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"):
+        assert stage_opencode_commands(stage_dir) == 0
+
+
+def test_stage_opencode_commands_rejects_symlinks(tmp_path: Path) -> None:
+    commands_dir = tmp_path / "home" / ".config" / "opencode" / "commands"
+    commands_dir.mkdir(parents=True)
+    target = tmp_path / "private.md"
+    target.write_text("private")
+    (commands_dir / "linked.md").symlink_to(target)
+
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+    with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
+        with pytest.raises(ValueError, match="contains a symlink"):
+            stage_opencode_commands(stage_dir)

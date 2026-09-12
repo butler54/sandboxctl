@@ -145,6 +145,24 @@ def stage_opencode_agents(stage_dir: Path) -> int:
     return 0
 
 
+def stage_opencode_commands(stage_dir: Path) -> int:
+    """Stage global OpenCode commands from both supported directory names."""
+    opencode_dir = Path.home() / ".config" / "opencode"
+    count = 0
+    for dirname in ("command", "commands"):
+        commands_src = opencode_dir / dirname
+        if not commands_src.exists():
+            continue
+        if commands_src.is_symlink() or any(path.is_symlink() for path in commands_src.rglob("*")):
+            msg = f"OpenCode command directory contains a symlink: {commands_src}"
+            raise ValueError(msg)
+        commands_dst = stage_dir / ".config" / "opencode" / dirname
+        commands_dst.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(commands_src, commands_dst, symlinks=False, dirs_exist_ok=True)
+        count += len(list(commands_dst.rglob("*.md")))
+    return count
+
+
 def _inject_opencode_config_content(name: str, patch: dict) -> None:
     """Inject an opencode config patch via the OPENCODE_CONFIG_CONTENT env var.
 
@@ -819,6 +837,9 @@ def create_sandbox(
         n_oc_agents = stage_opencode_agents(stage_dir)
         if n_oc_agents:
             typer.echo(f"  OpenCode agents: {n_oc_agents} staged")
+        n_oc_commands = stage_opencode_commands(stage_dir)
+        if n_oc_commands:
+            typer.echo(f"  OpenCode commands: {n_oc_commands} staged")
 
         creds = stage_credentials(stage_dir, config)
         for c in creds:

@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.24.0 (2026-09-12)
+
+### Features
+
+- **doctor**: Report Podman disk pressure ([#164](https://github.com/butler54/sandboxctl/pull/164),
+  [`4f0d37b`](https://github.com/butler54/sandboxctl/commit/4f0d37b5f5a21c307cc7b0f93b91ae32b4701d14))
+
+
 ## v1.23.0 (2026-09-12)
 
 ### Features

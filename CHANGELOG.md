@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.22.1 (2026-09-12)
+
+### Bug Fixes
+
+- **health**: Separate gateway service checks
+  ([#159](https://github.com/butler54/sandboxctl/pull/159),
+  [`bca7d43`](https://github.com/butler54/sandboxctl/commit/bca7d438eaa0ef1ca5ced1e2b6187648ec800000))
+
+- **openshell**: Surface gateway command failures
+  ([#159](https://github.com/butler54/sandboxctl/pull/159),
+  [`bca7d43`](https://github.com/butler54/sandboxctl/commit/bca7d438eaa0ef1ca5ced1e2b6187648ec800000))
+
+
 ## v1.22.0 (2026-09-12)
 
 ### Features

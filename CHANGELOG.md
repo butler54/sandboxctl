@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.23.0 (2026-09-12)
+
+### Features
+
+- **create**: Report configured OpenCode models
+  ([#162](https://github.com/butler54/sandboxctl/pull/162),
+  [`2fe7df7`](https://github.com/butler54/sandboxctl/commit/2fe7df7504a0af8e530f6e5efb8ef5d1d696c4f3))
+
+
 ## v1.22.1 (2026-09-12)
 
 ### Bug Fixes

@@ -24,9 +24,28 @@ class ContainerState(Enum):
 
 
 class GatewayState(Enum):
+    """State of the OpenShell gateway service."""
+
     RUNNING = "running"
     STOPPED = "stopped"
     MISSING = "missing"
+    UNKNOWN = "unknown"
+
+
+class ComputeState(Enum):
+    """State of the Podman compute backend."""
+
+    RUNNING = "running"
+    STOPPED = "stopped"
+    MISSING = "missing"
+    UNKNOWN = "unknown"
+
+
+class GatewayApiState(Enum):
+    """Reachability of the OpenShell gateway API."""
+
+    RUNNING = "running"
+    UNREACHABLE = "unreachable"
     UNKNOWN = "unknown"
 
 
@@ -36,14 +55,22 @@ class HealthReport:
 
     sandbox_name: str
     container_state: ContainerState
+    compute_state: ComputeState
     gateway_state: GatewayState
+    gateway_api_state: GatewayApiState
     ssh_reachable: bool
     recovery_action: str
     details: list[str]
 
     @property
     def healthy(self) -> bool:
-        return self.container_state == ContainerState.RUNNING and self.ssh_reachable
+        return (
+            self.compute_state == ComputeState.RUNNING
+            and self.gateway_state == GatewayState.RUNNING
+            and self.gateway_api_state == GatewayApiState.RUNNING
+            and self.container_state == ContainerState.RUNNING
+            and self.ssh_reachable
+        )
 
 
 def _podman_env() -> dict[str, str] | None:
@@ -64,22 +91,72 @@ def _run(
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
 
 
-def check_gateway_state() -> GatewayState:
-    """Check if the podman machine / OpenShell gateway is running.
-
-    On Linux, podman runs natively without a machine — gateway is always RUNNING.
-    """
-    if sys.platform != "darwin":
-        return GatewayState.RUNNING
+def check_compute_state() -> ComputeState:
+    """Check the Podman machine on macOS or native Podman elsewhere."""
+    command = ["podman", "machine", "info"] if sys.platform == "darwin" else ["podman", "info"]
     try:
-        result = _run(["podman", "machine", "info"], env=_podman_env())
+        result = _run(command, env=_podman_env())
         if result.returncode == 0:
-            return GatewayState.RUNNING
-        return GatewayState.STOPPED
+            return ComputeState.RUNNING
+        return ComputeState.STOPPED
     except FileNotFoundError:
-        return GatewayState.MISSING
+        return ComputeState.MISSING
+    except subprocess.TimeoutExpired:
+        return ComputeState.UNKNOWN
+
+
+def check_gateway_state() -> GatewayState:
+    """Check the platform service that hosts the OpenShell gateway."""
+    if sys.platform == "darwin":
+        try:
+            installed = _run(["brew", "list", "openshell"])
+            if installed.returncode != 0:
+                return GatewayState.MISSING
+            result = _run(["brew", "services", "list"])
+        except FileNotFoundError:
+            return GatewayState.MISSING
+        except subprocess.TimeoutExpired:
+            return GatewayState.UNKNOWN
+
+        if result.returncode != 0:
+            return GatewayState.UNKNOWN
+        for line in result.stdout.splitlines():
+            fields = line.split()
+            if fields and fields[0] == "openshell":
+                return GatewayState.RUNNING if "started" in fields else GatewayState.STOPPED
+        return GatewayState.STOPPED
+
+    try:
+        result = _run(
+            ["systemctl", "--user", "show", "openshell-gateway", "--property=LoadState", "--property=ActiveState"]
+        )
+    except FileNotFoundError:
+        return GatewayState.UNKNOWN
     except subprocess.TimeoutExpired:
         return GatewayState.UNKNOWN
+    if result.returncode != 0:
+        return GatewayState.UNKNOWN
+    state = result.stdout
+    if "LoadState=not-found" in state:
+        return GatewayState.MISSING
+    if "ActiveState=active" in state:
+        return GatewayState.RUNNING
+    return GatewayState.STOPPED
+
+
+def check_gateway_api_state() -> GatewayApiState:
+    """Check the gateway through the OpenShell CLI rather than process state."""
+    from sandboxctl import openshell as osh
+
+    try:
+        status = osh.gateway_status()
+    except osh.SandboxError:
+        return GatewayApiState.UNREACHABLE
+    if status.get("status") == "Connected":
+        return GatewayApiState.RUNNING
+    if status:
+        return GatewayApiState.UNREACHABLE
+    return GatewayApiState.UNKNOWN
 
 
 def resolve_container_name(sandbox_name: str) -> str | None:
@@ -157,16 +234,26 @@ def check_ssh_connectivity(sandbox_name: str, timeout: int = 5) -> bool:
     return resolve_ssh_host(sandbox_name, timeout=timeout) is not None
 
 
-def recover_gateway() -> bool:
-    """Attempt to start the podman machine.
-
-    On Linux, podman runs natively — no machine to start, returns True.
-    """
+def recover_compute() -> bool:
+    """Attempt to start a stopped Podman machine on macOS."""
     if sys.platform != "darwin":
-        return True
+        return False
     try:
         result = _run(["podman", "machine", "start"], timeout=60, env=_podman_env())
         return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def recover_gateway() -> bool:
+    """Restart the platform-managed OpenShell gateway service."""
+    command = (
+        ["brew", "services", "restart", "openshell"]
+        if sys.platform == "darwin"
+        else ["systemctl", "--user", "restart", "openshell-gateway"]
+    )
+    try:
+        return _run(command, timeout=60).returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 
@@ -192,34 +279,84 @@ def diagnose(sandbox_name: str, auto_recover: bool = True) -> HealthReport:
     details: list[str] = []
     recovery_action = "none"
 
-    gw_state = check_gateway_state()
-    details.append(f"Gateway: {gw_state.value}")
+    compute_state = check_compute_state()
+    details.append(f"Compute: {compute_state.value}")
 
-    if gw_state == GatewayState.STOPPED and auto_recover:
-        details.append("Attempting gateway recovery...")
-        if recover_gateway():
-            gw_state = GatewayState.RUNNING
-            details.append("Gateway recovered successfully")
-            recovery_action = "gateway_restarted"
+    if compute_state == ComputeState.STOPPED and auto_recover:
+        details.append("Attempting compute recovery...")
+        if recover_compute():
+            compute_state = check_compute_state()
+            details.append("Compute recovery completed")
+            recovery_action = "compute_restarted"
         else:
-            details.append("Gateway recovery failed")
+            details.append("Compute recovery failed")
             return HealthReport(
                 sandbox_name=sandbox_name,
                 container_state=ContainerState.UNKNOWN,
+                compute_state=compute_state,
+                gateway_state=GatewayState.UNKNOWN,
+                gateway_api_state=GatewayApiState.UNKNOWN,
+                ssh_reachable=False,
+                recovery_action="compute_recovery_failed",
+                details=details,
+            )
+
+    if compute_state != ComputeState.RUNNING:
+        return HealthReport(
+            sandbox_name=sandbox_name,
+            container_state=ContainerState.UNKNOWN,
+            compute_state=compute_state,
+            gateway_state=GatewayState.UNKNOWN,
+            gateway_api_state=GatewayApiState.UNKNOWN,
+            ssh_reachable=False,
+            recovery_action="compute_not_running",
+            details=details,
+        )
+
+    gw_state = check_gateway_state()
+    details.append(f"Gateway service: {gw_state.value}")
+    if gw_state == GatewayState.STOPPED and auto_recover:
+        details.append("Attempting gateway service recovery...")
+        if recover_gateway():
+            gw_state = check_gateway_state()
+            details.append("Gateway service recovery completed")
+            recovery_action = "gateway_restarted"
+        else:
+            details.append("Gateway service recovery failed")
+            return HealthReport(
+                sandbox_name=sandbox_name,
+                container_state=ContainerState.UNKNOWN,
+                compute_state=compute_state,
                 gateway_state=gw_state,
+                gateway_api_state=GatewayApiState.UNKNOWN,
                 ssh_reachable=False,
                 recovery_action="gateway_recovery_failed",
                 details=details,
             )
-
     if gw_state != GatewayState.RUNNING:
         return HealthReport(
-            sandbox_name=sandbox_name,
-            container_state=ContainerState.UNKNOWN,
-            gateway_state=gw_state,
-            ssh_reachable=False,
-            recovery_action="gateway_not_running",
-            details=details,
+            sandbox_name,
+            ContainerState.UNKNOWN,
+            compute_state,
+            gw_state,
+            GatewayApiState.UNKNOWN,
+            False,
+            "gateway_not_running",
+            details,
+        )
+
+    api_state = check_gateway_api_state()
+    details.append(f"Gateway API: {api_state.value}")
+    if api_state != GatewayApiState.RUNNING:
+        return HealthReport(
+            sandbox_name,
+            ContainerState.UNKNOWN,
+            compute_state,
+            gw_state,
+            api_state,
+            False,
+            "gateway_api_unreachable",
+            details,
         )
 
     container_state = check_container_state(sandbox_name)
@@ -249,7 +386,9 @@ def diagnose(sandbox_name: str, auto_recover: bool = True) -> HealthReport:
     return HealthReport(
         sandbox_name=sandbox_name,
         container_state=container_state,
+        compute_state=compute_state,
         gateway_state=gw_state,
+        gateway_api_state=api_state,
         ssh_reachable=ssh_ok,
         recovery_action=recovery_action,
         details=details,

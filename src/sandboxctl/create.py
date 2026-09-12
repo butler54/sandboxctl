@@ -804,10 +804,19 @@ def create_sandbox(
     name = sandbox_name or profile.name
 
     model = profile.sandbox.model or config.default_model
+    opencode_config = _opencode_runtime_config(config, profile)
     typer.echo(f"{'=' * 40}")
     typer.echo(f"Creating sandbox: {name}")
     typer.echo(f"Profile: {profile.name}")
     typer.echo(f"Model: {model}")
+    if config.opencode.openai_accounts:
+        typer.echo(f"OpenCode configured accounts: {', '.join(config.opencode.openai_accounts)}")
+    if opencode_model := opencode_config.get("model"):
+        typer.echo(f"OpenCode model: {opencode_model}")
+    agents = opencode_config.get("agent", {})
+    for agent in ("plan", "build"):
+        if agent_model := agents.get(agent, {}).get("model"):
+            typer.echo(f"OpenCode {agent} model: {agent_model}")
     typer.echo(f"{'=' * 40}\n")
 
     with tempfile.TemporaryDirectory() as stage_root, tempfile.TemporaryDirectory() as policy_root:

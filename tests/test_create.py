@@ -1559,3 +1559,44 @@ def test_stage_opencode_commands_rejects_symlinks(tmp_path: Path) -> None:
     with patch("sandboxctl.create.Path.home", return_value=tmp_path / "home"):
         with pytest.raises(ValueError, match="contains a symlink"):
             stage_opencode_commands(stage_dir)
+
+
+def test_create_reports_resolved_opencode_models(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from sandboxctl.config import OpencodeConfig, SandboxctlConfig
+
+    config = SandboxctlConfig(
+        config_dir=tmp_path,
+        opencode=OpencodeConfig(
+            openai_accounts=["work"],
+            model="openai-work/gpt-5.6-sol",
+            plan_model="openai-work/gpt-5.6-sol",
+            build_model="openai-work/gpt-5.6-terra",
+        ),
+    )
+    profile = Profile(name="test", mlflow=False)
+    with (
+        patch("sandboxctl.create.stage_skills", return_value=0),
+        patch("sandboxctl.create.stage_agents", return_value=0),
+        patch("sandboxctl.create.stage_opencode_config", return_value=False),
+        patch("sandboxctl.create.stage_opencode_plugins", return_value=0),
+        patch("sandboxctl.create.stage_opencode_agents", return_value=0),
+        patch("sandboxctl.create.stage_opencode_commands", return_value=0),
+        patch("sandboxctl.create.stage_credentials", return_value=[]),
+        patch("sandboxctl.create.resolve_build_context", return_value=(tmp_path, None)),
+        patch("sandboxctl.create.prepare_policy_for_apply", return_value=tmp_path),
+        patch("sandboxctl.create.setup_providers", return_value=[]),
+        patch("sandboxctl.openshell.sandbox_create"),
+        patch("sandboxctl.openshell.policy_set"),
+        patch("sandboxctl.openshell.update_local_ssh_config"),
+        patch("sandboxctl.create.post_launch_setup"),
+        patch("sandboxctl.create.clone_repos", return_value=[]),
+        patch("sandboxctl.create.generate_workspace"),
+    ):
+        create_sandbox(profile, config, open_editor=False)
+
+    output = capsys.readouterr().out
+    assert "Model:" in output
+    assert "OpenCode configured accounts: work" in output
+    assert "OpenCode model: openai-work/gpt-5.6-sol" in output
+    assert "OpenCode plan model: openai-work/gpt-5.6-sol" in output
+    assert "OpenCode build model: openai-work/gpt-5.6-terra" in output

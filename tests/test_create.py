@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 from sandboxctl.create import (
     clone_repos,
@@ -338,6 +339,37 @@ class TestGenerateProviderYaml:
         assert mock_import.call_args[0][1] == "github"
         assert "id: github" in profile_path.read_text()
         mock_create.assert_any_call("github", "github", "GITHUB_TOKEN=token")
+
+    def test_provider_profile_inherits_rendered_policy_enforcement(self, tmp_path: Path) -> None:
+        policy = tmp_path / "policy.yaml"
+        policy.write_text(
+            """\
+network_policies:
+  github:
+    endpoints:
+      - host: api.github.com
+        port: 443
+        enforcement: audit
+      - host: api.github.com
+        port: 443
+        path: /graphql
+        enforcement: audit
+  git:
+    host: github.com
+    port: 443
+    enforcement: audit
+"""
+        )
+        config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)
+        with (
+            patch("sandboxctl.create.get_credential", return_value="token"),
+            patch("sandboxctl.create.osh.provider_create"),
+            patch("sandboxctl.create.osh.provider_profile_import") as mock_import,
+        ):
+            setup_providers(config, policy)
+
+        profile = yaml.safe_load(mock_import.call_args[0][0].read_text())
+        assert [endpoint["enforcement"] for endpoint in profile["endpoints"]] == ["audit", "audit", "audit"]
 
     def test_github_provider_skipped_without_keychain_token(self, tmp_path: Path) -> None:
         config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)

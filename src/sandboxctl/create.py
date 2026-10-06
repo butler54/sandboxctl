@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 import typer
+import yaml
 
 from sandboxctl import mlflow_cmd
 from sandboxctl import openshell as osh
@@ -318,32 +319,76 @@ def resolve_build_context(
     return build_ctx, build_ctx
 
 
-def _ensure_provider_yaml(config_dir: Path, profile_id: str, content: str) -> Path:
+def _policy_endpoint_enforcement(policy_path: Path | None) -> dict[tuple[str, int, str], str]:
+    """Return enforcement settings keyed by rendered-policy endpoint identity."""
+    if policy_path is None or not policy_path.exists():
+        return {}
+    try:
+        policy = yaml.safe_load(policy_path.read_text()) or {}
+    except yaml.YAMLError:
+        return {}
+    network_policies = policy.get("network_policies", {}) if isinstance(policy, dict) else {}
+    if not isinstance(network_policies, dict):
+        return {}
+
+    enforcement: dict[tuple[str, int, str], str] = {}
+    for rule in network_policies.values():
+        if not isinstance(rule, dict):
+            continue
+        endpoints = [rule, *(rule.get("endpoints", []) if isinstance(rule.get("endpoints"), list) else [])]
+        for endpoint in endpoints:
+            if not isinstance(endpoint, dict):
+                continue
+            host, port, mode = endpoint.get("host"), endpoint.get("port"), endpoint.get("enforcement")
+            if isinstance(host, str) and isinstance(port, int) and isinstance(mode, str):
+                path = endpoint.get("path") if isinstance(endpoint.get("path"), str) else ""
+                enforcement[(host, port, path)] = mode
+    return enforcement
+
+
+def _ensure_provider_yaml(
+    config_dir: Path,
+    profile_id: str,
+    content: str,
+    policy_path: Path | None = None,
+) -> Path:
     """Write a sandboxctl-managed OpenShell provider profile."""
     providers_dir = config_dir / "providers"
     providers_dir.mkdir(parents=True, exist_ok=True)
     yaml_path = providers_dir / f"{profile_id}.yaml"
-    yaml_path.write_text(content)
+    profile = yaml.safe_load(content)
+    for endpoint in profile.get("endpoints", []):
+        if not isinstance(endpoint, dict):
+            continue
+        host, port = endpoint.get("host"), endpoint.get("port")
+        if not isinstance(host, str) or not isinstance(port, int):
+            continue
+        path = endpoint.get("path") if isinstance(endpoint.get("path"), str) else ""
+        policy_enforcement = _policy_endpoint_enforcement(policy_path)
+        matching = policy_enforcement.get((host, port, path)) or policy_enforcement.get((host, port, ""))
+        if matching:
+            endpoint["enforcement"] = matching
+    yaml_path.write_text(yaml.safe_dump(profile, sort_keys=False))
     return yaml_path
 
 
-def _ensure_vertex_provider_yaml(config_dir: Path) -> Path:
+def _ensure_vertex_provider_yaml(config_dir: Path, policy_path: Path | None = None) -> Path:
     """Write the OpenShell 0.1 Google Vertex provider profile."""
-    return _ensure_provider_yaml(config_dir, "google-vertex-ai", GOOGLE_VERTEX_AI_PROFILE)
+    return _ensure_provider_yaml(config_dir, "google-vertex-ai", GOOGLE_VERTEX_AI_PROFILE, policy_path)
 
 
-def _ensure_github_provider_yaml(config_dir: Path) -> Path:
+def _ensure_github_provider_yaml(config_dir: Path, policy_path: Path | None = None) -> Path:
     """Write the OpenShell 0.1 GitHub provider profile."""
-    return _ensure_provider_yaml(config_dir, "github", GITHUB_PROFILE)
+    return _ensure_provider_yaml(config_dir, "github", GITHUB_PROFILE, policy_path)
 
 
-def setup_providers(config: SandboxctlConfig) -> list[str]:
+def setup_providers(config: SandboxctlConfig, policy_path: Path | None = None) -> list[str]:
     """Register providers with OpenShell. Returns list of provider names to attach."""
     providers: list[str] = []
 
     github_token = get_credential(config.keychain_github, os.environ.get("USER", "sandboxctl"))
     if github_token:
-        github_profile = _ensure_github_provider_yaml(config.config_dir)
+        github_profile = _ensure_github_provider_yaml(config.config_dir, policy_path)
         osh.provider_profile_import(github_profile, "github")
         osh.provider_create("github", "github", f"GITHUB_TOKEN={github_token}")
         providers.append("github")
@@ -352,7 +397,7 @@ def setup_providers(config: SandboxctlConfig) -> list[str]:
 
     if config.vertex_project_id:
         osh.settings_set("providers_v2_enabled", "true")
-        yaml_path = _ensure_vertex_provider_yaml(config.config_dir)
+        yaml_path = _ensure_vertex_provider_yaml(config.config_dir, policy_path)
         # OpenShell 0.1 requires the profile to exist before a provider can be
         # created from it. The helper updates our managed global profile when
         # it was imported by an earlier sandboxctl run.
@@ -853,7 +898,7 @@ def create_sandbox(
         policy_path = profiles_dir / profile.name / profile.sandbox.policy
         policy_path = prepare_policy_for_apply(policy_path, profiles_dir, Path(policy_root))
 
-        providers = setup_providers(config)
+        providers = setup_providers(config, policy_path)
         typer.echo(f"  Providers: {', '.join(providers)}")
 
         typer.echo("\nCreating sandbox...")

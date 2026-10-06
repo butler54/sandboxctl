@@ -141,6 +141,29 @@ def test_render_policy_normalizes_legacy_binary_strings(tmp_path: Path) -> None:
     ]
 
 
+def test_render_policy_omits_legacy_tls_terminate(tmp_path: Path) -> None:
+    profiles = tmp_path / "profiles"
+    profile = profiles / "legacy"
+    profile.mkdir(parents=True)
+    policy = profile / "policy.yaml"
+    policy.write_text(
+        "network_policies:\n"
+        "  github:\n"
+        "    endpoints:\n"
+        "      - host: github.com\n"
+        "        port: 443\n"
+        "        tls: terminate\n"
+        "      - host: oauth2.googleapis.com\n"
+        "        port: 443\n"
+        "        tls: skip\n"
+    )
+
+    rendered = yaml.safe_load(render_policy(policy, profiles))
+    endpoints = rendered["network_policies"]["github"]["endpoints"]
+    assert "tls" not in endpoints[0]
+    assert endpoints[1]["tls"] == "skip"
+
+
 @pytest.mark.parametrize("entry", [None, 42, [], {}, {"path": ""}, {"path": "  "}])
 def test_render_policy_rejects_malformed_binary_entries(tmp_path: Path, entry: object) -> None:
     profiles = tmp_path / "profiles"

@@ -38,6 +38,17 @@ def test_render_policy_adds_opencode_kernel_path(tmp_path: Path) -> None:
     assert rendered.count("/usr/lib/node_modules/opencode-ai/bin/opencode.exe") == 1
 
 
+def test_render_policy_adds_npm_cli_path(tmp_path: Path) -> None:
+    profiles = tmp_path / "profiles"
+    profile = profiles / "dev"
+    profile.mkdir(parents=True)
+    policy = profile / "policy.yaml"
+    policy.write_text("network_policies:\n  npm: {binaries: [{path: /usr/local/bin/npm}]}\n")
+
+    rendered = render_policy(policy, profiles)
+    assert rendered.count("/usr/lib/node_modules/npm/bin/npm-cli.js") == 1
+
+
 def test_render_policy_rejects_include_outside_profiles(tmp_path: Path) -> None:
     profiles = tmp_path / "profiles"
     profile = profiles / "dev"

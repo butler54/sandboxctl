@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.25.6 (2026-10-06)
+
+### Bug Fixes
+
+- **policy**: Normalize direct legacy rules
+  ([`8551a78`](https://github.com/butler54/sandboxctl/commit/8551a785a80d97126683f652233c6f37c7a773ac))
+
+
 ## v1.25.5 (2026-10-06)
 
 ### Bug Fixes

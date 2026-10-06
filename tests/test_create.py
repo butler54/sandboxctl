@@ -968,7 +968,7 @@ def test_create_injects_mlflow_uri() -> None:
         profile = Profile(name="test", mlflow=True)
 
         def _exec_plugin_ok_s1(name: str, script: str) -> str:
-            return "MLflow tracing: plugin installed" if "claude plugin marketplace add" in script else ""
+            return "MLflow tracing: baked package verified" if "command -v mlflow-claude-code" in script else ""
 
         with (
             patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=True) as mock_health,
@@ -1002,7 +1002,7 @@ def test_create_injects_mlflow_uri() -> None:
         profile = Profile(name="test", mlflow=True)
 
         def _exec_plugin_ok_s2(name: str, script: str) -> str:
-            return "MLflow tracing: plugin installed" if "claude plugin marketplace add" in script else ""
+            return "MLflow tracing: baked package verified" if "command -v mlflow-claude-code" in script else ""
 
         with (
             patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=False) as mock_health,
@@ -1090,7 +1090,7 @@ def test_create_injects_mlflow_uri() -> None:
         profile = Profile(name="test", mlflow=True)
 
         def _exec_plugin_ok_s5(name: str, script: str) -> str:
-            return "MLflow tracing: plugin installed" if "claude plugin marketplace add" in script else ""
+            return "MLflow tracing: baked package verified" if "command -v mlflow-claude-code" in script else ""
 
         with (
             patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=True) as mock_health,
@@ -1273,8 +1273,8 @@ def test_gsd_model_profile_skipped_when_not_set() -> None:
         assert len(gsd_calls) == 0
 
 
-def test_create_installs_mlflow_tracing_plugin() -> None:
-    """Plugin install and env var injection for Claude Code tracing (TRACE-01/02/03)."""
+def test_create_verifies_baked_mlflow_tracing_package() -> None:
+    """Baked MLflow package verification and env var injection (TRACE-01/02/03)."""
     import tempfile
     from pathlib import Path
     from unittest.mock import patch
@@ -1283,15 +1283,15 @@ def test_create_installs_mlflow_tracing_plugin() -> None:
     from sandboxctl.create import post_launch_setup
     from sandboxctl.models import Profile
 
-    # Scenario 1: Happy path — mlflow=True, plugin install succeeds
+    # Scenario 1: Happy path — mlflow=True, baked package is available
     with tempfile.TemporaryDirectory() as tmpdir:
         mlflow_cfg = MlflowConfig(managed=True, port=5050, tracking_uri="http://localhost:5050")
         config = SandboxctlConfig(config_dir=Path(tmpdir), mlflow=mlflow_cfg)
         profile = Profile(name="test-sandbox", mlflow=True)
 
         def exec_side_effect_happy(name: str, script: str) -> str:
-            if "claude plugin marketplace add" in script:
-                return "MLflow tracing: plugin installed"
+            if "command -v mlflow-claude-code" in script:
+                return "MLflow tracing: baked package verified"
             return ""
 
         with (
@@ -1311,10 +1311,11 @@ def test_create_installs_mlflow_tracing_plugin() -> None:
             all_scripts = [c[0][1] for c in mock_exec.call_args_list]
             assert any("MLFLOW_EXPERIMENT_NAME=sandbox/test-sandbox" in s for s in all_scripts)
             assert any("MLFLOW_CLAUDE_TRACING_ENABLED=true" in s for s in all_scripts)
-            assert any("claude plugin marketplace add" in s for s in all_scripts)
-            assert any("https://github.com/mlflow/mlflow.git" in s for s in all_scripts)
+            assert any("command -v mlflow-claude-code" in s for s in all_scripts)
+            assert not any("claude plugin" in s for s in all_scripts)
+            assert not any("github.com/mlflow" in s for s in all_scripts)
 
-    # Scenario 2: Fail-closed — plugin install returns empty string → RuntimeError raised
+    # Scenario 2: Fail-closed — baked package is missing → RuntimeError raised
     with tempfile.TemporaryDirectory() as tmpdir:
         mlflow_cfg = MlflowConfig(managed=True, port=5050, tracking_uri="http://localhost:5050")
         config = SandboxctlConfig(config_dir=Path(tmpdir), mlflow=mlflow_cfg)
@@ -1334,10 +1335,10 @@ def test_create_installs_mlflow_tracing_plugin() -> None:
             patch("sandboxctl.create.Path.home") as mock_home,
         ):
             mock_home.return_value = Path(tmpdir) / "nonexistent"
-            with pytest.raises(RuntimeError, match="plugin install failed"):
+            with pytest.raises(RuntimeError, match="package is not baked"):
                 post_launch_setup("test-sandbox", profile, config)
 
-    # Scenario 3: Opt-out — profile.mlflow=False → no tracing env vars or plugin calls
+    # Scenario 3: Opt-out — profile.mlflow=False → no tracing env vars or package check
     with tempfile.TemporaryDirectory() as tmpdir:
         mlflow_cfg = MlflowConfig(managed=True, port=5050)
         config = SandboxctlConfig(config_dir=Path(tmpdir), mlflow=mlflow_cfg)
@@ -1358,7 +1359,7 @@ def test_create_installs_mlflow_tracing_plugin() -> None:
 
             all_scripts = [c[0][1] for c in mock_exec.call_args_list]
             assert not any("MLFLOW_EXPERIMENT_NAME" in s for s in all_scripts)
-            assert not any("claude plugin" in s for s in all_scripts)
+            assert not any("mlflow-claude-code" in s for s in all_scripts)
 
     # Scenario 4: Experiment name format — sandbox name "my-sandbox" → correct experiment path
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1367,8 +1368,8 @@ def test_create_installs_mlflow_tracing_plugin() -> None:
         profile = Profile(name="my-sandbox", mlflow=True)
 
         def exec_side_effect_mysandbox(name: str, script: str) -> str:
-            if "claude plugin marketplace add" in script:
-                return "MLflow tracing: plugin installed"
+            if "command -v mlflow-claude-code" in script:
+                return "MLflow tracing: baked package verified"
             return ""
 
         with (

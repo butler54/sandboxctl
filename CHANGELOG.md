@@ -2,6 +2,37 @@
 
 <!-- version list -->
 
+## v1.25.1 (2026-10-06)
+
+### Bug Fixes
+
+- **openshell**: Support 0.1 sandbox creation
+  ([#181](https://github.com/butler54/sandboxctl/pull/181),
+  [`7ad85af`](https://github.com/butler54/sandboxctl/commit/7ad85afff690f9059f2d859b0f135ce506222d62))
+
+### Chores
+
+- Bump astral-sh/setup-uv from 10.0.1 to 10.2.0
+  ([#177](https://github.com/butler54/sandboxctl/pull/177),
+  [`7dd8ba3`](https://github.com/butler54/sandboxctl/commit/7dd8ba3116b6baeb10a1b96045a3e2b73933f121))
+
+- Bump github/codeql-action/analyze from 4.37.9 to 4.38.1
+  ([#174](https://github.com/butler54/sandboxctl/pull/174),
+  [`950a1b2`](https://github.com/butler54/sandboxctl/commit/950a1b2b4babeb2dab8b1ca8acb752b16e40173d))
+
+- Bump github/codeql-action/init from 4.37.9 to 4.38.1
+  ([#173](https://github.com/butler54/sandboxctl/pull/173),
+  [`faebdfb`](https://github.com/butler54/sandboxctl/commit/faebdfb8549d7fe6940aecee1e3a376e7673e62e))
+
+- Bump github/codeql-action/upload-sarif from 4.37.9 to 4.38.1
+  ([#176](https://github.com/butler54/sandboxctl/pull/176),
+  [`653f80a`](https://github.com/butler54/sandboxctl/commit/653f80a5164cbaabf7b1c064f6c49dcffdddb004))
+
+- Bump python-semantic-release/python-semantic-release
+  ([#175](https://github.com/butler54/sandboxctl/pull/175),
+  [`e7b6d5d`](https://github.com/butler54/sandboxctl/commit/e7b6d5dcf81f03238a96a5e66e106e3fadf9e155))
+
+
 ## v1.25.0 (2026-09-12)
 
 ### Features

@@ -24,6 +24,22 @@ def _binary_path(entry: object) -> str | None:
     return None
 
 
+def _normalize_endpoint_compatibility(endpoint: object) -> None:
+    """Apply OpenShell 0.1 compatibility defaults to one policy endpoint."""
+    if not isinstance(endpoint, dict):
+        return
+    # OpenShell 0.1 makes automatic TLS termination the implicit default and
+    # rejects the legacy explicit value. Keep tls:skip and future values intact.
+    if endpoint.get("tls") == "terminate":
+        endpoint.pop("tls")
+    # OpenShell 0.1 rejects a provider attachment when credentials can reach a
+    # legacy L4-only endpoint unless that weaker boundary is explicitly
+    # acknowledged. Existing sandboxctl profiles expressed L4 endpoints by
+    # omitting protocol, so preserve their behavior with the required opt-in.
+    if "host" in endpoint and "protocol" not in endpoint and "allow_uninspected_credentials" not in endpoint:
+        endpoint["allow_uninspected_credentials"] = True
+
+
 def prepare_policy_for_apply(path: Path, profiles_dir: Path, target_dir: Path) -> Path:
     """Return a policy path ready for OpenShell, rendering when required."""
     root = profiles_dir.resolve()
@@ -85,25 +101,11 @@ def render_policy(path: Path, profiles_dir: Path) -> str:
     for policy in network_policies.values():
         if not isinstance(policy, dict):
             continue
+        _normalize_endpoint_compatibility(policy)
         endpoints = policy.get("endpoints")
         if isinstance(endpoints, list):
             for endpoint in endpoints:
-                # OpenShell 0.1 makes automatic TLS termination the implicit
-                # default and rejects the legacy explicit value. Keep tls:skip
-                # and any future values intact so policy intent is not changed.
-                if isinstance(endpoint, dict) and endpoint.get("tls") == "terminate":
-                    endpoint.pop("tls")
-                # OpenShell 0.1 rejects a provider attachment when credentials
-                # can reach a legacy L4-only endpoint unless that weaker
-                # boundary is explicitly acknowledged. Existing sandboxctl
-                # profiles expressed L4 endpoints by omitting protocol, so
-                # preserve their behavior with the required explicit opt-in.
-                if (
-                    isinstance(endpoint, dict)
-                    and "protocol" not in endpoint
-                    and "allow_uninspected_credentials" not in endpoint
-                ):
-                    endpoint["allow_uninspected_credentials"] = True
+                _normalize_endpoint_compatibility(endpoint)
         binaries = policy.get("binaries")
         if binaries is None and "binaries" not in policy:
             continue

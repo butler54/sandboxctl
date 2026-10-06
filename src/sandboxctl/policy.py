@@ -85,6 +85,14 @@ def render_policy(path: Path, profiles_dir: Path) -> str:
     for policy in network_policies.values():
         if not isinstance(policy, dict):
             continue
+        endpoints = policy.get("endpoints")
+        if isinstance(endpoints, list):
+            for endpoint in endpoints:
+                # OpenShell 0.1 makes automatic TLS termination the implicit
+                # default and rejects the legacy explicit value. Keep tls:skip
+                # and any future values intact so policy intent is not changed.
+                if isinstance(endpoint, dict) and endpoint.get("tls") == "terminate":
+                    endpoint.pop("tls")
         binaries = policy.get("binaries")
         if binaries is None and "binaries" not in policy:
             continue

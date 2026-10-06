@@ -1310,6 +1310,7 @@ def test_create_installs_mlflow_tracing_plugin() -> None:
             assert any("MLFLOW_EXPERIMENT_NAME=sandbox/test-sandbox" in s for s in all_scripts)
             assert any("MLFLOW_CLAUDE_TRACING_ENABLED=true" in s for s in all_scripts)
             assert any("claude plugin marketplace add" in s for s in all_scripts)
+            assert any("https://github.com/mlflow/mlflow.git" in s for s in all_scripts)
 
     # Scenario 2: Fail-closed — plugin install returns empty string → RuntimeError raised
     with tempfile.TemporaryDirectory() as tmpdir:

@@ -186,6 +186,25 @@ def test_render_policy_allows_credentials_for_legacy_l4_endpoint(tmp_path: Path)
     assert "allow_uninspected_credentials" not in endpoints[1]
 
 
+def test_render_policy_allows_credentials_for_direct_legacy_l4_rule(tmp_path: Path) -> None:
+    profiles = tmp_path / "profiles"
+    profile = profiles / "legacy"
+    profile.mkdir(parents=True)
+    policy = profile / "policy.yaml"
+    policy.write_text("""\
+network_policies:
+  claude_code:
+    host: aiplatform.googleapis.com
+    port: 443
+    tls: terminate
+""")
+
+    rendered = yaml.safe_load(render_policy(policy, profiles))
+    rule = rendered["network_policies"]["claude_code"]
+    assert "tls" not in rule
+    assert rule["allow_uninspected_credentials"] is True
+
+
 @pytest.mark.parametrize("entry", [None, 42, [], {}, {"path": ""}, {"path": "  "}])
 def test_render_policy_rejects_malformed_binary_entries(tmp_path: Path, entry: object) -> None:
     profiles = tmp_path / "profiles"

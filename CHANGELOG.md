@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.25.5 (2026-10-06)
+
+### Bug Fixes
+
+- **policy**: Allow credentials on legacy L4 endpoints
+  ([`50fa99f`](https://github.com/butler54/sandboxctl/commit/50fa99f3476c3243e654e69977e96aaeae90afef))
+
+
 ## v1.25.4 (2026-10-06)
 
 ### Bug Fixes

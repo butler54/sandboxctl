@@ -381,12 +381,35 @@ class TestProviderProfileImport:
         profile.write_text("id: google-vertex-ai\n")
         responses = [
             MagicMock(returncode=1, stdout="", stderr="custom provider profile already exists"),
+            MagicMock(returncode=0, stdout="id: google-vertex-ai\nresource_version: 7\n", stderr=""),
             MagicMock(returncode=0, stdout="", stderr=""),
         ]
         with patch("sandboxctl.openshell._run", side_effect=responses) as mock_run:
             provider_profile_import(profile, "google-vertex-ai")
 
-        assert mock_run.call_args_list[1][0][0][-2:] == ["--global", "google-vertex-ai"]
+        assert mock_run.call_args_list[1][0][0] == [
+            "openshell",
+            "provider",
+            "profile",
+            "export",
+            "--global",
+            "--output",
+            "yaml",
+            "google-vertex-ai",
+        ]
+        assert mock_run.call_args_list[2][0][0][-2:] == ["--global", "google-vertex-ai"]
+        assert "resource_version: 7" in profile.read_text()
+
+    def test_profile_update_requires_exported_resource_version(self, tmp_path: Path) -> None:
+        profile = tmp_path / "google-vertex-ai.yaml"
+        profile.write_text("id: google-vertex-ai\n")
+        responses = [
+            MagicMock(returncode=1, stdout="", stderr="custom provider profile already exists"),
+            MagicMock(returncode=0, stdout="id: google-vertex-ai\n", stderr=""),
+        ]
+        with patch("sandboxctl.openshell._run", side_effect=responses):
+            with pytest.raises(SandboxError, match="did not include a resource_version"):
+                provider_profile_import(profile, "google-vertex-ai")
 
     def test_profile_failure_raises(self, tmp_path: Path) -> None:
         profile = tmp_path / "google-vertex-ai.yaml"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -255,6 +256,41 @@ def provider_profile_import(path: Path, profile_id: str) -> None:
 
     combined = f"{result.stdout}\n{result.stderr}"
     if "already exists" in combined:
+        export_cmd = [
+            "openshell",
+            "provider",
+            "profile",
+            "export",
+            "--global",
+            "--output",
+            "yaml",
+            profile_id,
+        ]
+        exported = _run(export_cmd, check=False, capture=True)
+        if exported.returncode != 0:
+            details = exported.stderr.strip() or exported.stdout.strip()
+            message = f"provider profile '{profile_id}' could not be exported for update"
+            if details:
+                message = f"{message}: {details}"
+            raise SandboxError(message)
+
+        version_match = re.search(r"^resource_version:\s*(\d+)\s*$", exported.stdout, re.MULTILINE)
+        if version_match is None or int(version_match.group(1)) == 0:
+            raise SandboxError(f"provider profile '{profile_id}' export did not include a resource_version")
+
+        profile_text = path.read_text()
+        resource_version = f"resource_version: {version_match.group(1)}"
+        if re.search(r"^resource_version:\s*\d+\s*$", profile_text, re.MULTILINE):
+            profile_text = re.sub(
+                r"^resource_version:\s*\d+\s*$",
+                resource_version,
+                profile_text,
+                flags=re.MULTILINE,
+            )
+        else:
+            profile_text = re.sub(r"^(id:.*\n)", rf"\1{resource_version}\n", profile_text, count=1)
+        path.write_text(profile_text)
+
         update_cmd = [
             "openshell",
             "provider",

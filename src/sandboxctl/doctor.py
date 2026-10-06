@@ -671,10 +671,13 @@ def build_and_inject_ca_bundle(
 
     Then uploads to /sandbox/.ca-bundle.pem and sets environment variables.
     """
-    # Start with OpenShell's own CAs from inside the sandbox
+    # Preserve system public roots, then append OpenShell CAs when present.
     script_parts = [
+        "if [ -r /etc/ssl/certs/ca-certificates.crt ]; then "
+        "cat /etc/ssl/certs/ca-certificates.crt > /sandbox/.ca-bundle.pem; "
+        "else : > /sandbox/.ca-bundle.pem; fi; "
         "cat /etc/openshell-tls/ca-bundle.pem /etc/openshell-tls/openshell-ca.pem "
-        "2>/dev/null > /sandbox/.ca-bundle.pem || true",
+        ">> /sandbox/.ca-bundle.pem 2>/dev/null || true",
     ]
 
     # Append host-side CA files

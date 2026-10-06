@@ -675,6 +675,7 @@ class TestPostLaunchSetup:
         ca_calls = [c for c in mock_pipe.call_args_list if "GIT_SSL_CAINFO" in str(c)]
         assert len(ca_calls) == 1
         script = ca_calls[0][0][1]
+        assert any("/etc/ssl/certs/ca-certificates.crt" in str(call) for call in mock_pipe.call_args_list)
         assert "GH_SSL_CAINFO=/sandbox/.ca-bundle.pem" in script
 
     def test_gws_credentials_exported_when_gws_installed(self, tmp_path: Path) -> None:

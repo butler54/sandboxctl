@@ -447,7 +447,8 @@ def post_launch_setup(
         "if [ -r /etc/ssl/certs/ca-certificates.crt ]; then "
         "cat /etc/ssl/certs/ca-certificates.crt > /sandbox/.ca-bundle.pem; "
         "else : > /sandbox/.ca-bundle.pem; fi; "
-        "cat /etc/openshell-tls/ca-bundle.pem /etc/openshell-tls/openshell-ca.pem "
+        "cat /run/openshell-supervisor-ca/material/ca.crt "
+        "/etc/openshell-tls/ca-bundle.pem /etc/openshell-tls/openshell-ca.pem "
         ">> /sandbox/.ca-bundle.pem 2>/dev/null || true; "
         'echo "CA bundle: system + OpenShell CAs"',
     )

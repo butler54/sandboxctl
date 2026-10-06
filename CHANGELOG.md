@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.25.9 (2026-10-06)
+
+### Bug Fixes
+
+- **tls**: Preserve system certificate roots
+  ([#189](https://github.com/butler54/sandboxctl/pull/189),
+  [`415226f`](https://github.com/butler54/sandboxctl/commit/415226f31103968ce7a0590482d30fd5d2a21a97))
+
+
 ## v1.25.8 (2026-10-06)
 
 ### Bug Fixes

@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.25.7 (2026-10-06)
+
+### Bug Fixes
+
+- **providers**: Match policy endpoint enforcement
+  ([#187](https://github.com/butler54/sandboxctl/pull/187),
+  [`4e275aa`](https://github.com/butler54/sandboxctl/commit/4e275aaefc9a9983adde3416435fcf51a7fe698d))
+
+
 ## v1.25.6 (2026-10-06)
 
 ### Bug Fixes

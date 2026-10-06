@@ -19,6 +19,7 @@ from sandboxctl.config import SandboxctlConfig
 from sandboxctl.credentials import get_credential
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile
 from sandboxctl.policy import prepare_policy_for_apply
+from sandboxctl.provider_profiles import GOOGLE_VERTEX_AI_PROFILE
 
 _REPO_RE = re.compile(r"^[a-zA-Z0-9._/-]+$")
 
@@ -318,38 +319,12 @@ def resolve_build_context(
 
 
 def _ensure_vertex_provider_yaml(config_dir: Path) -> Path:
-    """Ensure Vertex provider profile YAML exists with tls:skip on OAuth endpoints.
-
-    This overrides OpenShell's auto-generated provider policy which includes
-    oauth2.googleapis.com and accounts.google.com WITHOUT tls:skip, causing
-    BadSignature errors when Google rejects the proxy certificate.
-    """
+    """Write the OpenShell 0.1 Google Vertex provider profile."""
     providers_dir = config_dir / "providers"
     providers_dir.mkdir(parents=True, exist_ok=True)
 
-    yaml_path = providers_dir / "vertex-claude.yaml"
-    yaml_content = """\
-id: vertex-claude
-display_name: Vertex Claude
-endpoints:
-  - host: oauth2.googleapis.com
-    port: 443
-    protocol: rest
-    tls: skip
-    enforcement: enforce
-    access: read-write
-  - host: accounts.google.com
-    port: 443
-    protocol: rest
-    tls: skip
-    enforcement: enforce
-    access: read-write
-"""
-    # Regenerate if missing or if it has an old format (missing `id:` or the
-    # now-required `display_name:` field — #120).
-    existing = yaml_path.read_text() if yaml_path.exists() else ""
-    if "id:" not in existing or "display_name:" not in existing:
-        yaml_path.write_text(yaml_content)
+    yaml_path = providers_dir / "google-vertex-ai.yaml"
+    yaml_path.write_text(GOOGLE_VERTEX_AI_PROFILE)
     return yaml_path
 
 
@@ -359,6 +334,11 @@ def setup_providers(config: SandboxctlConfig) -> list[str]:
 
     if config.vertex_project_id:
         osh.settings_set("providers_v2_enabled", "true")
+        yaml_path = _ensure_vertex_provider_yaml(config.config_dir)
+        # OpenShell 0.1 requires the profile to exist before a provider can be
+        # created from it. The helper updates our managed global profile when
+        # it was imported by an earlier sandboxctl run.
+        osh.provider_profile_import(yaml_path, "google-vertex-ai")
         # Provider type must be a real OpenShell provider profile id ("google-vertex-ai"),
         # not the provider *name* — the previous "vertex-claude" type made provider_create's
         # upsert fail silently (delete succeeds, create is rejected: "unsupported provider
@@ -368,10 +348,6 @@ def setup_providers(config: SandboxctlConfig) -> list[str]:
         # directly into the sandbox's .bashrc in post_launch_setup instead.
         osh.provider_create("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
         providers.append("vertex-claude")
-
-        # Ensure provider profile YAML exists with tls:skip on OAuth endpoints (fixes #69)
-        yaml_path = _ensure_vertex_provider_yaml(config.config_dir)
-        osh.provider_profile_import(yaml_path)
     else:
         api_key = get_credential(config.keychain_github, "anthropic-api-key") or ""
         if api_key:

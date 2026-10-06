@@ -74,10 +74,17 @@ def sandbox_create(
         cmd.append("--no-keep")
     if no_git_ignore:
         cmd.append("--no-git-ignore")
-    cmd.extend(["--", "true"])
-    result = subprocess.run(cmd, check=False)
+    # OpenShell 0.1 rejects --upload combined with a trailing command because
+    # the upload completes after the canonical process starts. Detach starts
+    # that process without attaching a command and leaves the sandbox ready for
+    # post-launch setup.
+    cmd.append("--detach")
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
     if result.returncode != 0:
         msg = f"sandbox create failed (exit {result.returncode})"
+        details = result.stderr.strip() or result.stdout.strip()
+        if details:
+            msg = f"{msg}: {details}"
         raise SandboxError(msg)
 
 
@@ -226,20 +233,48 @@ def provider_create(
     result = _run(cmd, check=False, capture=True)
     if result.returncode != 0:
         combined = f"{result.stdout}\n{result.stderr}"
-        if "already exists" not in combined:
-            print(combined.strip())
+        if "already exists" in combined:
+            return
+        details = combined.strip()
+        message = f"provider create failed for '{name}'"
+        if details:
+            message = f"{message}: {details}"
+        raise SandboxError(message)
 
 
 def provider_delete(name: str) -> None:
     _run(["openshell", "provider", "delete", name], check=False, capture=True)
 
 
-def provider_profile_import(path: Path) -> None:
-    _run(
-        ["openshell", "provider", "profile", "import", "-f", str(path)],
-        check=False,
-        capture=False,
-    )
+def provider_profile_import(path: Path, profile_id: str) -> None:
+    """Import or update a sandboxctl-managed platform provider profile."""
+    import_cmd = ["openshell", "provider", "profile", "import", "-f", str(path), "--global"]
+    result = _run(import_cmd, check=False, capture=True)
+    if result.returncode == 0:
+        return
+
+    combined = f"{result.stdout}\n{result.stderr}"
+    if "already exists" in combined:
+        update_cmd = [
+            "openshell",
+            "provider",
+            "profile",
+            "update",
+            "--file",
+            str(path),
+            "--global",
+            profile_id,
+        ]
+        result = _run(update_cmd, check=False, capture=True)
+        if result.returncode == 0:
+            return
+        combined = f"{result.stdout}\n{result.stderr}"
+
+    details = combined.strip()
+    message = f"provider profile '{profile_id}' could not be installed"
+    if details:
+        message = f"{message}: {details}"
+    raise SandboxError(message)
 
 
 def sandbox_ssh_config(name: str) -> str:

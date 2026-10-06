@@ -19,6 +19,7 @@ from sandboxctl.openshell import (
     settings_set,
 )
 from sandboxctl.profile import list_profiles, load_profile
+from sandboxctl.provider_profiles import GOOGLE_VERTEX_AI_PROFILE
 
 
 def _check_prerequisites() -> None:
@@ -276,33 +277,12 @@ def _setup_gitlab_pats(config: SandboxctlConfig) -> dict[str, str | None]:
 
 
 def _write_vertex_provider_yaml(config_dir: Path) -> Path:
-    """Write Vertex provider profile YAML with tls:skip on OAuth endpoints.
-
-    This overrides OpenShell's auto-generated provider policy which includes
-    oauth2.googleapis.com and accounts.google.com WITHOUT tls:skip, causing
-    BadSignature errors when Google rejects the proxy certificate.
-    """
+    """Write the OpenShell 0.1 Google Vertex provider profile."""
     providers_dir = config_dir / "providers"
     providers_dir.mkdir(parents=True, exist_ok=True)
 
-    yaml_path = providers_dir / "vertex-claude.yaml"
-    yaml_content = """\
-_provider_vertex_claude:
-  endpoints:
-    - host: oauth2.googleapis.com
-      port: 443
-      protocol: rest
-      tls: skip
-      enforcement: enforce
-      access: read-write
-    - host: accounts.google.com
-      port: 443
-      protocol: rest
-      tls: skip
-      enforcement: enforce
-      access: read-write
-"""
-    yaml_path.write_text(yaml_content)
+    yaml_path = providers_dir / "google-vertex-ai.yaml"
+    yaml_path.write_text(GOOGLE_VERTEX_AI_PROFILE)
     return yaml_path
 
 
@@ -313,16 +293,15 @@ def _setup_providers(config: SandboxctlConfig, github_token: str | None) -> None
     typer.echo("  providers_v2_enabled: true")
 
     if config.providers.vertex_project_id:
+        yaml_path = _write_vertex_provider_yaml(config.config_dir)
+        provider_profile_import(yaml_path, "google-vertex-ai")
         # "google-vertex-ai" is the real provider profile id — "vertex-claude" (the provider
         # *name*) is not a valid --type and made this call fail silently every time. Project
         # ID is exported directly into each sandbox's .bashrc (see create.py post_launch_setup)
         # rather than smuggled in here as a provider credential.
         provider_create("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
-        # Import provider profile YAML with tls:skip on OAuth endpoints (fixes #69)
-        yaml_path = _write_vertex_provider_yaml(config.config_dir)
-        provider_profile_import(yaml_path)
         typer.echo(f"  vertex-claude: configured (project: {config.providers.vertex_project_id})")
-        typer.echo("  vertex-claude: OAuth TLS policy applied")
+        typer.echo("  google-vertex-ai: provider profile installed")
 
     if github_token:
         provider_delete("github")

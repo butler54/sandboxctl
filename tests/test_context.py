@@ -216,7 +216,7 @@ def test_backup_paths_exclude_settings_json() -> None:
 
 
 def test_restore_excludes_settings_json(tmp_path: Path) -> None:
-    """restore_claude_context passes --exclude flags to protect freshly-staged settings.json (#91)."""
+    """restore never overwrites freshly-staged Claude or OpenCode configuration."""
     from unittest.mock import patch
 
     from sandboxctl.context import restore_claude_context
@@ -235,6 +235,9 @@ def test_restore_excludes_settings_json(tmp_path: Path) -> None:
     script = mock_pipe.call_args[0][1]
     assert "--exclude='.claude/settings.json'" in script
     assert "--exclude='.claude/.claude.json'" in script
+    assert "--exclude='.config/opencode/config.json'" in script
+    assert "--exclude='.config/opencode/opencode.json'" in script
+    assert "--exclude='.config/opencode/opencode.jsonc'" in script
 
 
 def test_backup_paths_include_opencode() -> None:

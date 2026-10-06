@@ -280,32 +280,32 @@ class TestGenerateProviderYaml:
         ):
             providers = setup_providers(config)
         assert "vertex-claude" in providers
-        mock_create.assert_called_once_with("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
-
-        # Verify provider profile YAML is generated and imported with tls:skip
         mock_import.assert_called_once()
         yaml_path = mock_import.call_args[0][0]
+        assert mock_import.call_args[0][1] == "google-vertex-ai"
+        mock_create.assert_called_once_with("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
+
+        # The OpenShell 0.1 profile supplies the ADC credential schema before
+        # sandboxctl creates the provider from it.
         assert yaml_path.exists()
         yaml_content = yaml_path.read_text()
-        assert "tls: skip" in yaml_content
-        assert "oauth2.googleapis" in yaml_content and ".com" in yaml_content
-        assert "accounts.google" in yaml_content and ".com" in yaml_content
-        # #120: provider profile import requires both id and display_name
-        assert "id: vertex-claude" in yaml_content
-        assert "display_name:" in yaml_content
+        assert "id: google-vertex-ai" in yaml_content
+        assert "gcloud_adc_token" in yaml_content
+        assert "*-aiplatform.googleapis.com" in yaml_content
 
-    def test_vertex_provider_yaml_regenerated_when_missing_display_name(self, tmp_path: Path) -> None:
-        """A stale YAML with id but no display_name is regenerated (#120)."""
+    def test_vertex_provider_yaml_replaces_legacy_profile(self, tmp_path: Path) -> None:
+        """OpenShell 0.1 profile replaces the legacy non-ADC Vertex profile."""
         from sandboxctl.create import _ensure_vertex_provider_yaml
 
         providers_dir = tmp_path / "providers"
         providers_dir.mkdir(parents=True)
-        stale = providers_dir / "vertex-claude.yaml"
-        stale.write_text("id: vertex-claude\nendpoints: []\n")  # old format, no display_name
+        stale = providers_dir / "google-vertex-ai.yaml"
+        stale.write_text("id: vertex-claude\nendpoints: []\n")
 
         _ensure_vertex_provider_yaml(tmp_path)
 
-        assert "display_name:" in stale.read_text()
+        assert "id: google-vertex-ai" in stale.read_text()
+        assert "gcloud_adc_token" in stale.read_text()
 
     def test_anthropic_direct_provider(self, tmp_path: Path) -> None:
         config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)

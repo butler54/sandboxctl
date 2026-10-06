@@ -313,3 +313,18 @@ class TestSetupProviders:
         yaml_content = yaml_path.read_text()
         assert "id: google-vertex-ai" in yaml_content
         assert "gcloud_adc_token" in yaml_content
+
+    def test_github_provider_profile_installed_before_create(self, tmp_path: Path) -> None:
+        config = MagicMock(config_dir=tmp_path, providers=MagicMock(vertex_project_id=""))
+        with (
+            patch("sandboxctl.setup_cmd.settings_set"),
+            patch("sandboxctl.setup_cmd.provider_create") as mock_create,
+            patch("sandboxctl.setup_cmd.provider_delete"),
+            patch("sandboxctl.setup_cmd.provider_profile_import") as mock_import,
+        ):
+            _setup_providers(config, "token")
+
+        profile_path = mock_import.call_args[0][0]
+        assert mock_import.call_args[0][1] == "github"
+        assert "id: github" in profile_path.read_text()
+        mock_create.assert_called_once_with("github", "github", "GITHUB_TOKEN=token")

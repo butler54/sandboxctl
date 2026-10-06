@@ -19,7 +19,7 @@ from sandboxctl.config import SandboxctlConfig
 from sandboxctl.credentials import get_credential
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile
 from sandboxctl.policy import prepare_policy_for_apply
-from sandboxctl.provider_profiles import GOOGLE_VERTEX_AI_PROFILE
+from sandboxctl.provider_profiles import GITHUB_PROFILE, GOOGLE_VERTEX_AI_PROFILE
 
 _REPO_RE = re.compile(r"^[a-zA-Z0-9._/-]+$")
 
@@ -318,19 +318,37 @@ def resolve_build_context(
     return build_ctx, build_ctx
 
 
-def _ensure_vertex_provider_yaml(config_dir: Path) -> Path:
-    """Write the OpenShell 0.1 Google Vertex provider profile."""
+def _ensure_provider_yaml(config_dir: Path, profile_id: str, content: str) -> Path:
+    """Write a sandboxctl-managed OpenShell provider profile."""
     providers_dir = config_dir / "providers"
     providers_dir.mkdir(parents=True, exist_ok=True)
-
-    yaml_path = providers_dir / "google-vertex-ai.yaml"
-    yaml_path.write_text(GOOGLE_VERTEX_AI_PROFILE)
+    yaml_path = providers_dir / f"{profile_id}.yaml"
+    yaml_path.write_text(content)
     return yaml_path
+
+
+def _ensure_vertex_provider_yaml(config_dir: Path) -> Path:
+    """Write the OpenShell 0.1 Google Vertex provider profile."""
+    return _ensure_provider_yaml(config_dir, "google-vertex-ai", GOOGLE_VERTEX_AI_PROFILE)
+
+
+def _ensure_github_provider_yaml(config_dir: Path) -> Path:
+    """Write the OpenShell 0.1 GitHub provider profile."""
+    return _ensure_provider_yaml(config_dir, "github", GITHUB_PROFILE)
 
 
 def setup_providers(config: SandboxctlConfig) -> list[str]:
     """Register providers with OpenShell. Returns list of provider names to attach."""
-    providers = ["github"]
+    providers: list[str] = []
+
+    github_token = get_credential(config.keychain_github, os.environ.get("USER", "sandboxctl"))
+    if github_token:
+        github_profile = _ensure_github_provider_yaml(config.config_dir)
+        osh.provider_profile_import(github_profile, "github")
+        osh.provider_create("github", "github", f"GITHUB_TOKEN={github_token}")
+        providers.append("github")
+    else:
+        typer.echo("  GitHub provider: no keychain entry, skipped")
 
     if config.vertex_project_id:
         osh.settings_set("providers_v2_enabled", "true")

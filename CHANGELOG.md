@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.25.2 (2026-10-06)
+
+### Bug Fixes
+
+- **providers**: Recreate GitHub provider on create
+  ([#182](https://github.com/butler54/sandboxctl/pull/182),
+  [`cf7af24`](https://github.com/butler54/sandboxctl/commit/cf7af24ef27d861e42505dac62c30201ab4b0fd8))
+
+
 ## v1.25.1 (2026-10-06)
 
 ### Bug Fixes

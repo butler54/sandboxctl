@@ -685,20 +685,18 @@ def post_launch_setup(
             'echo "MLflow tracing: env vars configured"',
         )
 
-        # TRACE-01: Install Claude Code tracing plugin (fail-closed per D-07).
-        # Source .bashrc so CA env vars (GIT_SSL_CAINFO, SSL_CERT_FILE, etc.) are active
-        # for the git sparse-clone that `claude plugin marketplace add` performs.
-        # Redirect stderr to stdout so failures are captured and visible in the error message.
+        # TRACE-01: The sandbox base image bakes the MLflow Claude Code package,
+        # including its npm dependencies. Verify that prerequisite instead of
+        # fetching the marketplace and package at runtime, which would require
+        # GitHub and npm registry access from the sandbox.
         result = osh.sandbox_exec_pipe(
             name,
-            "source /sandbox/.bashrc 2>/dev/null; "
-            "claude plugin marketplace add https://github.com/mlflow/mlflow.git --sparse .claude-plugin 2>&1 && "
-            "claude plugin install mlflow-tracing@mlflow-plugins 2>&1 && "
-            'echo "MLflow tracing: plugin installed"',
+            'command -v mlflow-claude-code >/dev/null 2>&1 && echo "MLflow tracing: baked package verified"',
         )
-        if "plugin installed" not in result:
+        if "baked package verified" not in result:
             raise RuntimeError(
-                f"MLflow Claude Code tracing plugin install failed. Create aborted (fail-closed).\n{result}"
+                f"MLflow Claude Code tracing package is not baked into the sandbox image. "
+                f"Create aborted (fail-closed).\n{result}"
             )
 
     # Stage gcloud ADC for Vertex AI

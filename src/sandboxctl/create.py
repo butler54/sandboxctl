@@ -687,7 +687,7 @@ def post_launch_setup(
         result = osh.sandbox_exec_pipe(
             name,
             "source /sandbox/.bashrc 2>/dev/null; "
-            "claude plugin marketplace add mlflow/mlflow --sparse .claude-plugin 2>&1 && "
+            "claude plugin marketplace add https://github.com/mlflow/mlflow.git --sparse .claude-plugin 2>&1 && "
             "claude plugin install mlflow-tracing@mlflow-plugins 2>&1 && "
             'echo "MLflow tracing: plugin installed"',
         )

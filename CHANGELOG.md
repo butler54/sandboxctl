@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.25.8 (2026-10-06)
+
+### Bug Fixes
+
+- **mlflow**: Use HTTPS marketplace source ([#188](https://github.com/butler54/sandboxctl/pull/188),
+  [`784a09c`](https://github.com/butler54/sandboxctl/commit/784a09c928faac969f12a5300a22796d8d0d63d1))
+
+
 ## v1.25.7 (2026-10-06)
 
 ### Bug Fixes

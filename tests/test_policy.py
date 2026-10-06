@@ -47,6 +47,7 @@ def test_render_policy_adds_npm_cli_path(tmp_path: Path) -> None:
 
     rendered = render_policy(policy, profiles)
     assert rendered.count("/usr/lib/node_modules/npm/bin/npm-cli.js") == 1
+    assert rendered.count("/usr/local/bin/claude") == 1
 
 
 def test_render_policy_rejects_include_outside_profiles(tmp_path: Path) -> None:

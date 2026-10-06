@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.25.13 (2026-10-06)
+
+### Bug Fixes
+
+- **mlflow**: Verify baked tracing package
+  ([`0804f53`](https://github.com/butler54/sandboxctl/commit/0804f535d31858f756450633f207283202cd4d8c))
+
+
 ## v1.25.12 (2026-10-06)
 
 ### Bug Fixes

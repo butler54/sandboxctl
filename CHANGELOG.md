@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.25.12 (2026-10-06)
+
+### Bug Fixes
+
+- **policy**: Allow Claude npm plugin installs
+  ([`1bf0593`](https://github.com/butler54/sandboxctl/commit/1bf0593a78c716600ba85b32bb95701b5cb98d32))
+
+
 ## v1.25.11 (2026-10-06)
 
 ### Bug Fixes

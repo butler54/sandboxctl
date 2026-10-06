@@ -12,6 +12,7 @@ from sandboxctl.openshell import (
     ensure_ssh_keepalive,
     gateway_status,
     provider_create,
+    provider_profile_import,
     sandbox_create,
     sandbox_delete,
     sandbox_exec,
@@ -42,6 +43,8 @@ class TestSandboxCreate:
             assert "test" in cmd
             assert "--provider" in cmd
             assert "github" in cmd
+            assert "--detach" in cmd
+            assert "--" not in cmd
 
     def test_create_with_multiple_providers(self) -> None:
         with patch("subprocess.run") as mock_run:
@@ -59,8 +62,8 @@ class TestSandboxCreate:
 
     def test_create_failure_raises(self) -> None:
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1)
-            with pytest.raises(SandboxError, match="sandbox create failed"):
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="upload rejected")
+            with pytest.raises(SandboxError, match="sandbox create failed.*upload rejected"):
                 sandbox_create(
                     name="test",
                     from_path=Path("/tmp/ctx"),
@@ -347,11 +350,48 @@ class TestProviderCreate:
         out = capsys.readouterr().out
         assert "already exists" not in out
 
-    def test_unexpected_error_is_surfaced(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """A non-benign create failure is printed for the user (#121)."""
+    def test_unexpected_error_raises(self) -> None:
+        """A non-benign provider create failure stops sandbox setup."""
         with patch("sandboxctl.openshell._run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="unsupported provider type")
-            provider_create("vertex-claude", "bogus-type")
+            with pytest.raises(SandboxError, match="unsupported provider type"):
+                provider_create("vertex-claude", "bogus-type")
 
-        out = capsys.readouterr().out
-        assert "unsupported provider type" in out
+
+class TestProviderProfileImport:
+    def test_imports_profile_globally(self, tmp_path: Path) -> None:
+        profile = tmp_path / "google-vertex-ai.yaml"
+        profile.write_text("id: google-vertex-ai\n")
+        with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            provider_profile_import(profile, "google-vertex-ai")
+
+        assert mock_run.call_args[0][0] == [
+            "openshell",
+            "provider",
+            "profile",
+            "import",
+            "-f",
+            str(profile),
+            "--global",
+        ]
+
+    def test_updates_existing_profile(self, tmp_path: Path) -> None:
+        profile = tmp_path / "google-vertex-ai.yaml"
+        profile.write_text("id: google-vertex-ai\n")
+        responses = [
+            MagicMock(returncode=1, stdout="", stderr="custom provider profile already exists"),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+        with patch("sandboxctl.openshell._run", side_effect=responses) as mock_run:
+            provider_profile_import(profile, "google-vertex-ai")
+
+        assert mock_run.call_args_list[1][0][0][-2:] == ["--global", "google-vertex-ai"]
+
+    def test_profile_failure_raises(self, tmp_path: Path) -> None:
+        profile = tmp_path / "google-vertex-ai.yaml"
+        profile.write_text("id: google-vertex-ai\n")
+        with patch("sandboxctl.openshell._run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="invalid profile")
+            with pytest.raises(SandboxError, match="invalid profile"):
+                provider_profile_import(profile, "google-vertex-ai")

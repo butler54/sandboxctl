@@ -159,7 +159,12 @@ class SandboxctlConfig(BaseSettings):
         dotenv_settings: Any,
         file_secret_settings: Any,
     ) -> tuple[Any, ...]:
-        toml_path = cls._resolve_toml_path()
+        # An explicitly supplied config_dir must also select its TOML source.
+        # Without this, SandboxctlConfig(config_dir=...) still read the host's
+        # default config.toml, surprising callers and contaminating tests.
+        init_values = getattr(init_settings, "init_kwargs", {})
+        config_dir = init_values.get("config_dir")
+        toml_path = Path(config_dir) / "config.toml" if config_dir else cls._resolve_toml_path()
         sources = [init_settings, env_settings]
         if toml_path and toml_path.is_file():
             sources.append(TomlConfigSettingsSource(settings_cls, toml_file=toml_path))

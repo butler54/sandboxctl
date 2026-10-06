@@ -290,7 +290,7 @@ class TestBundledProfiles:
 
 class TestSetupProviders:
     def test_vertex_provider_yaml_generated(self, tmp_path: Path) -> None:
-        """Test that Vertex provider YAML is generated with tls:skip on OAuth endpoints."""
+        """Test that setup installs the OpenShell 0.1 Vertex provider profile first."""
         config = MagicMock(
             config_dir=tmp_path,
             providers=MagicMock(vertex_project_id="my-test-project"),
@@ -306,11 +306,10 @@ class TestSetupProviders:
         # Verify provider_profile_import was called
         mock_import.assert_called_once()
         yaml_path = mock_import.call_args[0][0]
+        assert mock_import.call_args[0][1] == "google-vertex-ai"
 
         # Verify the YAML file exists and contains required content
         assert yaml_path.exists()
         yaml_content = yaml_path.read_text()
-        assert "tls: skip" in yaml_content
-        assert "oauth2.googleapis" in yaml_content and ".com" in yaml_content
-        assert "accounts.google" in yaml_content and ".com" in yaml_content
-        assert "_provider_vertex_claude:" in yaml_content
+        assert "id: google-vertex-ai" in yaml_content
+        assert "gcloud_adc_token" in yaml_content

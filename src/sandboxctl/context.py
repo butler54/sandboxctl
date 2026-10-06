@@ -104,6 +104,9 @@ def restore_claude_context(name: str, config: SandboxctlConfig) -> bool:
         f"tar xzf {remote_tar} -C /sandbox "
         "--exclude='.claude/settings.json' "
         "--exclude='.claude/.claude.json' "
+        "--exclude='.config/opencode/config.json' "
+        "--exclude='.config/opencode/opencode.json' "
+        "--exclude='.config/opencode/opencode.jsonc' "
         f"&& rm -f {remote_tar}",
     )
     return True

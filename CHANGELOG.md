@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.25.3 (2026-10-06)
+
+### Bug Fixes
+
+- **providers**: Preserve profile revisions
+  ([#183](https://github.com/butler54/sandboxctl/pull/183),
+  [`43051f2`](https://github.com/butler54/sandboxctl/commit/43051f244d6d84cda524b46c75e1a02cece4e62d))
+
+
 ## v1.25.2 (2026-10-06)
 
 ### Bug Fixes

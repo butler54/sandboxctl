@@ -19,7 +19,7 @@ from sandboxctl.openshell import (
     settings_set,
 )
 from sandboxctl.profile import list_profiles, load_profile
-from sandboxctl.provider_profiles import GOOGLE_VERTEX_AI_PROFILE
+from sandboxctl.provider_profiles import GITHUB_PROFILE, GOOGLE_VERTEX_AI_PROFILE
 
 
 def _check_prerequisites() -> None:
@@ -286,6 +286,16 @@ def _write_vertex_provider_yaml(config_dir: Path) -> Path:
     return yaml_path
 
 
+def _write_github_provider_yaml(config_dir: Path) -> Path:
+    """Write the OpenShell 0.1 GitHub provider profile."""
+    providers_dir = config_dir / "providers"
+    providers_dir.mkdir(parents=True, exist_ok=True)
+
+    yaml_path = providers_dir / "github.yaml"
+    yaml_path.write_text(GITHUB_PROFILE)
+    return yaml_path
+
+
 def _setup_providers(config: SandboxctlConfig, github_token: str | None) -> None:
     typer.echo("\n--- Providers ---")
 
@@ -304,6 +314,8 @@ def _setup_providers(config: SandboxctlConfig, github_token: str | None) -> None
         typer.echo("  google-vertex-ai: provider profile installed")
 
     if github_token:
+        yaml_path = _write_github_provider_yaml(config.config_dir)
+        provider_profile_import(yaml_path, "github")
         provider_delete("github")
         provider_create("github", "github", f"GITHUB_TOKEN={github_token}")
         typer.echo("  github: configured")

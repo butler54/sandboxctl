@@ -274,6 +274,7 @@ class TestGenerateProviderYaml:
             config_dir=tmp_path,
         )
         with (
+            patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.osh.settings_set"),
             patch("sandboxctl.create.osh.provider_create") as mock_create,
             patch("sandboxctl.create.osh.provider_profile_import") as mock_import,
@@ -309,13 +310,45 @@ class TestGenerateProviderYaml:
 
     def test_anthropic_direct_provider(self, tmp_path: Path) -> None:
         config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)
+
+        def credential_for(service: str, account: str) -> str | None:
+            if account == "anthropic-api-key":
+                return "sk-test"
+            return None
+
         with (
-            patch("sandboxctl.create.get_credential", return_value="sk-test"),
+            patch("sandboxctl.create.get_credential", side_effect=credential_for),
             patch("sandboxctl.create.osh.provider_create") as mock_create,
         ):
             providers = setup_providers(config)
         assert "anthropic-direct" in providers
         mock_create.assert_called_once_with("anthropic-direct", "anthropic", "ANTHROPIC_API_KEY=sk-test")
+
+    def test_github_provider_rehydrated_from_keychain(self, tmp_path: Path) -> None:
+        config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)
+        with (
+            patch("sandboxctl.create.get_credential", return_value="token"),
+            patch("sandboxctl.create.osh.provider_create") as mock_create,
+            patch("sandboxctl.create.osh.provider_profile_import") as mock_import,
+        ):
+            providers = setup_providers(config)
+
+        assert providers[0] == "github"
+        profile_path = mock_import.call_args[0][0]
+        assert mock_import.call_args[0][1] == "github"
+        assert "id: github" in profile_path.read_text()
+        mock_create.assert_any_call("github", "github", "GITHUB_TOKEN=token")
+
+    def test_github_provider_skipped_without_keychain_token(self, tmp_path: Path) -> None:
+        config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)
+        with (
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.osh.provider_create") as mock_create,
+        ):
+            providers = setup_providers(config)
+
+        assert providers == []
+        mock_create.assert_not_called()
 
 
 class TestPostLaunchSetup:

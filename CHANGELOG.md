@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.25.11 (2026-10-06)
+
+### Bug Fixes
+
+- **policy**: Allow npm CLI registry access
+  ([`a45ef6c`](https://github.com/butler54/sandboxctl/commit/a45ef6cdcd48af39763656bbc803582f82b655f7))
+
+
 ## v1.25.10 (2026-10-06)
 
 ### Bug Fixes

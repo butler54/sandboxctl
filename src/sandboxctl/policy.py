@@ -8,6 +8,8 @@ import yaml
 
 _OPENCODE_LAUNCHERS = {"/usr/local/bin/opencode", "/usr/bin/opencode"}
 _OPENCODE_COMPILED_BINARY = "/usr/lib/node_modules/opencode-ai/bin/opencode.exe"
+_NPM_LAUNCHERS = {"/usr/local/bin/npm", "/usr/bin/npm"}
+_NPM_CLI = "/usr/lib/node_modules/npm/bin/npm-cli.js"
 
 
 class PolicyIncludeError(ValueError):
@@ -124,4 +126,9 @@ def render_policy(path: Path, profiles_dir: Path) -> str:
         paths = {path for entry in binaries if (path := _binary_path(entry)) is not None}
         if _OPENCODE_LAUNCHERS.intersection(paths) and _OPENCODE_COMPILED_BINARY not in paths:
             binaries.append({"path": _OPENCODE_COMPILED_BINARY})
+        # npm's launcher is a script, so OpenShell identifies its connections
+        # as npm-cli.js rather than /usr/local/bin/npm. Preserve the user's
+        # explicit npm allowlist while permitting that canonical executable.
+        if _NPM_LAUNCHERS.intersection(paths) and _NPM_CLI not in paths:
+            binaries.append({"path": _NPM_CLI})
     return yaml.safe_dump(data, sort_keys=False)

@@ -164,6 +164,28 @@ def test_render_policy_omits_legacy_tls_terminate(tmp_path: Path) -> None:
     assert endpoints[1]["tls"] == "skip"
 
 
+def test_render_policy_allows_credentials_for_legacy_l4_endpoint(tmp_path: Path) -> None:
+    profiles = tmp_path / "profiles"
+    profile = profiles / "legacy"
+    profile.mkdir(parents=True)
+    policy = profile / "policy.yaml"
+    policy.write_text(
+        "network_policies:\n"
+        "  pypi:\n"
+        "    endpoints:\n"
+        "      - host: github.com\n"
+        "        port: 443\n"
+        "      - host: pypi.org\n"
+        "        port: 443\n"
+        "        protocol: rest\n"
+    )
+
+    rendered = yaml.safe_load(render_policy(policy, profiles))
+    endpoints = rendered["network_policies"]["pypi"]["endpoints"]
+    assert endpoints[0]["allow_uninspected_credentials"] is True
+    assert "allow_uninspected_credentials" not in endpoints[1]
+
+
 @pytest.mark.parametrize("entry", [None, 42, [], {}, {"path": ""}, {"path": "  "}])
 def test_render_policy_rejects_malformed_binary_entries(tmp_path: Path, entry: object) -> None:
     profiles = tmp_path / "profiles"

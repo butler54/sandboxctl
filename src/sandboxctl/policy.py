@@ -93,6 +93,17 @@ def render_policy(path: Path, profiles_dir: Path) -> str:
                 # and any future values intact so policy intent is not changed.
                 if isinstance(endpoint, dict) and endpoint.get("tls") == "terminate":
                     endpoint.pop("tls")
+                # OpenShell 0.1 rejects a provider attachment when credentials
+                # can reach a legacy L4-only endpoint unless that weaker
+                # boundary is explicitly acknowledged. Existing sandboxctl
+                # profiles expressed L4 endpoints by omitting protocol, so
+                # preserve their behavior with the required explicit opt-in.
+                if (
+                    isinstance(endpoint, dict)
+                    and "protocol" not in endpoint
+                    and "allow_uninspected_credentials" not in endpoint
+                ):
+                    endpoint["allow_uninspected_credentials"] = True
         binaries = policy.get("binaries")
         if binaries is None and "binaries" not in policy:
             continue

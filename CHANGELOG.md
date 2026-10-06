@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.25.4 (2026-10-06)
+
+### Bug Fixes
+
+- **policy**: Omit legacy TLS termination
+  ([`0e84481`](https://github.com/butler54/sandboxctl/commit/0e84481ac509b2388015d7973b94b40023813cd0))
+
+
 ## v1.25.3 (2026-10-06)
 
 ### Bug Fixes

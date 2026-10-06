@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.25.10 (2026-10-06)
+
+### Bug Fixes
+
+- **tls**: Include OpenShell supervisor CA ([#190](https://github.com/butler54/sandboxctl/pull/190),
+  [`bc2ffa0`](https://github.com/butler54/sandboxctl/commit/bc2ffa02ab1c76280b71816f773049d1529fd264))
+
+
 ## v1.25.9 (2026-10-06)
 
 ### Bug Fixes

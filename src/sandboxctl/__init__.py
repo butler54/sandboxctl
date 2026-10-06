@@ -1,3 +1,3 @@
 """Sandboxctl — OpenShell sandbox management CLI."""
 
-__version__ = "1.25.9"
+__version__ = "1.25.10"

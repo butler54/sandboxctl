@@ -549,6 +549,7 @@ class TestCABundleCheck:
             result = chk.fix("mybox", cfg)
         assert result.success is True
         script = mock_pipe.call_args[0][1]
+        assert "/etc/ssl/certs/ca-certificates.crt" in script
         assert "GH_SSL_CAINFO=/sandbox/.ca-bundle.pem" in script
 
 

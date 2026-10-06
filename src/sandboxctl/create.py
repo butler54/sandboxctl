@@ -440,12 +440,16 @@ def post_launch_setup(
     if restore_claude_context(name, config):
         typer.echo("  Claude context: restored from backup")
 
-    # Always build CA bundle — OpenShell proxy CA is needed for tls:terminate endpoints
+    # Preserve public roots, then append OpenShell CAs when the runtime provides
+    # them. OpenShell 0.1 no longer mounts /etc/openshell-tls in all images.
     osh.sandbox_exec_pipe(
         name,
-        "cat /etc/openshell-tls/ca-bundle.pem > /sandbox/.ca-bundle.pem 2>/dev/null; "
-        "cat /etc/openshell-tls/openshell-ca.pem >> /sandbox/.ca-bundle.pem 2>/dev/null; "
-        'echo "CA bundle: OpenShell CAs"',
+        "if [ -r /etc/ssl/certs/ca-certificates.crt ]; then "
+        "cat /etc/ssl/certs/ca-certificates.crt > /sandbox/.ca-bundle.pem; "
+        "else : > /sandbox/.ca-bundle.pem; fi; "
+        "cat /etc/openshell-tls/ca-bundle.pem /etc/openshell-tls/openshell-ca.pem "
+        ">> /sandbox/.ca-bundle.pem 2>/dev/null || true; "
+        'echo "CA bundle: system + OpenShell CAs"',
     )
     # Append custom CAs from config
     ca_sources: list[Path] = []

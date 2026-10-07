@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.26.0 (2026-10-07)
+
+### Features
+
+- **opencode**: Configure OpenAI model catalogs
+  ([`8c4b5e8`](https://github.com/butler54/sandboxctl/commit/8c4b5e862e1c1d1519bcd30ea42b49cf1f4846bb))
+
+
 ## v1.25.15 (2026-10-07)
 
 ### Bug Fixes

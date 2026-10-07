@@ -101,7 +101,7 @@ class Profile(BaseModel):
     ssh: dict[str, SshHostConfig] = Field(default_factory=dict)
     credentials: CredentialConfig = Field(default_factory=CredentialConfig)
     extensions: Extensions = Field(default_factory=Extensions)
-    mlflow: bool = True
+    mlflow: bool = False
     gsd: GsdConfig = Field(default_factory=GsdConfig)
     opencode: OpencodeProfileConfig = Field(default_factory=OpencodeProfileConfig)
     # Per-profile staging allowlists (empty = stage all, preserving default behavior).

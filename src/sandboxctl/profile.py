@@ -33,7 +33,7 @@ def load_profile(name: str, config: SandboxctlConfig) -> Profile:
     credentials = CredentialConfig(**data.get("credentials", {}))
     extensions = Extensions(**data.get("extensions", {}))
     opencode = OpencodeProfileConfig(**data.get("opencode", {}))
-    mlflow: bool = data.get("mlflow", True)
+    mlflow: bool = data.get("mlflow", False)
 
     if not sandbox.model:
         sandbox = sandbox.model_copy(update={"model": config.default_model})

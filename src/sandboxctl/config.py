@@ -112,6 +112,9 @@ class OpencodeConfig(_SubConfig):
     openai_accounts: list[str] = Field(default_factory=list)
     # Stage the OpenCode Go API key from the host credential store.
     go: bool = False
+    # Stage the Matilda API key from the host credential store. The custom
+    # provider definition itself remains in the user's OpenCode configuration.
+    matilda: bool = False
     # Restrict auto-discovered providers. enabled_providers is an allowlist;
     # disabled_providers wins when an id appears in both lists.
     enabled_providers: list[str] = Field(default_factory=list)
@@ -285,6 +288,11 @@ CONFIG_TEMPLATE = """\
 
 [backup]
 # extra_paths = [".some-plugin"]
+
+[opencode]
+# openai_accounts = ["work"]
+# go = false
+# matilda = false  # reads sandboxctl-matilda-api-key from the credential store
 
 # [mlflow]
 # MLflow tracking server configuration

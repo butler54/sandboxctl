@@ -41,6 +41,11 @@ def _normalize_endpoint_compatibility(endpoint: object) -> None:
     # omitting protocol, so preserve their behavior with the required opt-in.
     if "host" in endpoint and "protocol" not in endpoint and "allow_uninspected_credentials" not in endpoint:
         endpoint["allow_uninspected_credentials"] = True
+    # npm encodes the slash in scoped package names (for example,
+    # @mlflow%2Fopencode). OpenShell otherwise rejects these metadata requests
+    # at L7, causing OpenCode package resolution to retry during boot.
+    if endpoint.get("host") == "registry.npmjs.org":
+        endpoint.setdefault("allow_encoded_slash", True)
 
 
 def prepare_policy_for_apply(path: Path, profiles_dir: Path, target_dir: Path) -> Path:

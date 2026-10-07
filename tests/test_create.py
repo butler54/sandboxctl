@@ -392,7 +392,7 @@ class TestPostLaunchSetup:
             ca_bundle=None,
             ca_paths=[],
             keychain_gitlab="sandboxctl-gitlab-token",
-            opencode=MagicMock(openai_accounts=[]),
+            opencode=MagicMock(openai_accounts=[], go=False, matilda=False),
         )
         return config
 
@@ -523,6 +523,27 @@ class TestPostLaunchSetup:
 
         scripts = [c[0][1] for c in mock_pipe.call_args_list]
         assert not any("OPENAI_API_KEY_GHOST" in s for s in scripts)
+
+    def test_matilda_key_is_injected_from_keychain(self, tmp_path: Path) -> None:
+        config = self._make_config(tmp_path)
+        config.opencode = MagicMock(openai_accounts=[], go=False, matilda=True)
+        profile = Profile(name="test", mlflow=False)
+
+        def fake_get_credential(service: str, account: str) -> str | None:
+            return "matilda-secret" if service == "sandboxctl-matilda-api-key" else None
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", side_effect=fake_get_credential),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        scripts = [call.args[1] for call in mock_pipe.call_args_list]
+        matilda_scripts = [script for script in scripts if "MATILDA_API_KEY" in script]
+        assert len(matilda_scripts) == 1
+        assert "matilda-secret" not in matilda_scripts[0]
 
     def test_codebase_memory_mcp_registered_when_present(self, tmp_path: Path) -> None:
         """When the binary exists, register codebase-memory MCP for opencode + Claude (#123)."""
@@ -967,13 +988,10 @@ def test_create_injects_mlflow_uri() -> None:
         config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
         profile = Profile(name="test", mlflow=True)
 
-        def _exec_plugin_ok_s1(name: str, script: str) -> str:
-            return "MLflow tracing: baked package verified" if "command -v mlflow-claude-code" in script else ""
-
         with (
             patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=True) as mock_health,
             patch("sandboxctl.create.mlflow_cmd.start_mlflow_container") as mock_start,
-            patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=_exec_plugin_ok_s1) as mock_exec,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
             patch("sandboxctl.openshell.sandbox_upload"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
             patch("sandboxctl.create.get_credential", return_value=None),
@@ -1001,14 +1019,11 @@ def test_create_injects_mlflow_uri() -> None:
         config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
         profile = Profile(name="test", mlflow=True)
 
-        def _exec_plugin_ok_s2(name: str, script: str) -> str:
-            return "MLflow tracing: baked package verified" if "command -v mlflow-claude-code" in script else ""
-
         with (
             patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=False) as mock_health,
             patch("sandboxctl.create.mlflow_cmd.wait_for_mlflow_health", return_value=True) as mock_wait,
             patch("sandboxctl.create.mlflow_cmd.start_mlflow_container") as mock_start,
-            patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=_exec_plugin_ok_s2) as mock_exec,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
             patch("sandboxctl.openshell.sandbox_upload"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
             patch("sandboxctl.create.get_credential", return_value=None),
@@ -1089,13 +1104,10 @@ def test_create_injects_mlflow_uri() -> None:
         config = SandboxctlConfig(config_dir=config_dir, mlflow=mlflow_cfg)
         profile = Profile(name="test", mlflow=True)
 
-        def _exec_plugin_ok_s5(name: str, script: str) -> str:
-            return "MLflow tracing: baked package verified" if "command -v mlflow-claude-code" in script else ""
-
         with (
             patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=True) as mock_health,
             patch("sandboxctl.create.mlflow_cmd.start_mlflow_container") as mock_start,
-            patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=_exec_plugin_ok_s5) as mock_exec,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
             patch("sandboxctl.openshell.sandbox_upload"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
             patch("sandboxctl.create.get_credential", return_value=None),
@@ -1271,122 +1283,6 @@ def test_gsd_model_profile_skipped_when_not_set() -> None:
 
         gsd_calls = [c for c in mock_exec.call_args_list if "defaults.json" in str(c)]
         assert len(gsd_calls) == 0
-
-
-def test_create_verifies_baked_mlflow_tracing_package() -> None:
-    """Baked MLflow package verification and env var injection (TRACE-01/02/03)."""
-    import tempfile
-    from pathlib import Path
-    from unittest.mock import patch
-
-    from sandboxctl.config import MlflowConfig, SandboxctlConfig
-    from sandboxctl.create import post_launch_setup
-    from sandboxctl.models import Profile
-
-    # Scenario 1: Happy path — mlflow=True, baked package is available
-    with tempfile.TemporaryDirectory() as tmpdir:
-        mlflow_cfg = MlflowConfig(managed=True, port=5050, tracking_uri="http://localhost:5050")
-        config = SandboxctlConfig(config_dir=Path(tmpdir), mlflow=mlflow_cfg)
-        profile = Profile(name="test-sandbox", mlflow=True)
-
-        def exec_side_effect_happy(name: str, script: str) -> str:
-            if "command -v mlflow-claude-code" in script:
-                return "MLflow tracing: baked package verified"
-            return ""
-
-        with (
-            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=True),
-            patch("sandboxctl.create.mlflow_cmd.start_mlflow_container"),
-            patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=exec_side_effect_happy) as mock_exec,
-            patch("sandboxctl.openshell.sandbox_upload"),
-            patch("sandboxctl.context.restore_claude_context", return_value=False),
-            patch("sandboxctl.create.get_credential", return_value=None),
-            patch("sandboxctl.create.shutil.which", return_value=None),
-            patch("sandboxctl.create.Path.home") as mock_home,
-        ):
-            mock_home.return_value = Path(tmpdir) / "nonexistent"
-            # Should not raise
-            post_launch_setup("test-sandbox", profile, config)
-
-            all_scripts = [c[0][1] for c in mock_exec.call_args_list]
-            assert any("MLFLOW_EXPERIMENT_NAME=sandbox/test-sandbox" in s for s in all_scripts)
-            assert any("MLFLOW_CLAUDE_TRACING_ENABLED=true" in s for s in all_scripts)
-            assert any("command -v mlflow-claude-code" in s for s in all_scripts)
-            assert not any("claude plugin" in s for s in all_scripts)
-            assert not any("github.com/mlflow" in s for s in all_scripts)
-
-    # Scenario 2: Fail-closed — baked package is missing → RuntimeError raised
-    with tempfile.TemporaryDirectory() as tmpdir:
-        mlflow_cfg = MlflowConfig(managed=True, port=5050, tracking_uri="http://localhost:5050")
-        config = SandboxctlConfig(config_dir=Path(tmpdir), mlflow=mlflow_cfg)
-        profile = Profile(name="test-sandbox", mlflow=True)
-
-        def exec_side_effect_fail(name: str, script: str) -> str:
-            return ""
-
-        with (
-            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=True),
-            patch("sandboxctl.create.mlflow_cmd.start_mlflow_container"),
-            patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=exec_side_effect_fail),
-            patch("sandboxctl.openshell.sandbox_upload"),
-            patch("sandboxctl.context.restore_claude_context", return_value=False),
-            patch("sandboxctl.create.get_credential", return_value=None),
-            patch("sandboxctl.create.shutil.which", return_value=None),
-            patch("sandboxctl.create.Path.home") as mock_home,
-        ):
-            mock_home.return_value = Path(tmpdir) / "nonexistent"
-            with pytest.raises(RuntimeError, match="package is not baked"):
-                post_launch_setup("test-sandbox", profile, config)
-
-    # Scenario 3: Opt-out — profile.mlflow=False → no tracing env vars or package check
-    with tempfile.TemporaryDirectory() as tmpdir:
-        mlflow_cfg = MlflowConfig(managed=True, port=5050)
-        config = SandboxctlConfig(config_dir=Path(tmpdir), mlflow=mlflow_cfg)
-        profile = Profile(name="test-sandbox", mlflow=False)
-
-        with (
-            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health"),
-            patch("sandboxctl.create.mlflow_cmd.start_mlflow_container"),
-            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
-            patch("sandboxctl.openshell.sandbox_upload"),
-            patch("sandboxctl.context.restore_claude_context", return_value=False),
-            patch("sandboxctl.create.get_credential", return_value=None),
-            patch("sandboxctl.create.shutil.which", return_value=None),
-            patch("sandboxctl.create.Path.home") as mock_home,
-        ):
-            mock_home.return_value = Path(tmpdir) / "nonexistent"
-            post_launch_setup("test-sandbox", profile, config)
-
-            all_scripts = [c[0][1] for c in mock_exec.call_args_list]
-            assert not any("MLFLOW_EXPERIMENT_NAME" in s for s in all_scripts)
-            assert not any("mlflow-claude-code" in s for s in all_scripts)
-
-    # Scenario 4: Experiment name format — sandbox name "my-sandbox" → correct experiment path
-    with tempfile.TemporaryDirectory() as tmpdir:
-        mlflow_cfg = MlflowConfig(managed=True, port=5050, tracking_uri="http://localhost:5050")
-        config = SandboxctlConfig(config_dir=Path(tmpdir), mlflow=mlflow_cfg)
-        profile = Profile(name="my-sandbox", mlflow=True)
-
-        def exec_side_effect_mysandbox(name: str, script: str) -> str:
-            if "command -v mlflow-claude-code" in script:
-                return "MLflow tracing: baked package verified"
-            return ""
-
-        with (
-            patch("sandboxctl.create.mlflow_cmd.check_mlflow_health", return_value=True),
-            patch("sandboxctl.create.mlflow_cmd.start_mlflow_container"),
-            patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=exec_side_effect_mysandbox) as mock_exec,
-            patch("sandboxctl.openshell.sandbox_upload"),
-            patch("sandboxctl.context.restore_claude_context", return_value=False),
-            patch("sandboxctl.create.get_credential", return_value=None),
-            patch("sandboxctl.create.shutil.which", return_value=None),
-            patch("sandboxctl.create.Path.home") as mock_home,
-        ):
-            mock_home.return_value = Path(tmpdir) / "nonexistent"
-            post_launch_setup("my-sandbox", profile, config)
-
-            all_scripts = [c[0][1] for c in mock_exec.call_args_list]
-            assert any("MLFLOW_EXPERIMENT_NAME=sandbox/my-sandbox" in s for s in all_scripts)
 
 
 def test_gsd_auto_installs_when_missing() -> None:

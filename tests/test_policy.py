@@ -176,6 +176,24 @@ def test_render_policy_omits_legacy_tls_terminate(tmp_path: Path) -> None:
     assert endpoints[1]["tls"] == "skip"
 
 
+def test_render_policy_allows_encoded_slashes_for_npm_scopes(tmp_path: Path) -> None:
+    profiles = tmp_path / "profiles"
+    profile = profiles / "dev"
+    profile.mkdir(parents=True)
+    policy = profile / "policy.yaml"
+    policy.write_text(
+        "network_policies:\n"
+        "  npm:\n"
+        "    endpoints:\n"
+        "      - host: registry.npmjs.org\n"
+        "        port: 443\n"
+        "        protocol: rest\n"
+    )
+
+    endpoint = yaml.safe_load(render_policy(policy, profiles))["network_policies"]["npm"]["endpoints"][0]
+    assert endpoint["allow_encoded_slash"] is True
+
+
 def test_render_policy_allows_credentials_for_legacy_l4_endpoint(tmp_path: Path) -> None:
     profiles = tmp_path / "profiles"
     profile = profiles / "legacy"

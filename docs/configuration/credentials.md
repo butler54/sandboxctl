@@ -122,6 +122,22 @@ opencode provider `openai-<name>` exposing the GPT-5.6 models. You then switch
 accounts directly in opencode's model picker, e.g. `openai-work/gpt-5.6-sol` vs
 `openai-personal/gpt-5.6-luna`. Accounts without a stored key are skipped.
 
+### Matilda Key (opencode)
+
+Set `matilda = true` and store the Matilda API key under the
+`sandboxctl-matilda-api-key` service. sandboxctl stages it as
+`MATILDA_API_KEY`; the custom Matilda provider block remains in your OpenCode
+configuration.
+
+```toml
+[opencode]
+matilda = true
+```
+
+```bash
+security add-generic-password -U -s sandboxctl-matilda-api-key -a "$USER" -w
+```
+
 ### OpenCode Providers and Models
 
 Use `[opencode]` to restrict the provider/model picker and set defaults for the

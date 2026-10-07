@@ -215,8 +215,8 @@ def test_backup_paths_exclude_settings_json() -> None:
     assert ".claude/settings.local.json" in _BACKUP_PATHS
 
 
-def test_restore_excludes_settings_json(tmp_path: Path) -> None:
-    """restore never overwrites freshly-staged Claude or OpenCode configuration."""
+def test_restore_excludes_settings_and_opencode_state(tmp_path: Path) -> None:
+    """restore never overwrites freshly staged Claude or OpenCode state."""
     from unittest.mock import patch
 
     from sandboxctl.context import restore_claude_context
@@ -235,13 +235,12 @@ def test_restore_excludes_settings_json(tmp_path: Path) -> None:
     script = mock_pipe.call_args[0][1]
     assert "--exclude='.claude/settings.json'" in script
     assert "--exclude='.claude/.claude.json'" in script
-    assert "--exclude='.config/opencode/config.json'" in script
-    assert "--exclude='.config/opencode/opencode.json'" in script
-    assert "--exclude='.config/opencode/opencode.jsonc'" in script
+    assert "--exclude='.config/opencode'" in script
+    assert "--exclude='.config/opencode/**'" in script
 
 
-def test_backup_paths_include_opencode() -> None:
-    """OpenCode config is included in backup paths for persistence (#112)."""
+def test_backup_paths_exclude_opencode() -> None:
+    """OpenCode is staged independently and must not restore stale plugin state."""
     from sandboxctl.context import _BACKUP_PATHS
 
-    assert ".config/opencode" in _BACKUP_PATHS
+    assert ".config/opencode" not in _BACKUP_PATHS

@@ -15,7 +15,6 @@ _BACKUP_PATHS = (
     ".claude/CLAUDE.md",
     ".claude/.credentials.json",
     ".claude-mem",
-    ".config/opencode",
 )
 
 _MAX_BACKUPS = 10
@@ -98,15 +97,16 @@ def restore_claude_context(name: str, config: SandboxctlConfig) -> bool:
 
     remote_tar = "/sandbox/claude-context-restore.tar.gz"  # noqa: S108
     osh.sandbox_upload(name, tarball, remote_tar)
-    # Exclude freshly-staged files that should never be overwritten by older backup copies.
+    # Exclude freshly staged files and the whole OpenCode state directory. Older
+    # backups may contain plugins or node_modules whose configuration no longer
+    # matches the current image or host configuration.
     osh.sandbox_exec_pipe(
         name,
         f"tar xzf {remote_tar} -C /sandbox "
         "--exclude='.claude/settings.json' "
         "--exclude='.claude/.claude.json' "
-        "--exclude='.config/opencode/config.json' "
-        "--exclude='.config/opencode/opencode.json' "
-        "--exclude='.config/opencode/opencode.jsonc' "
+        "--exclude='.config/opencode' "
+        "--exclude='.config/opencode/**' "
         f"&& rm -f {remote_tar}",
     )
     return True

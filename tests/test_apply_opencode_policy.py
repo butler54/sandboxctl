@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import ModuleType
 
 
-def _load_script():
+def _load_script() -> ModuleType:
     script = Path(__file__).parents[1] / "scripts" / "apply_opencode_policy.py"
     spec = importlib.util.spec_from_file_location("apply_opencode_policy", script)
     assert spec and spec.loader
@@ -45,3 +46,12 @@ def test_apply_policy_is_idempotent() -> None:
     script.apply_policy(policy)
 
     assert script.apply_policy(policy) == []
+
+
+def test_policy_paths_includes_yamlc(tmp_path: Path) -> None:
+    script = _load_script()
+    (tmp_path / "nested").mkdir()
+    yamlc = tmp_path / "nested" / "policy.yamlc"
+    yamlc.touch()
+
+    assert script.policy_paths(tmp_path) == [yamlc]

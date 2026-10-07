@@ -103,10 +103,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def policy_paths(profiles_dir: Path) -> list[Path]:
+    """Return supported policy files, including the local ``.yamlc`` convention."""
+    return sorted(
+        {
+            *profiles_dir.rglob("policy*.yaml"),
+            *profiles_dir.rglob("policy*.yml"),
+            *profiles_dir.rglob("policy*.yamlc"),
+        }
+    )
+
+
 def main() -> int:
     args = parse_args()
     profiles_dir = args.profiles_dir.expanduser()
-    policies = sorted({*profiles_dir.rglob("policy*.yaml"), *profiles_dir.rglob("policy*.yml")})
+    policies = policy_paths(profiles_dir)
     if not policies:
         print(f"No policy YAML files found under {profiles_dir}", file=sys.stderr)
         return 1

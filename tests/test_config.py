@@ -104,7 +104,7 @@ def test_opencode_config_from_toml(tmp_path: Path) -> None:
         'model = "vertex/claude-sonnet"\n'
         'build_model = "openai-work/gpt-5.6"\n'
         'plan_model = "vertex/claude-opus"\n'
-        'matilda = true\n'
+        "matilda = true\n"
     )
     cfg = load_config(config_dir=tmp_path)
     assert cfg.opencode.enabled_providers == ["vertex", "openai-work"]

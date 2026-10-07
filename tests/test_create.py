@@ -483,7 +483,13 @@ class TestPostLaunchSetup:
         import json as _json
 
         config = self._make_config(tmp_path)
-        config.opencode = MagicMock(openai_accounts=["work", "personal"])
+        config.opencode = MagicMock(
+            openai_accounts=["work", "personal"],
+            openai_models={
+                "work": ["gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra"],
+                "personal": ["gpt-5.6-sol"],
+            },
+        )
         profile = Profile(name="test", mlflow=False)
 
         with (
@@ -504,8 +510,30 @@ class TestPostLaunchSetup:
         assert "openai-work" in providers and "openai-personal" in providers
         assert providers["openai-work"]["options"]["apiKey"] == "{env:OPENAI_API_KEY_WORK}"
         assert providers["openai-work"]["npm"] == "@ai-sdk/openai"
+        assert list(providers["openai-work"]["models"]) == ["gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra"]
+        assert list(providers["openai-personal"]["models"]) == ["gpt-5.6-sol"]
+
+    def test_openai_models_default_to_curated_list(self, tmp_path: Path) -> None:
+        """Existing accounts keep the legacy model catalog until configured."""
+        import base64 as _b64
+        import json as _json
+
+        config = self._make_config(tmp_path)
+        config.opencode = MagicMock(openai_accounts=["work"], openai_models={})
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value="sk-x"),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        cfg_script = next(call.args[1] for call in mock_pipe.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(call))
+        encoded = next(token for token in cfg_script.split() if token.startswith("eyJ"))
+        providers = _json.loads(_b64.b64decode(encoded))["provider"]
         assert "gpt-5.6-sol" in providers["openai-work"]["models"]
-        assert "gpt-5.6-luna" in providers["openai-work"]["models"]
 
     def test_openai_account_without_keychain_entry_skipped(self, tmp_path: Path) -> None:
         """An account with no keychain entry is skipped, not injected (#129)."""
@@ -1533,9 +1561,10 @@ def test_create_reports_resolved_opencode_models(tmp_path: Path, capsys: pytest.
         config_dir=tmp_path,
         opencode=OpencodeConfig(
             openai_accounts=["work"],
-            model="openai-work/gpt-5.6-sol",
-            plan_model="openai-work/gpt-5.6-sol",
-            build_model="openai-work/gpt-5.6-terra",
+            openai_models={"work": ["gpt-6.1-sol", "gpt-6-luna", "gpt-6-sol", "gpt-6-astra"]},
+            model="openai-work/gpt-6-luna",
+            plan_model="openai-work/gpt-6.1-sol",
+            build_model="openai-work/gpt-6-luna",
         ),
     )
     profile = Profile(name="test", mlflow=False)
@@ -1562,6 +1591,6 @@ def test_create_reports_resolved_opencode_models(tmp_path: Path, capsys: pytest.
     output = capsys.readouterr().out
     assert "Model:" in output
     assert "OpenCode configured accounts: work" in output
-    assert "OpenCode model: openai-work/gpt-5.6-sol" in output
-    assert "OpenCode plan model: openai-work/gpt-5.6-sol" in output
-    assert "OpenCode build model: openai-work/gpt-5.6-terra" in output
+    assert "OpenCode model: openai-work/gpt-6-luna" in output
+    assert "OpenCode plan model: openai-work/gpt-6.1-sol" in output
+    assert "OpenCode build model: openai-work/gpt-6-luna" in output

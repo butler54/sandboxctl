@@ -153,9 +153,9 @@ setting.
 [opencode]
 enabled_providers = ["openai-work"]
 disabled_providers = ["github-copilot"]
-model = "openai-work/gpt-5.6"
-build_model = "openai-work/gpt-5.6"
-plan_model = "google-vertex-anthropic/claude-opus-4-5"
+model = "openai-work/gpt-6-luna"
+build_model = "openai-work/gpt-6-luna"
+plan_model = "openai-work/gpt-6.1-sol"
 ```
 
 `enabled_providers` and `disabled_providers` follow the same precedence rule.

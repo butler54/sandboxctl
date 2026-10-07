@@ -100,11 +100,13 @@ def test_opencode_config_from_toml(tmp_path: Path) -> None:
     """OpenCode provider and agent defaults load from their own config section."""
     (tmp_path / "config.toml").write_text(
         '[opencode]\nenabled_providers = ["vertex", "openai-work"]\n'
+        'openai_accounts = ["work"]\n'
         'disabled_providers = ["github-copilot"]\n'
         'model = "vertex/claude-sonnet"\n'
         'build_model = "openai-work/gpt-5.6"\n'
         'plan_model = "vertex/claude-opus"\n'
         "matilda = true\n"
+        '[opencode.openai_models]\nwork = ["gpt-6.1-sol", "gpt-6-luna"]\n'
     )
     cfg = load_config(config_dir=tmp_path)
     assert cfg.opencode.enabled_providers == ["vertex", "openai-work"]
@@ -113,6 +115,20 @@ def test_opencode_config_from_toml(tmp_path: Path) -> None:
     assert cfg.opencode.build_model == "openai-work/gpt-5.6"
     assert cfg.opencode.plan_model == "vertex/claude-opus"
     assert cfg.opencode.matilda is True
+    assert cfg.opencode.openai_models == {"work": ["gpt-6.1-sol", "gpt-6-luna"]}
+
+
+def test_opencode_rejects_invalid_model_list() -> None:
+    """Manual OpenAI model IDs are validated before provider config generation."""
+    import pytest
+
+    from sandboxctl.config import OpencodeConfig
+
+    with pytest.raises(ValueError, match="not listed in openai_accounts"):
+        OpencodeConfig(openai_accounts=["work"], openai_models={"personal": ["gpt-6-luna"]})
+
+    with pytest.raises(ValueError, match="Invalid OpenAI model ID"):
+        OpencodeConfig(openai_accounts=["work"], openai_models={"work": ["gpt-6/luna"]})
 
 
 def test_extra_fields_ignored(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any, ClassVar
@@ -110,6 +111,9 @@ class OpencodeConfig(_SubConfig):
     # OPENAI_API_KEY_<NAME> (uppercased), and the first account also sets
     # OPENAI_API_KEY (opencode's built-in openai provider default). #129
     openai_accounts: list[str] = Field(default_factory=list)
+    # Optional per-account model IDs exposed by generated OpenCode providers.
+    # Accounts without an entry use the backward-compatible curated list.
+    openai_models: dict[str, list[str]] = Field(default_factory=dict)
     # Stage the OpenCode Go API key from the host credential store.
     go: bool = False
     # Stage the Matilda API key from the host credential store. The custom
@@ -123,6 +127,32 @@ class OpencodeConfig(_SubConfig):
     model: str = ""
     build_model: str = ""
     plan_model: str = ""
+
+    @model_validator(mode="after")
+    def _validate_openai_models(self) -> OpencodeConfig:
+        account_pattern = re.compile(r"^[a-zA-Z0-9._/-]+$")
+        model_pattern = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+        accounts = self.openai_accounts
+        if len(accounts) != len(set(accounts)):
+            raise ValueError("opencode.openai_accounts must not contain duplicates")
+        invalid_accounts = [account for account in accounts if not account_pattern.fullmatch(account)]
+        if invalid_accounts:
+            raise ValueError(f"Invalid OpenAI account name(s): {', '.join(invalid_accounts)}")
+
+        unknown_accounts = sorted(set(self.openai_models) - set(accounts))
+        if unknown_accounts:
+            raise ValueError(
+                "opencode.openai_models contains accounts not listed in openai_accounts: " + ", ".join(unknown_accounts)
+            )
+        for account, models in self.openai_models.items():
+            if not models:
+                raise ValueError(f"opencode.openai_models.{account} must contain at least one model ID")
+            if len(models) != len(set(models)):
+                raise ValueError(f"opencode.openai_models.{account} must not contain duplicate model IDs")
+            invalid_models = [model for model in models if not model_pattern.fullmatch(model)]
+            if invalid_models:
+                raise ValueError(f"Invalid OpenAI model ID(s) for account '{account}': {', '.join(invalid_models)}")
+        return self
 
 
 class SandboxctlConfig(BaseSettings):
@@ -291,6 +321,8 @@ CONFIG_TEMPLATE = """\
 
 [opencode]
 # openai_accounts = ["work"]
+# [opencode.openai_models]
+# work = ["gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-6-astra"]
 # go = false
 # matilda = false  # reads sandboxctl-matilda-api-key from the credential store
 

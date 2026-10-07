@@ -90,6 +90,20 @@ def test_profile_model_cannot_use_provider_blocked_by_host(tmp_path: Path) -> No
         _opencode_runtime_config(config, profile)
 
 
+def test_runtime_config_rejects_openai_model_missing_from_manual_account_list(tmp_path: Path) -> None:
+    config = SandboxctlConfig(
+        config_dir=tmp_path,
+        opencode=OpencodeConfig(
+            openai_accounts=["work"],
+            openai_models={"work": ["gpt-6-luna"]},
+        ),
+    )
+    profile = Profile(name="test", opencode=OpencodeProfileConfig(model="openai-work/gpt-6.1-sol"))
+
+    with pytest.raises(ValueError, match="not listed in opencode.openai_models.work"):
+        _opencode_runtime_config(config, profile)
+
+
 def test_runtime_config_ignores_partial_mock_attributes() -> None:
     """Existing callers may provide a partial config mock while testing setup."""
     config = MagicMock()

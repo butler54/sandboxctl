@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v1.25.14 (2026-10-07)
+
+### Bug Fixes
+
+- **opencode**: Unblock scoped plugin startup
+  ([`80979f3`](https://github.com/butler54/sandboxctl/commit/80979f31cf7d1be1c7c76039ae0addf1ec476cc2))
+
+- **policy**: Discover yamlc profile policies
+  ([`c1ced2e`](https://github.com/butler54/sandboxctl/commit/c1ced2e4f109846f064f32d0d61bba9e0addd43d))
+
+### Code Style
+
+- **policy**: Format migration script
+  ([`ed81310`](https://github.com/butler54/sandboxctl/commit/ed8131081fb576b0e4a2ab588707f85587bb0b53))
+
+
 ## v1.25.13 (2026-10-06)
 
 ### Bug Fixes

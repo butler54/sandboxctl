@@ -104,6 +104,7 @@ def test_opencode_config_from_toml(tmp_path: Path) -> None:
         'model = "vertex/claude-sonnet"\n'
         'build_model = "openai-work/gpt-5.6"\n'
         'plan_model = "vertex/claude-opus"\n'
+        'matilda = true\n'
     )
     cfg = load_config(config_dir=tmp_path)
     assert cfg.opencode.enabled_providers == ["vertex", "openai-work"]
@@ -111,6 +112,7 @@ def test_opencode_config_from_toml(tmp_path: Path) -> None:
     assert cfg.opencode.model == "vertex/claude-sonnet"
     assert cfg.opencode.build_model == "openai-work/gpt-5.6"
     assert cfg.opencode.plan_model == "vertex/claude-opus"
+    assert cfg.opencode.matilda is True
 
 
 def test_extra_fields_ignored(tmp_path: Path) -> None:
@@ -130,33 +132,33 @@ def test_path_expansion_in_config(tmp_path: Path) -> None:
     assert str(cfg.ssh_key).endswith(".ssh/my_key")
 
 
-def test_profile_mlflow_opt_out() -> None:
-    """Profile.mlflow defaults to True; mlflow=false opts out."""
+def test_profile_mlflow_opt_in() -> None:
+    """Profile.mlflow defaults to False; mlflow=true opts in."""
     import tempfile
 
     from sandboxctl.profile import load_profile
 
-    # Profile with mlflow = false → Profile.mlflow is False
+    # Profile with mlflow = true → Profile.mlflow is True
     with tempfile.TemporaryDirectory() as tmpdir:
         config_dir = Path(tmpdir)
         profiles_dir = config_dir / "profiles"
         profiles_dir.mkdir()
-        profile_toml = profiles_dir / "opt-out.toml"
-        profile_toml.write_text('mlflow = false\n\n[sandbox]\ncontainerfile = "Containerfile"\n')
+        profile_toml = profiles_dir / "opt-in.toml"
+        profile_toml.write_text('mlflow = true\n\n[sandbox]\ncontainerfile = "Containerfile"\n')
         config = load_config(config_dir=config_dir)
-        profile = load_profile("opt-out", config)
-        assert profile.mlflow is False
+        profile = load_profile("opt-in", config)
+        assert profile.mlflow is True
 
-    # Profile with no mlflow key → defaults to True (default-on)
+    # Profile with no mlflow key → defaults to False (opt-in)
     with tempfile.TemporaryDirectory() as tmpdir:
         config_dir = Path(tmpdir)
         profiles_dir = config_dir / "profiles"
         profiles_dir.mkdir()
-        profile_toml = profiles_dir / "default-on.toml"
+        profile_toml = profiles_dir / "default-off.toml"
         profile_toml.write_text('[sandbox]\ncontainerfile = "Containerfile"\n')
         config = load_config(config_dir=config_dir)
-        profile = load_profile("default-on", config)
-        assert profile.mlflow is True
+        profile = load_profile("default-off", config)
+        assert profile.mlflow is False
 
 
 def test_mlflow_config() -> None:

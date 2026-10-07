@@ -176,12 +176,23 @@ When an included or local policy allowlists `/usr/local/bin/opencode` or
 binary path. This works around OpenShell deployments that cannot resolve the
 launcher symlink from the sandbox filesystem.
 
+To update every local policy for OpenCode scoped npm packages, Matilda, and
+Copilot executable attribution, preview then apply the included migration:
+
+```bash
+python scripts/apply_opencode_policy.py
+python scripts/apply_opencode_policy.py --write
+```
+
+The script creates a `.bak` copy before rewriting each policy and skips files
+using `!include` so their shared fragments can be reviewed manually.
+
 #### `mlflow`
 
-Whether to wire this sandbox up to MLflow tracking. Defaults to `true`. When
+Whether to wire this sandbox up to MLflow tracking. Defaults to `false`. When
 enabled, `sandboxctl create` validates (and, in managed mode, starts) the MLflow
-server and injects `MLFLOW_TRACKING_URI` plus Claude Code tracing env vars into
-the sandbox. Set to `false` to opt a profile out entirely. See the
+server and injects `MLFLOW_TRACKING_URI` into the sandbox. Set to `false` to opt
+a profile out entirely. See the
 [`mlflow` command](../commands/mlflow.md) and the `[mlflow]` section of
 `config.toml`.
 

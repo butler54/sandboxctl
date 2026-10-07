@@ -196,6 +196,19 @@ def _inject_opencode_auth_content(name: str, auth: dict) -> None:
     )
 
 
+def _inject_env_secret(name: str, variable: str, value: str) -> None:
+    """Append one base64-encoded secret export to the sandbox shell profile."""
+    encoded = base64.b64encode(value.encode()).decode()
+    osh.sandbox_exec_pipe(
+        name,
+        f"grep -q {variable}= /sandbox/.bashrc 2>/dev/null || "
+        f"{{ printf 'export {variable}=' >> /sandbox/.bashrc && "
+        f"echo {encoded} | base64 -d >> /sandbox/.bashrc && "
+        "echo >> /sandbox/.bashrc; }; "
+        f'echo "{variable}: configured"',
+    )
+
+
 def _opencode_runtime_config(config: SandboxctlConfig, profile: Profile | None = None) -> dict:
     """Return OpenCode settings controlled by sandboxctl's host config."""
     host_opencode = config.opencode
@@ -518,19 +531,12 @@ def post_launch_setup(
             typer.echo(f"  OpenAI ({account}): no keychain entry, skipped")
             continue
         env_suffix = re.sub(r"[^A-Z0-9]", "_", account.upper())
-        encoded = base64.b64encode(key.encode()).decode()
         var_names = [f"OPENAI_API_KEY_{env_suffix}"]
         if index == 0:
             var_names.append("OPENAI_API_KEY")
         for var in var_names:
-            osh.sandbox_exec_pipe(
-                name,
-                f"grep -q {var}= /sandbox/.bashrc 2>/dev/null || "
-                f"{{ printf 'export {var}=' >> /sandbox/.bashrc && "
-                f"echo {encoded} | base64 -d >> /sandbox/.bashrc && "
-                "echo >> /sandbox/.bashrc; }; "
-                f'echo "  OpenAI ({account}): {var} configured"',
-            )
+            _inject_env_secret(name, var, key)
+            typer.echo(f"  OpenAI ({account}): {var} configured")
         # Build a selectable provider block for this account (#129). apiKey uses
         # opencode's {env:VAR} interpolation so the secret stays in the env var.
         provider_id = re.sub(r"[^a-z0-9-]", "-", f"openai-{account.lower()}")
@@ -548,6 +554,14 @@ def post_launch_setup(
             typer.echo("  OpenCode Go: configured")
         else:
             typer.echo("  OpenCode Go: no keychain entry, skipped")
+
+    if getattr(config.opencode, "matilda", False) is True:
+        matilda_key = get_credential("sandboxctl-matilda-api-key", account_user)
+        if matilda_key:
+            _inject_env_secret(name, "MATILDA_API_KEY", matilda_key)
+            typer.echo("  Matilda: configured")
+        else:
+            typer.echo("  Matilda: no keychain entry, skipped")
 
     # Accumulate all generated opencode config into a single patch so it is injected once
     # (OPENCODE_CONFIG_CONTENT holds one JSON value). Providers (#129) and the MCP server
@@ -674,30 +688,6 @@ def post_launch_setup(
             f'echo "export MLFLOW_TRACKING_URI={injected_uri}" >> /sandbox/.bashrc; '
             'echo "MLflow tracking: configured"',
         )
-
-        # TRACE-01/02: Inject experiment name and enable tracing (idempotent append, per D-04/D-02)
-        osh.sandbox_exec_pipe(
-            name,
-            "grep -q MLFLOW_EXPERIMENT_NAME /sandbox/.bashrc 2>/dev/null || "
-            f'echo "export MLFLOW_EXPERIMENT_NAME=sandbox/{name}" >> /sandbox/.bashrc; '
-            "grep -q MLFLOW_CLAUDE_TRACING_ENABLED /sandbox/.bashrc 2>/dev/null || "
-            'echo "export MLFLOW_CLAUDE_TRACING_ENABLED=true" >> /sandbox/.bashrc; '
-            'echo "MLflow tracing: env vars configured"',
-        )
-
-        # TRACE-01: The sandbox base image bakes the MLflow Claude Code package,
-        # including its npm dependencies. Verify that prerequisite instead of
-        # fetching the marketplace and package at runtime, which would require
-        # GitHub and npm registry access from the sandbox.
-        result = osh.sandbox_exec_pipe(
-            name,
-            'command -v mlflow-claude-code >/dev/null 2>&1 && echo "MLflow tracing: baked package verified"',
-        )
-        if "baked package verified" not in result:
-            raise RuntimeError(
-                f"MLflow Claude Code tracing package is not baked into the sandbox image. "
-                f"Create aborted (fail-closed).\n{result}"
-            )
 
     # Stage gcloud ADC for Vertex AI
     adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"

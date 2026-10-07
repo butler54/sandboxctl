@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.25.15 (2026-10-07)
+
+### Bug Fixes
+
+- **context**: Exclude stale OpenCode state
+  ([`2ffd8d0`](https://github.com/butler54/sandboxctl/commit/2ffd8d04167a33454ef440a9a5634d7577c8b37f))
+
+
 ## v1.25.14 (2026-10-07)
 
 ### Bug Fixes

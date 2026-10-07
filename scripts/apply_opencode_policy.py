@@ -83,7 +83,9 @@ def apply_policy(data: dict[str, Any]) -> list[str]:
         raise ValueError("matilda policy must be a mapping")
 
     endpoints = _endpoints(matilda)
-    if not any(endpoint.get("host") == MATILDA_ENDPOINT["host"] and endpoint.get("port") == 443 for endpoint in endpoints):
+    if not any(
+        endpoint.get("host") == MATILDA_ENDPOINT["host"] and endpoint.get("port") == 443 for endpoint in endpoints
+    ):
         matilda.setdefault("endpoints", []).append(MATILDA_ENDPOINT.copy())
         changes.append("matilda: add endpoint")
     if _ensure_binaries(matilda, OPENCODE_BINARIES):

@@ -118,9 +118,22 @@ export SANDBOXCTL_OPENAI_PERSONAL="sk-..."
 
 At sandbox creation each account is injected as an `OPENAI_API_KEY_<NAME>` env
 var (the first account also sets `OPENAI_API_KEY`) and generated as a selectable
-opencode provider `openai-<name>` exposing the GPT-5.6 models. You then switch
-accounts directly in opencode's model picker, e.g. `openai-work/gpt-5.6-sol` vs
-`openai-personal/gpt-5.6-luna`. Accounts without a stored key are skipped.
+OpenCode provider `openai-<name>`. Without an explicit model list, it retains the
+legacy GPT-5.6 curated list. To expose models available to a specific account,
+maintain the account's list in `[opencode.openai_models]`; sandboxctl does not
+call the OpenAI API or assume account entitlements. The OpenCode model catalog
+supplies metadata for the listed IDs.
+
+```toml
+[opencode]
+openai_accounts = ["work"]
+
+[opencode.openai_models]
+work = ["gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-6-astra"]
+```
+
+Accounts without a stored key are skipped. A configured default model for an
+`openai-<account>` provider must be present in that account's explicit list.
 
 ### Matilda Key (opencode)
 
@@ -149,9 +162,12 @@ they do not replace your staged OpenCode configuration.
 enabled_providers = ["google-vertex-anthropic", "openai-work"]
 disabled_providers = ["github-copilot"]
 model = "google-vertex-anthropic/claude-sonnet-4-5"
-build_model = "openai-work/gpt-5.6"
-plan_model = "google-vertex-anthropic/claude-opus-4-5"
+build_model = "openai-work/gpt-6-luna"
+plan_model = "openai-work/gpt-6.1-sol"
 ```
+
+`build_model` selects OpenCode's build/execute agent; `plan_model` selects the
+plan agent. `model` sets the default for new sessions.
 
 `enabled_providers` is an allowlist. `disabled_providers` takes precedence if a
 provider is listed in both settings. Leave either list empty to omit that filter.

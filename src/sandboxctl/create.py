@@ -24,10 +24,8 @@ from sandboxctl.provider_profiles import GITHUB_PROFILE, GOOGLE_VERTEX_AI_PROFIL
 
 _REPO_RE = re.compile(r"^[a-zA-Z0-9._/-]+$")
 
-# Curated OpenAI model ids exposed for each named opencode provider (#129). The GPT-5.6
-# family: sol (flagship), terra (balanced), luna (fast/cheap); bare gpt-5.6 aliases to sol.
-# opencode resolves the rest of each model's metadata from models.dev; empty {} values are
-# valid. Extend this list (or add models in your own opencode config) as OpenAI ships more.
+# Backward-compatible model IDs used when no account-specific list is configured.
+# Newer models should be added through [opencode.openai_models] in config.toml.
 _OPENAI_CURATED_MODELS = (
     "gpt-5.6",
     "gpt-5.6-sol",
@@ -245,6 +243,26 @@ def _opencode_runtime_config(config: SandboxctlConfig, profile: Profile | None =
     validate_model_provider(model)
     validate_model_provider(build_model)
     validate_model_provider(plan_model)
+
+    configured_models = getattr(host_opencode, "openai_models", {})
+    if not isinstance(configured_models, dict):
+        configured_models = {}
+    accounts = getattr(host_opencode, "openai_accounts", [])
+    if isinstance(accounts, list):
+        for model_name in (model, build_model, plan_model):
+            if not isinstance(model_name, str) or "/" not in model_name:
+                continue
+            provider, model_id = model_name.split("/", 1)
+            account = next(
+                (name for name in accounts if re.sub(r"[^a-z0-9-]", "-", f"openai-{name.lower()}") == provider),
+                None,
+            )
+            if account is None:
+                continue
+            account_models = configured_models.get(account, _OPENAI_CURATED_MODELS)
+            if model_id not in account_models:
+                msg = f"OpenCode model '{model_name}' is not listed in opencode.openai_models.{account}"
+                raise ValueError(msg)
     if isinstance(enabled_providers, list) and enabled_providers:
         patch["enabled_providers"] = enabled_providers
     if isinstance(disabled_providers, list) and disabled_providers:
@@ -522,6 +540,9 @@ def post_launch_setup(
     # Each account also becomes a ready-to-use opencode provider (openai-<name>) so it
     # is selectable in opencode's model picker with zero manual config (see below).
     openai_accounts = list(config.opencode.openai_accounts)
+    configured_models = getattr(config.opencode, "openai_models", {})
+    if not isinstance(configured_models, dict):
+        configured_models = {}
     account_user = os.environ.get("USER", "sandboxctl")
     opencode_providers: dict[str, dict] = {}
     for index, account in enumerate(openai_accounts):
@@ -544,7 +565,7 @@ def post_launch_setup(
             "npm": "@ai-sdk/openai",
             "name": f"OpenAI ({account})",
             "options": {"apiKey": f"{{env:OPENAI_API_KEY_{env_suffix}}}"},
-            "models": {model: {} for model in _OPENAI_CURATED_MODELS},
+            "models": {model: {} for model in configured_models.get(account, _OPENAI_CURATED_MODELS)},
         }
 
     if config.opencode.go:

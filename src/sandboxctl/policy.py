@@ -17,6 +17,9 @@ _OPENCODE_COMPILED_BINARIES = (
     "/usr/lib/node_modules/opencode-ai/**",
     "/usr/lib/node_modules/@opencode/**",
 )
+# Public superset of OpenCode's launcher and compiled-binary paths, for use by
+# sandboxctl-managed OpenShell resources (see provider_profiles.py).
+OPENCODE_POLICY_BINARIES = sorted(_OPENCODE_LAUNCHERS | set(_OPENCODE_COMPILED_BINARIES))
 _NPM_LAUNCHERS = {"/usr/local/bin/npm", "/usr/bin/npm"}
 _NPM_CLI = "/usr/lib/node_modules/npm/bin/npm-cli.js"
 _CLAUDE_LAUNCHER = "/usr/local/bin/claude"

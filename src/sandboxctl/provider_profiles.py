@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
+import yaml
+
+from sandboxctl.policy import OPENCODE_POLICY_BINARIES
+
 # OpenShell 0.1 no longer ships the Vertex profile with the local gateway. Keep
 # this profile in sync with OpenShell's documented google-vertex-ai profile so
 # --from-gcloud-adc has the credential schema it requires.
@@ -103,3 +109,44 @@ endpoints:
       - allow: { method: POST, path: "/**/git-upload-pack" }
 binaries: [/usr/bin/gh, /usr/local/bin/gh, /usr/bin/git, /usr/local/bin/git]
 """
+
+
+def custom_provider_profile(provider_id: str, display_name: str, base_url: str, api_key_env: str) -> str:
+    """OpenShell provider profile YAML for a custom OpenAI-compatible endpoint (#178, #205).
+
+    The endpoint host and port are parsed from the (config-validated, HTTPS-only)
+    base URL rather than interpolated as text, so only the bare hostname — never
+    the URL path or any untrusted characters — lands in the profile.
+    """
+    parsed = urlparse(base_url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        msg = f"custom provider base_url must be an HTTPS URL with a host, got: {base_url!r}"
+        raise ValueError(msg)
+    profile = {
+        "id": provider_id,
+        "display_name": display_name,
+        "description": "Custom OpenAI-compatible provider (sandboxctl-managed)",
+        "category": "inference",
+        "inference_capable": True,
+        "credentials": [
+            {
+                "name": "api_key",
+                "env_vars": [api_key_env],
+                "required": True,
+                "auth_style": "bearer",
+                "header_name": "authorization",
+            }
+        ],
+        "discovery": {"credentials": ["api_key"]},
+        "endpoints": [
+            {
+                "host": parsed.hostname,
+                "port": parsed.port or 443,
+                "protocol": "rest",
+                "access": "read-write",
+                "enforcement": "enforce",
+            }
+        ],
+        "binaries": list(OPENCODE_POLICY_BINARIES),
+    }
+    return yaml.safe_dump(profile, sort_keys=False)

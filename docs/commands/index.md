@@ -19,6 +19,7 @@ Complete reference for all sandboxctl commands.
 | [status](status.md) | Show gateway and sandbox status | Implemented |
 | [validate](validate.md) | Run validation tests inside a sandbox | Implemented |
 | [doctor](doctor.md) | Diagnose and recover sandbox issues | Implemented |
+| [policy](policy.md) | Show and reconcile sandbox policy drift | Implemented |
 
 ## Setup
 

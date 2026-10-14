@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
 
 import typer
+import yaml
 from rich.table import Table
 
-from sandboxctl.config import CONFIG_TEMPLATE, ensure_config_dir, load_config
+from sandboxctl.config import CONFIG_TEMPLATE, SandboxctlConfig, ensure_config_dir, load_config
 from sandboxctl.mlflow_cmd import mlflow_app
 
 _NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
@@ -37,6 +39,9 @@ app.add_typer(config_app, name="config")
 
 extensions_app = typer.Typer(help="Manage sandbox VS Code extensions.")
 app.add_typer(extensions_app, name="extensions")
+
+policy_app = typer.Typer(help="Show and reconcile sandbox policies.")
+app.add_typer(policy_app, name="policy")
 
 app.add_typer(mlflow_app, name="mlflow")
 
@@ -91,6 +96,122 @@ def config_path() -> None:
     typer.echo(cfg.config_dir / "config.toml")
 
 
+def _network_drift_summary(name: str, rendered: str | None) -> str:
+    """Best-effort added/removed/changed rule summary for a drifted network policy."""
+    if not rendered:
+        return ""
+    from sandboxctl import openshell as osh
+    from sandboxctl.policy import summarize_network_drift
+
+    try:
+        active = json.loads(osh.policy_get_base(name))["policy"]
+        desired = yaml.safe_load(rendered) or {}
+    except Exception:  # noqa: BLE001
+        return ""
+    return summarize_network_drift(active, desired)
+
+
+@policy_app.command("show")
+def policy_show(
+    name: str = typer.Argument(help="Sandbox name.", callback=_validate_name),
+    profile: str | None = typer.Option(
+        None,
+        "--profile",
+        "-p",
+        help="Profile to compare against (overrides the recorded association).",
+        callback=lambda v: _validate_name(v) if v else v,
+    ),
+) -> None:
+    """Show how a sandbox's active policy compares to its profile."""
+    from sandboxctl.policy import policy_drift_state, resolve_policy_profile
+
+    cfg = load_config()
+    profile_name = profile or resolve_policy_profile(name, cfg)
+    if profile_name is None:
+        typer.echo(f"{name}: no associated profile to compare against.")
+        return
+
+    state = policy_drift_state(name, profile_name, cfg)
+    typer.echo(f"Sandbox:  {name}")
+    typer.echo(f"Profile:  {profile_name}")
+    typer.echo(f"Status:   {state.status}")
+    typer.echo(f"Details:  {state.details}")
+    if state.status == "network-drift":
+        summary = _network_drift_summary(name, state.rendered)
+        if summary:
+            typer.echo(f"Rules:    {summary}")
+
+
+@policy_app.command("sync")
+def policy_sync(
+    name: str = typer.Argument(help="Sandbox name.", callback=_validate_name),
+    profile: str | None = typer.Option(
+        None,
+        "--profile",
+        "-p",
+        help="Profile to reconcile from (recorded for future opens/syncs).",
+        callback=lambda v: _validate_name(v) if v else v,
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show the pending changes without mutating."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+) -> None:
+    """Reload a sandbox's drifted network policy from its profile."""
+    from sandboxctl.policy import (
+        fix_policy_drift,
+        policy_drift_state,
+        record_policy_association,
+        resolve_policy_profile,
+    )
+
+    cfg = load_config()
+    if profile:
+        record_policy_association(cfg, name, profile)
+    profile_name = profile or resolve_policy_profile(name, cfg)
+    if profile_name is None:
+        typer.echo(f"{name}: no associated profile. Pass --profile to reconcile.")
+        raise typer.Exit(1)
+
+    state = policy_drift_state(name, profile_name, cfg)
+    if state.status == "current":
+        typer.echo(f"{name}: policy is current, nothing to do.")
+        return
+    if state.status == "filesystem-drift":
+        typer.echo(f"{name}: filesystem policy differs from profile — hot reload not possible.")
+        typer.echo(f"Recreate the sandbox instead: sandboxctl restart {name}")
+        raise typer.Exit(1)
+    if state.status != "network-drift":
+        typer.echo(f"{name}: cannot reconcile policy ({state.details})")
+        raise typer.Exit(1)
+
+    if dry_run:
+        typer.echo(f"{name}: network policy drift (dry run, no changes applied):")
+        summary = _network_drift_summary(name, state.rendered)
+        if summary:
+            typer.echo(f"Rules:    {summary}")
+        typer.echo(f"Run without --dry-run to apply: sandboxctl policy sync {name}")
+        return
+
+    if not yes:
+        typer.confirm(f"Reload network policy for '{name}' from profile '{profile_name}'?", abort=True)
+    result = fix_policy_drift(name, cfg)
+    symbol = "✓" if result.success else "✗"
+    typer.echo(f"{symbol} {result.details}")
+    if not result.success:
+        raise typer.Exit(1)
+
+
+def _sandbox_policy_label(sandbox_name: str, cfg: SandboxctlConfig) -> str:
+    """Best-effort short policy drift label for the list table."""
+    from sandboxctl.policy import resolve_policy_profile, sandbox_policy_drift_state
+
+    try:
+        if resolve_policy_profile(sandbox_name, cfg) is None:
+            return ""
+        return sandbox_policy_drift_state(sandbox_name, cfg).status
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
 @app.command("list")
 def list_cmd() -> None:
     """List profiles and running sandboxes."""
@@ -114,8 +235,9 @@ def list_cmd() -> None:
             table.add_column("Name")
             table.add_column("Created")
             table.add_column("Phase")
+            table.add_column("Policy")
             for sb in sandboxes:
-                table.add_row(sb["name"], sb["created"], sb["phase"])
+                table.add_row(sb["name"], sb["created"], sb["phase"], _sandbox_policy_label(sb["name"], cfg))
             from rich.console import Console
 
             Console().print(table)
@@ -209,6 +331,7 @@ def delete_cmd(name: str = typer.Argument(help="Sandbox name.", callback=_valida
     """Delete a sandbox."""
     from sandboxctl import openshell as osh
     from sandboxctl.context import backup_claude_context
+    from sandboxctl.policy import remove_policy_association
 
     typer.confirm(f"Delete sandbox '{name}'?", abort=True)
     cfg = load_config()
@@ -219,6 +342,10 @@ def delete_cmd(name: str = typer.Argument(help="Sandbox name.", callback=_valida
     except Exception:  # noqa: BLE001
         typer.echo("  Claude context backup skipped (sandbox may not be running)")
     osh.sandbox_delete(name)
+    try:
+        remove_policy_association(cfg, name)
+    except Exception:  # noqa: BLE001, S110
+        pass
     typer.echo(f"Deleted sandbox: {name}")
 
 

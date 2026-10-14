@@ -19,7 +19,7 @@ from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig, resolved_custom_providers
 from sandboxctl.credentials import get_credential
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile
-from sandboxctl.policy import prepare_policy_for_apply
+from sandboxctl.policy import prepare_policy_for_apply, record_policy_association
 from sandboxctl.provider_profiles import GITHUB_PROFILE, GOOGLE_VERTEX_AI_PROFILE, custom_provider_profile
 
 _REPO_RE = re.compile(r"^[a-zA-Z0-9._/-]+$")
@@ -988,6 +988,13 @@ def create_sandbox(
             typer.echo("  Policy re-applied (TLS directives active)")
 
     typer.echo(f"\nSandbox '{name}' created.")
+
+    # Record the sandbox → profile association so drift checks, `open`, and
+    # `policy sync` can resolve the profile even for custom --name sandboxes.
+    try:
+        record_policy_association(config, name, profile.name)
+    except Exception:  # noqa: BLE001
+        typer.echo("  Policy association: not recorded (non-fatal)")
 
     osh.update_local_ssh_config(name)
     typer.echo("  SSH config: updated")

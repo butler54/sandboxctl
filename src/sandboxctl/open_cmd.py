@@ -23,6 +23,29 @@ def _get_default_repo(name: str, config: SandboxctlConfig) -> str:
         return ""
 
 
+def _warn_policy_drift(name: str, config: SandboxctlConfig) -> None:
+    """Echo a best-effort warning when the sandbox's profile policy has drifted."""
+    try:
+        from sandboxctl.policy import policy_drift_state, resolve_policy_profile
+
+        profile_name = resolve_policy_profile(name, config)
+        if profile_name is None:
+            return
+        state = policy_drift_state(name, profile_name, config)
+        if state.status == "network-drift":
+            typer.echo(
+                "WARNING: profile policy differs from this sandbox (rule changes pending); "
+                f"run 'sandboxctl policy sync {name}'"
+            )
+        elif state.status == "filesystem-drift":
+            typer.echo(
+                "WARNING: profile filesystem policy differs from this sandbox; "
+                f"recreate with 'sandboxctl restart {name}'"
+            )
+    except Exception:  # noqa: BLE001, S110
+        pass
+
+
 def open_sandbox(
     name: str,
     config: SandboxctlConfig,
@@ -35,6 +58,9 @@ def open_sandbox(
             typer.echo(f"  {detail}")
         typer.echo(f"Sandbox '{name}' is not healthy: {report.recovery_action}")
         raise typer.Exit(1)
+
+    # Policy lifecycle (#207): surface profile policy drift made after create.
+    _warn_policy_drift(name, config)
 
     # VSCODE-04 Layer 1: SSH keepalive for network-blip resilience
     osh.ensure_ssh_keepalive()

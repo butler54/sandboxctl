@@ -1,10 +1,19 @@
-"""Profile policy rendering, including sandboxctl-managed YAML fragments."""
+"""Profile policy rendering, drift detection, and sandbox policy lifecycle."""
 
 from __future__ import annotations
 
+import dataclasses
+import json
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 
 import yaml
+
+from sandboxctl import openshell as osh
+from sandboxctl.config import SandboxctlConfig
+from sandboxctl.profile import list_profiles, load_profile
 
 _OPENCODE_LAUNCHERS = {"/usr/local/bin/opencode", "/usr/bin/opencode"}
 # The opencode launcher spawns a compiled binary inside its npm package
@@ -156,3 +165,214 @@ def render_policy(path: Path, profiles_dir: Path) -> str:
             if _CLAUDE_LAUNCHER not in paths:
                 binaries.append({"path": _CLAUDE_LAUNCHER})
     return yaml.safe_dump(data, sort_keys=False)
+
+
+# ---------------------------------------------------------------------------
+# Result dataclasses (shared with doctor.py)
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class CheckResult:
+    """Outcome of a single host-side check."""
+
+    passed: bool
+    name: str
+    details: str
+    fix_hint: str | None = None
+
+
+@dataclasses.dataclass
+class FixResult:
+    """Outcome of a fix applied to a running sandbox."""
+
+    success: bool
+    name: str
+    details: str
+
+
+@dataclasses.dataclass(frozen=True)
+class PolicyDriftState:
+    """Snapshot of how a sandbox's active policy compares to its profile."""
+
+    status: str  # "current" | "network-drift" | "filesystem-drift" | "unknown" | "no-profile"
+    details: str
+    rendered: str | None = None  # rendered desired policy YAML when computable
+    hot_reloadable: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Sandbox → profile association store
+# ---------------------------------------------------------------------------
+
+
+def _associations_path(config: SandboxctlConfig) -> Path:
+    return config.config_dir / "sandboxes.json"
+
+
+def _load_associations(config: SandboxctlConfig) -> dict[str, dict[str, str]]:
+    """Read the association store; a corrupt or missing file reads as empty."""
+    try:
+        data = json.loads(_associations_path(config).read_text())
+    except (OSError, ValueError, TypeError):
+        return {}
+    sandboxes = data.get("sandboxes") if isinstance(data, dict) else None
+    return sandboxes if isinstance(sandboxes, dict) else {}
+
+
+def _store_associations(config: SandboxctlConfig, sandboxes: dict[str, dict[str, str]]) -> None:
+    """Write the association store atomically via a temp file and os.replace."""
+    path = _associations_path(config)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".sandboxes-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            json.dump({"sandboxes": sandboxes}, handle, indent=2)
+            handle.write("\n")
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+
+def record_policy_association(config: SandboxctlConfig, sandbox_name: str, profile_name: str) -> None:
+    """Persist which profile a sandbox was created from."""
+    sandboxes = _load_associations(config)
+    sandboxes[sandbox_name] = {"profile": profile_name}
+    _store_associations(config, sandboxes)
+
+
+def lookup_policy_association(config: SandboxctlConfig, sandbox_name: str) -> str | None:
+    """Return the profile recorded for a sandbox, or None."""
+    entry = _load_associations(config).get(sandbox_name)
+    if not isinstance(entry, dict):
+        return None
+    profile = entry.get("profile")
+    return profile if isinstance(profile, str) and profile else None
+
+
+def remove_policy_association(config: SandboxctlConfig, sandbox_name: str) -> None:
+    """Drop a sandbox's association (e.g. after deletion)."""
+    sandboxes = _load_associations(config)
+    if sandbox_name in sandboxes:
+        del sandboxes[sandbox_name]
+        _store_associations(config, sandboxes)
+
+
+def resolve_policy_profile(sandbox_name: str, config: SandboxctlConfig) -> str | None:
+    """Resolve the profile a sandbox's policy is compared against."""
+    association = lookup_policy_association(config, sandbox_name)
+    if association:
+        return association
+    if sandbox_name in list_profiles(config):
+        return sandbox_name
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Drift detection and reconciliation
+# ---------------------------------------------------------------------------
+
+_FILESYSTEM_POLICY_KEYS = ("filesystem", "filesystem_policy", "landlock")
+
+
+def policy_drift_state(sandbox_name: str, profile_name: str, config: SandboxctlConfig) -> PolicyDriftState:
+    """Compare a sandbox's active base policy to the rendered profile policy."""
+    try:
+        profile = load_profile(profile_name, config)
+    except Exception as exc:  # noqa: BLE001
+        return PolicyDriftState("unknown", f"could not load profile '{profile_name}': {exc}")
+
+    path = config.profiles_dir / profile.name / profile.sandbox.policy
+    if not path.exists():
+        return PolicyDriftState("unknown", f"profile policy not found: {path}")
+    try:
+        rendered = render_policy(path, config.profiles_dir)
+        desired = yaml.safe_load(rendered) or {}
+    except PolicyIncludeError as exc:
+        return PolicyDriftState("unknown", str(exc))
+
+    output = osh.policy_get_base(sandbox_name)
+    try:
+        active = json.loads(output)["policy"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return PolicyDriftState("unknown", "could not retrieve the active base policy")
+
+    network_drift = active.get("network_policies", {}) != desired.get("network_policies", {})
+    filesystem_drift = any(active.get(key) != desired.get(key) for key in _FILESYSTEM_POLICY_KEYS)
+    if not network_drift and not filesystem_drift:
+        return PolicyDriftState(
+            "current",
+            "active network policy matches profile",
+            rendered,
+        )
+    if filesystem_drift:
+        return PolicyDriftState(
+            "filesystem-drift",
+            f"filesystem policy differs from profile; recreation required — run 'sandboxctl restart {sandbox_name}'",
+            rendered,
+        )
+    return PolicyDriftState(
+        "network-drift",
+        "active network policy differs from profile; run 'sandboxctl policy sync "
+        f"{sandbox_name}' or 'sandboxctl restart {sandbox_name}'",
+        rendered,
+        hot_reloadable=True,
+    )
+
+
+def sandbox_policy_drift_state(sandbox_name: str, config: SandboxctlConfig) -> PolicyDriftState:
+    """Resolve the sandbox's profile and compute its drift state."""
+    profile_name = resolve_policy_profile(sandbox_name, config)
+    if profile_name is None:
+        return PolicyDriftState("no-profile", "skipped (no profile with the sandbox name)")
+    return policy_drift_state(sandbox_name, profile_name, config)
+
+
+def summarize_network_drift(active: dict, desired: dict) -> str:
+    """Compact added/removed/changed summary of network_policies rule names."""
+    active_rules = active.get("network_policies", {}) if isinstance(active, dict) else {}
+    desired_rules = desired.get("network_policies", {}) if isinstance(desired, dict) else {}
+    added = sorted(set(desired_rules) - set(active_rules))
+    removed = sorted(set(active_rules) - set(desired_rules))
+    shared = set(active_rules) & set(desired_rules)
+    changed = sorted(name for name in shared if active_rules[name] != desired_rules[name])
+    parts = []
+    if added:
+        parts.append(f"added: {', '.join(added)}")
+    if removed:
+        parts.append(f"removed: {', '.join(removed)}")
+    if changed:
+        parts.append(f"changed: {', '.join(changed)}")
+    return "; ".join(parts) or "rule contents differ"
+
+
+def check_policy_drift(sandbox_name: str, config: SandboxctlConfig) -> CheckResult:
+    """Compare the resolved profile's desired network policy to the active base policy."""
+    state = sandbox_policy_drift_state(sandbox_name, config)
+    if state.status == "no-profile":
+        return CheckResult(True, "Policy drift", state.details)
+    return CheckResult(state.status == "current", "Policy drift", state.details)
+
+
+def fix_policy_drift(sandbox_name: str, config: SandboxctlConfig) -> FixResult:
+    """Hot-reload network-only policy drift; filesystem drift requires recreation."""
+    state = sandbox_policy_drift_state(sandbox_name, config)
+    if state.status in ("no-profile", "current"):
+        return FixResult(True, "Policy drift", "no reload needed")
+    if state.status != "network-drift" or not state.rendered:
+        return FixResult(False, "Policy drift", state.details)
+
+    profile_name = resolve_policy_profile(sandbox_name, config) or sandbox_name
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "policy.yaml"
+            path.write_text(state.rendered)
+            osh.policy_set(sandbox_name, path)
+    except (OSError, subprocess.CalledProcessError):
+        return FixResult(False, "Policy drift", "policy reload failed")
+
+    verified = policy_drift_state(sandbox_name, profile_name, config)
+    if verified.status != "current":
+        return FixResult(False, "Policy drift", "policy reload verification failed")
+    return FixResult(True, "Policy drift", "network policy reloaded")

@@ -690,7 +690,25 @@ def doctor(
             symbol = "✓" if result.passed else "✗"
             typer.echo(f"  {symbol} {sname}: {result.details}")
 
-    # Section 4: --fix mode
+    # Section 4: Egress diagnostics (#206)
+    if sandbox_names:
+        from sandboxctl.egress import egress_report
+
+        typer.echo("\n--- Egress Diagnostics ---")
+        for sname in sandbox_names:
+            findings = egress_report(sname)
+            observed = [f.message for f in findings if f.kind == "observed-deny"]
+            for finding in findings:
+                if finding.kind == "observed-deny":
+                    continue
+                symbol = "!" if finding.severity == "warning" else "i"
+                typer.echo(f"  {symbol} {sname}: {finding.message}")
+            if observed:
+                typer.echo("  observed (upstream log tail):")
+                for line in observed:
+                    typer.echo(f"      {line}")
+
+    # Section 5: --fix mode
     if fix:
         typer.echo("\n--- Fix: Credential Injection ---")
         targets = sandbox_names if sandbox_names else []
@@ -707,7 +725,7 @@ def doctor(
             symbol = "✓" if policy_result.success else "✗"
             typer.echo(f"    {symbol} {policy_result.name}: {policy_result.details}")
 
-    # Section 5: Profile Readiness
+    # Section 6: Profile Readiness
     typer.echo("\n--- Profile Readiness ---")
     readiness = check_profile_readiness(cfg)
     if not readiness:

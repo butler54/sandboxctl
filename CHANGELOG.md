@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.29.0 (2026-10-14)
+
+### Features
+
+- **doctor**: Egress deny diagnostics — static policy correlation + bounded observed denies (#206)
+  ([#216](https://github.com/butler54/sandboxctl/pull/216),
+  [`55f8e47`](https://github.com/butler54/sandboxctl/commit/55f8e47c03a56d509732bd4d0245ca6a528c43b4))
+
+
 ## v1.28.0 (2026-10-14)
 
 ### Features

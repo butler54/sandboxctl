@@ -2,6 +2,28 @@
 
 <!-- version list -->
 
+## v1.26.1 (2026-10-14)
+
+### Bug Fixes
+
+- **policy**: Cover v2 @opencode/cli binary layout with package-root globs (#204)
+  ([#213](https://github.com/butler54/sandboxctl/pull/213),
+  [`42d14e3`](https://github.com/butler54/sandboxctl/commit/42d14e3940d6cf0b56f7d6b6a8da86a6885b0c8e))
+
+### Chores
+
+- Bump github/codeql-action/upload-sarif from 4.38.1 to 4.38.2
+  ([`ab28509`](https://github.com/butler54/sandboxctl/commit/ab28509cf922b6d3a15099cdf7e8a1fee6f37de7))
+
+- Bump step-security/harden-runner from 2.21.1 to 2.22.0
+  ([#200](https://github.com/butler54/sandboxctl/pull/200),
+  [`d58c39f`](https://github.com/butler54/sandboxctl/commit/d58c39f884259cfdca027bc1a6fe0e445fbfb5a8))
+
+- **ci**: Bump codeql-action to 4.38.2 together and group future bumps
+  ([#208](https://github.com/butler54/sandboxctl/pull/208),
+  [`d55a854`](https://github.com/butler54/sandboxctl/commit/d55a854ddfdcd42d6652901a5e5077de11eeb357))
+
+
 ## v1.26.0 (2026-10-07)
 
 ### Features

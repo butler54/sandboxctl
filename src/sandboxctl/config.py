@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import re
 import shutil
@@ -105,6 +106,22 @@ class MlflowConfig(_SubConfig):
         return self
 
 
+class CustomProviderConfig(_SubConfig):
+    """A generic OpenAI-compatible inference provider (#178, #205)."""
+
+    # Endpoint base URL. HTTPS only — API keys must never traverse plaintext HTTP.
+    base_url: str
+    # Friendly name shown in OpenCode's model picker. Defaults to the provider id.
+    display_name: str = ""
+    # Optional allowlist of model IDs selectable as <provider-id>/<model-id>.
+    models: list[str] = Field(default_factory=list)
+    # Env var injected into the sandbox holding the API key. Defaults to the
+    # uppercased provider id (non-alphanumeric → "_") plus "_API_KEY".
+    api_key_env: str = ""
+    # Credential-store service name. Defaults to sandboxctl-<id>-api-key.
+    keychain_service: str = ""
+
+
 class OpencodeConfig(_SubConfig):
     # Named OpenAI accounts. Each name maps to a host keychain entry
     # "sandboxctl-openai-<name>"; the key is injected into the sandbox as
@@ -116,9 +133,12 @@ class OpencodeConfig(_SubConfig):
     openai_models: dict[str, list[str]] = Field(default_factory=dict)
     # Stage the OpenCode Go API key from the host credential store.
     go: bool = False
-    # Stage the Matilda API key from the host credential store. The custom
-    # provider definition itself remains in the user's OpenCode configuration.
+    # Stage the Matilda API key from the host credential store. This is a
+    # backward-compatible shorthand for the built-in matilda entry in
+    # custom_providers (see resolved_custom_providers).
     matilda: bool = False
+    # Generic OpenAI-compatible inference providers keyed by provider id (#178, #205).
+    custom_providers: dict[str, CustomProviderConfig] = Field(default_factory=dict)
     # Restrict auto-discovered providers. enabled_providers is an allowlist;
     # disabled_providers wins when an id appears in both lists.
     enabled_providers: list[str] = Field(default_factory=list)
@@ -153,6 +173,90 @@ class OpencodeConfig(_SubConfig):
             if invalid_models:
                 raise ValueError(f"Invalid OpenAI model ID(s) for account '{account}': {', '.join(invalid_models)}")
         return self
+
+    @model_validator(mode="after")
+    def _validate_custom_providers(self) -> OpencodeConfig:
+        from urllib.parse import urlparse
+
+        id_pattern = re.compile(r"^[a-z0-9]([a-z0-9._-]{1,31})$")
+        model_pattern = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+        env_pattern = re.compile(r"^[A-Z][A-Z0-9_]*$")
+        service_pattern = re.compile(r"^[a-zA-Z0-9._/-]+$")
+
+        invalid_ids = [pid for pid in self.custom_providers if not id_pattern.fullmatch(pid)]
+        if invalid_ids:
+            raise ValueError(f"Invalid custom provider id(s): {', '.join(invalid_ids)}")
+        for pid, provider in self.custom_providers.items():
+            parsed = urlparse(provider.base_url)
+            if parsed.scheme != "https" or not parsed.hostname:
+                raise ValueError(
+                    f"opencode.custom_providers.{pid}.base_url must be an HTTPS URL with a host "
+                    f"(e.g. https://host.example.com/api/v1), got '{provider.base_url}'"
+                )
+            if len(provider.models) != len(set(provider.models)):
+                raise ValueError(f"opencode.custom_providers.{pid}.models must not contain duplicate model IDs")
+            invalid_models = [model for model in provider.models if not model_pattern.fullmatch(model)]
+            if invalid_models:
+                raise ValueError(f"Invalid model ID(s) for custom provider '{pid}': {', '.join(invalid_models)}")
+            if provider.api_key_env and not env_pattern.fullmatch(provider.api_key_env):
+                raise ValueError(
+                    f"opencode.custom_providers.{pid}.api_key_env must be an uppercase env var name "
+                    f"([A-Z][A-Z0-9_]*), got '{provider.api_key_env}'"
+                )
+            if provider.keychain_service and not service_pattern.fullmatch(provider.keychain_service):
+                raise ValueError(f"Invalid keychain_service for custom provider '{pid}': {provider.keychain_service}")
+        return self
+
+
+@dataclasses.dataclass(frozen=True)
+class ResolvedCustomProvider:
+    """A custom OpenAI-compatible provider with all defaults materialized."""
+
+    id: str
+    display_name: str
+    base_url: str
+    models: tuple[str, ...]
+    api_key_env: str
+    keychain_service: str
+
+
+# The built-in declaration the legacy `matilda = true` flag expands to.
+MATILDA_PROVIDER = ResolvedCustomProvider(
+    id="matilda",
+    display_name="Matilda",
+    base_url="https://matilda.maincode.com/api/v1/code",
+    models=("matilda-code-1.0",),
+    api_key_env="MATILDA_API_KEY",
+    keychain_service="sandboxctl-matilda-api-key",
+)
+
+
+def resolved_custom_providers(opencode: OpencodeConfig) -> dict[str, ResolvedCustomProvider]:
+    """Materialize custom OpenAI-compatible providers for an opencode config (#178, #205).
+
+    An explicit ``[opencode.custom_providers.<id>]`` declaration is resolved with its
+    defaults filled in. The legacy ``matilda = true`` flag expands to the built-in
+    matilda declaration; an explicit matilda declaration wins wholesale, with the flag
+    then merely asserting that the provider exists. Declaring the matilda provider
+    works regardless of the flag's value.
+    """
+    custom_providers = getattr(opencode, "custom_providers", {})
+    if not isinstance(custom_providers, dict):
+        custom_providers = {}
+    resolved: dict[str, ResolvedCustomProvider] = {}
+    for provider_id, provider in custom_providers.items():
+        api_key_env = provider.api_key_env or re.sub(r"[^A-Z0-9]", "_", provider_id.upper()) + "_API_KEY"
+        resolved[provider_id] = ResolvedCustomProvider(
+            id=provider_id,
+            display_name=provider.display_name or provider_id,
+            base_url=provider.base_url,
+            models=tuple(provider.models),
+            api_key_env=api_key_env,
+            keychain_service=provider.keychain_service or f"sandboxctl-{provider_id}-api-key",
+        )
+    if getattr(opencode, "matilda", False) is True and "matilda" not in resolved:
+        resolved["matilda"] = MATILDA_PROVIDER
+    return resolved
 
 
 class SandboxctlConfig(BaseSettings):
@@ -324,7 +428,19 @@ CONFIG_TEMPLATE = """\
 # [opencode.openai_models]
 # work = ["gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-6-astra"]
 # go = false
-# matilda = false  # reads sandboxctl-matilda-api-key from the credential store
+# matilda = false  # shorthand for the built-in [opencode.custom_providers.matilda]
+#                  # declaration (reads sandboxctl-matilda-api-key from the credential store)
+#
+# Custom OpenAI-compatible inference providers. Each entry is registered with
+# OpenShell and becomes a selectable OpenCode provider. The API key is read
+# from the credential store (default service sandboxctl-<id>-api-key) and
+# exported into the sandbox; creating a sandbox fails closed if it is missing.
+# [opencode.custom_providers.my-llm]
+# base_url = "https://host.example.com/api/v1"  # required, HTTPS only
+# display_name = "My LLM"        # optional, defaults to the id
+# models = ["model-id"]          # optional allowlist for model selection
+# api_key_env = "MY_LLM_API_KEY" # optional, defaults to MY_LLM_API_KEY style
+# keychain_service = "sandboxctl-my-llm-api-key"  # optional credential-store name
 
 # [mlflow]
 # MLflow tracking server configuration

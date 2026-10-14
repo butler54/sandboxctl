@@ -16,11 +16,11 @@ import yaml
 
 from sandboxctl import mlflow_cmd
 from sandboxctl import openshell as osh
-from sandboxctl.config import SandboxctlConfig
+from sandboxctl.config import SandboxctlConfig, resolved_custom_providers
 from sandboxctl.credentials import get_credential
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile
 from sandboxctl.policy import prepare_policy_for_apply
-from sandboxctl.provider_profiles import GITHUB_PROFILE, GOOGLE_VERTEX_AI_PROFILE
+from sandboxctl.provider_profiles import GITHUB_PROFILE, GOOGLE_VERTEX_AI_PROFILE, custom_provider_profile
 
 _REPO_RE = re.compile(r"^[a-zA-Z0-9._/-]+$")
 
@@ -40,6 +40,14 @@ def _validate_repo_ref(value: str) -> str:
         msg = f"Invalid repo reference: {value}"
         raise ValueError(msg)
     return value
+
+
+def _missing_credential_message(provider_id: str, service: str) -> str:
+    """Fail-closed error for a configured custom provider without a credential (#205)."""
+    return (
+        f"Custom provider '{provider_id}' is configured but credential {service} "
+        "was not found in the credential store. Run: sandboxctl setup"
+    )
 
 
 def _stage_selected(src: Path, dst: Path, allowlist: list[str]) -> None:
@@ -263,6 +271,20 @@ def _opencode_runtime_config(config: SandboxctlConfig, profile: Profile | None =
             if model_id not in account_models:
                 msg = f"OpenCode model '{model_name}' is not listed in opencode.openai_models.{account}"
                 raise ValueError(msg)
+    # Custom OpenAI-compatible providers: when a provider declares a models
+    # allowlist, only listed models may be referenced as <provider>/<model> (#178).
+    custom_model_lists = {
+        provider_id: provider.models
+        for provider_id, provider in resolved_custom_providers(host_opencode).items()
+        if provider.models
+    }
+    for model_name in (model, build_model, plan_model):
+        if not isinstance(model_name, str) or "/" not in model_name:
+            continue
+        custom_id, custom_model_id = model_name.split("/", 1)
+        if custom_id in custom_model_lists and custom_model_id not in custom_model_lists[custom_id]:
+            msg = f"OpenCode model '{model_name}' is not listed in opencode.custom_providers.{custom_id}.models"
+            raise ValueError(msg)
     if isinstance(enabled_providers, list) and enabled_providers:
         patch["enabled_providers"] = enabled_providers
     if isinstance(disabled_providers, list) and disabled_providers:
@@ -448,6 +470,25 @@ def setup_providers(config: SandboxctlConfig, policy_path: Path | None = None) -
             osh.provider_create("anthropic-direct", "anthropic", f"ANTHROPIC_API_KEY={api_key}")
             providers.append("anthropic-direct")
 
+    # Custom OpenAI-compatible providers (#178, #205): registered like the managed
+    # github/vertex profiles above — the profile must be imported before the
+    # provider is created from it (#181). Missing credentials fail closed so a
+    # selected provider is never silently absent.
+    account_user = os.environ.get("USER", "sandboxctl")
+    for provider_id, provider in resolved_custom_providers(config.opencode).items():
+        yaml_path = _ensure_provider_yaml(
+            config.config_dir,
+            provider_id,
+            custom_provider_profile(provider_id, provider.display_name, provider.base_url, provider.api_key_env),
+            policy_path,
+        )
+        osh.provider_profile_import(yaml_path, provider_id)
+        credential = get_credential(provider.keychain_service, account_user)
+        if not credential:
+            raise RuntimeError(_missing_credential_message(provider_id, provider.keychain_service))
+        osh.provider_create(provider_id, provider_id, f"{provider.api_key_env}={credential}")
+        providers.append(provider_id)
+
     return providers
 
 
@@ -576,13 +617,26 @@ def post_launch_setup(
         else:
             typer.echo("  OpenCode Go: no keychain entry, skipped")
 
-    if getattr(config.opencode, "matilda", False) is True:
-        matilda_key = get_credential("sandboxctl-matilda-api-key", account_user)
-        if matilda_key:
-            _inject_env_secret(name, "MATILDA_API_KEY", matilda_key)
-            typer.echo("  Matilda: configured")
-        else:
-            typer.echo("  Matilda: no keychain entry, skipped")
+    # Custom OpenAI-compatible providers (#178, #205): each resolved provider has
+    # its API key injected and becomes a selectable opencode provider via the
+    # OPENCODE_CONFIG_CONTENT patch below. The legacy `matilda = true` flag
+    # resolves to the built-in matilda declaration (config.resolved_custom_providers).
+    # Missing credentials fail closed — a configured-but-unprovisioned provider
+    # must not silently degrade (#205).
+    for provider_id, provider in resolved_custom_providers(config.opencode).items():
+        key = get_credential(provider.keychain_service, account_user)
+        if not key:
+            raise RuntimeError(_missing_credential_message(provider_id, provider.keychain_service))
+        _inject_env_secret(name, provider.api_key_env, key)
+        typer.echo(f"  {provider.display_name}: {provider.api_key_env} configured")
+        # apiKey uses opencode's {env:VAR} interpolation so the secret stays in
+        # the env var and never lands in the injected config text.
+        opencode_providers[provider_id] = {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": provider.display_name,
+            "options": {"baseURL": provider.base_url, "apiKey": f"{{env:{provider.api_key_env}}}"},
+            "models": {model: {} for model in provider.models},
+        }
 
     # Accumulate all generated opencode config into a single patch so it is injected once
     # (OPENCODE_CONFIG_CONTENT holds one JSON value). Providers (#129) and the MCP server

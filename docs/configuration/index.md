@@ -125,6 +125,49 @@ priority:
     environment variables as overrides, leave the corresponding key commented
     out in `config.toml`.
 
+## Custom OpenAI-compatible providers
+
+The `[opencode]` section can register generic OpenAI-compatible inference
+endpoints as first-class providers. Each entry is registered with OpenShell
+(profile imported, provider created, endpoint enforced) and becomes a
+selectable provider in OpenCode's model picker.
+
+```toml
+[opencode]
+# `matilda = true` is a shorthand for the built-in matilda declaration below.
+matilda = true
+
+[opencode.custom_providers.my-llm]
+base_url = "https://host.example.com/api/v1"   # required, HTTPS only
+display_name = "My LLM"                        # optional, defaults to the id
+models = ["model-id"]                          # optional model allowlist
+api_key_env = "MY_LLM_API_KEY"                 # optional, defaults to MY_LLM_API_KEY style
+keychain_service = "sandboxctl-my-llm-api-key" # optional, default shown
+```
+
+| Key | Default | Description |
+|---|---|---|
+| `base_url` | *(required)* | Endpoint base URL. HTTPS only — configuration is rejected otherwise |
+| `display_name` | provider id | Friendly name shown in OpenCode's model picker |
+| `models` | `[]` | Optional allowlist of model IDs selectable as `<provider-id>/<model-id>` |
+| `api_key_env` | `<ID>_API_KEY` (uppercased id, symbols → `_`) | Env var exported into the sandbox holding the API key |
+| `keychain_service` | `sandboxctl-<id>-api-key` | Credential-store service name |
+
+**Credential storage.** The API key is read from the host credential store
+(macOS Keychain; `secret-tool` on Linux) before sandbox creation. Store it
+with the corresponding CLI, for example on Linux:
+
+```bash
+secret-tool store --label='sandboxctl my-llm' \
+  service sandboxctl-my-llm-api-key account "$USER"
+```
+
+**Fail closed.** Creating a sandbox fails with an error when a configured
+custom provider's credential is missing from the credential store — a
+selected provider is never silently skipped. Run `sandboxctl setup` (which
+registers any providers whose credentials exist) and `sandboxctl doctor`
+reports missing entries under *Custom providers*.
+
 ## Config Commands
 
 | Command | Description |

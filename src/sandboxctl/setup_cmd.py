@@ -9,7 +9,7 @@ from pathlib import Path
 
 import typer
 
-from sandboxctl.config import SandboxctlConfig, ensure_config_dir, find_vscode_bin
+from sandboxctl.config import SandboxctlConfig, ensure_config_dir, find_vscode_bin, resolved_custom_providers
 from sandboxctl.credentials import get_credential, store_credential
 from sandboxctl.openshell import (
     gateway_status,
@@ -19,7 +19,7 @@ from sandboxctl.openshell import (
     settings_set,
 )
 from sandboxctl.profile import list_profiles, load_profile
-from sandboxctl.provider_profiles import GITHUB_PROFILE, GOOGLE_VERTEX_AI_PROFILE
+from sandboxctl.provider_profiles import GITHUB_PROFILE, GOOGLE_VERTEX_AI_PROFILE, custom_provider_profile
 
 
 def _check_prerequisites() -> None:
@@ -296,6 +296,16 @@ def _write_github_provider_yaml(config_dir: Path) -> Path:
     return yaml_path
 
 
+def _write_custom_provider_yaml(config_dir: Path, provider_id: str, content: str) -> Path:
+    """Write a sandboxctl-managed OpenShell custom provider profile."""
+    providers_dir = config_dir / "providers"
+    providers_dir.mkdir(parents=True, exist_ok=True)
+
+    yaml_path = providers_dir / f"{provider_id}.yaml"
+    yaml_path.write_text(content)
+    return yaml_path
+
+
 def _setup_providers(config: SandboxctlConfig, github_token: str | None) -> None:
     typer.echo("\n--- Providers ---")
 
@@ -319,6 +329,26 @@ def _setup_providers(config: SandboxctlConfig, github_token: str | None) -> None
         provider_delete("github")
         provider_create("github", "github", f"GITHUB_TOKEN={github_token}")
         typer.echo("  github: configured")
+
+    # Custom OpenAI-compatible providers (#178, #205): register each resolved
+    # provider like the managed github profile above.
+    custom_providers = resolved_custom_providers(config.opencode)
+    if custom_providers:
+        account = os.environ.get("USER", "sandboxctl")
+        for provider_id, provider in custom_providers.items():
+            credential = get_credential(provider.keychain_service, account)
+            if not credential:
+                typer.echo(f"  {provider_id}: no keychain entry ({provider.keychain_service}), skipped")
+                continue
+            yaml_path = _write_custom_provider_yaml(
+                config.config_dir,
+                provider_id,
+                custom_provider_profile(provider_id, provider.display_name, provider.base_url, provider.api_key_env),
+            )
+            provider_profile_import(yaml_path, provider_id)
+            provider_delete(provider_id)
+            provider_create(provider_id, provider_id, f"{provider.api_key_env}={credential}")
+            typer.echo(f"  {provider_id}: configured")
 
 
 def _setup_mlflow(config: SandboxctlConfig) -> None:

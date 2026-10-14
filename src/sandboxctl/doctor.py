@@ -15,7 +15,7 @@ from pathlib import Path
 import yaml
 
 from sandboxctl import openshell as osh
-from sandboxctl.config import SandboxctlConfig
+from sandboxctl.config import SandboxctlConfig, resolved_custom_providers
 from sandboxctl.credentials import get_credential
 from sandboxctl.health import diagnose
 from sandboxctl.models import CredentialConfig
@@ -799,6 +799,88 @@ class MCPOAuthCheck(CredentialCheck):
         return bool(cred_config.mcp.servers)
 
 
+# ---------------------------------------------------------------------------
+# 8. Custom OpenAI-compatible providers
+# ---------------------------------------------------------------------------
+
+
+class CustomProvidersCheck(CredentialCheck):
+    """Validate and inject API keys for custom OpenAI-compatible providers (#178, #205)."""
+
+    @property
+    def check_name(self) -> str:
+        return "Custom providers"
+
+    def check(self, config: SandboxctlConfig) -> CheckResult:
+        providers = resolved_custom_providers(config.opencode)
+        if not providers:
+            return CheckResult(
+                passed=True,
+                name=self.check_name,
+                details="No custom providers configured",
+            )
+        account = os.environ.get("USER", "")
+        # Credential values are used for presence checks only — never reported.
+        missing = [
+            f"{provider.id} ({provider.keychain_service})"
+            for provider in providers.values()
+            if not get_credential(provider.keychain_service, account)
+        ]
+        if missing:
+            return CheckResult(
+                passed=False,
+                name=self.check_name,
+                details=f"Missing credential store entries: {', '.join(missing)}",
+                fix_hint="Run: sandboxctl setup",
+            )
+        return CheckResult(
+            passed=True,
+            name=self.check_name,
+            details=f"{len(providers)} custom provider credential(s) present",
+        )
+
+    def fix(self, sandbox_name: str, config: SandboxctlConfig) -> FixResult:
+        providers = resolved_custom_providers(config.opencode)
+        if not providers:
+            return FixResult(
+                success=True,
+                name=self.check_name,
+                details="No custom providers configured",
+            )
+        account = os.environ.get("USER", "")
+        injected: list[str] = []
+        missing: list[str] = []
+        for provider in providers.values():
+            key = get_credential(provider.keychain_service, account)
+            if not key:
+                missing.append(provider.keychain_service)
+                continue
+            # base64 so arbitrary key characters survive shell transport; the
+            # grep guard keeps the export idempotent.
+            encoded = base64.b64encode(f'export {provider.api_key_env}="{key}"'.encode()).decode()
+            osh.sandbox_exec_pipe(
+                sandbox_name,
+                f"grep -q {provider.api_key_env} /sandbox/.bashrc 2>/dev/null || "
+                f"echo {encoded} | base64 -d >> /sandbox/.bashrc",
+            )
+            injected.append(provider.api_key_env)
+        if missing:
+            return FixResult(
+                success=False,
+                name=self.check_name,
+                details=f"Missing credential store entries: {', '.join(missing)}",
+            )
+        return FixResult(
+            success=True,
+            name=self.check_name,
+            details=f"Injected env var(s): {', '.join(injected)}",
+        )
+
+    def required_by(self, cred_config: CredentialConfig) -> bool:
+        # Custom providers come from opencode config, not profile credentials.
+        return True
+
+
 ALL_CHECKS: list[CredentialCheck] = [
     GitHubPATCheck(),
     GitLabPATCheck(),
@@ -807,6 +889,7 @@ ALL_CHECKS: list[CredentialCheck] = [
     SSHKeyCheck(),
     CABundleCheck(),
     MCPOAuthCheck(),
+    CustomProvidersCheck(),
 ]
 
 

@@ -6,6 +6,14 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "chore"
+    # codeql-action sub-actions (init/analyze/upload-sarif) must bump together:
+    # the action refuses to run when the init config version and analyze
+    # version differ (failed with "Loaded a configuration file for version
+    # '4.38.1', but running version '4.38.2'" when Dependabot split #199/#201).
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action/*"
   - package-ecosystem: "pip"
     directory: "/"
     schedule:

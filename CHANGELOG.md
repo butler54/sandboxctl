@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.27.0 (2026-10-14)
+
+### Features
+
+- **opencode**: Generic custom OpenAI-compatible providers with fail-closed egress (#178, #205)
+  ([#214](https://github.com/butler54/sandboxctl/pull/214),
+  [`4294a91`](https://github.com/butler54/sandboxctl/commit/4294a91094ba48ab83ef8409b35ba9e2338fe001))
+
+
 ## v1.26.1 (2026-10-14)
 
 ### Bug Fixes

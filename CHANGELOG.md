@@ -2,6 +2,38 @@
 
 <!-- version list -->
 
+## v1.29.1 (2026-10-14)
+
+### Bug Fixes
+
+- **config**: Allow namespaced model IDs in custom provider declarations
+  ([`133a02e`](https://github.com/butler54/sandboxctl/commit/133a02ea21fcf7b2fbff7610f0d4ca3a232c73cd))
+
+### Chores
+
+- Bump astral-sh/setup-uv from 10.2.0 to 10.3.0
+  ([#210](https://github.com/butler54/sandboxctl/pull/210),
+  [`30e46cb`](https://github.com/butler54/sandboxctl/commit/30e46cb6ef4109e9d7c7c77ced03f86dcd8690e0))
+
+- Bump ossf/scorecard-action from 2.4.4 to 2.5.0
+  ([#211](https://github.com/butler54/sandboxctl/pull/211),
+  [`37abafc`](https://github.com/butler54/sandboxctl/commit/37abafcac37560226efa43000ffa2dfff8d35e38))
+
+- Bump step-security/harden-runner from 2.22.0 to 2.22.1
+  ([#212](https://github.com/butler54/sandboxctl/pull/212),
+  [`e74deed`](https://github.com/butler54/sandboxctl/commit/e74deedc4cdb1252941a7a37b8a1c19c338bc810))
+
+- Bump the codeql-action group with 3 updates
+  ([#209](https://github.com/butler54/sandboxctl/pull/209),
+  [`4f1918e`](https://github.com/butler54/sandboxctl/commit/4f1918ef5bd51e1661b9a5fbc3bcb5851dc3d158))
+
+### Documentation
+
+- Egress troubleshooting guide (policy, binary identity, provider layers)
+  ([#217](https://github.com/butler54/sandboxctl/pull/217),
+  [`270fa0b`](https://github.com/butler54/sandboxctl/commit/270fa0b7ea47b2a6bade7cc4bab3e723a81f3795))
+
+
 ## v1.29.0 (2026-10-14)
 
 ### Features

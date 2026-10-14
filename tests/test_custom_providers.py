@@ -109,6 +109,17 @@ class TestCustomProviderConfig:
                 }
             )
 
+    def test_namespaced_model_ids_accepted(self) -> None:
+        """Namespaced upstream IDs (e.g. EnMaaS rits/zai-org/glm-5-3) are valid."""
+        oc = OpencodeConfig(
+            custom_providers={
+                "enmaas": CustomProviderConfig(
+                    base_url="https://api.enmaas.devshift.net/v1", models=["rits/zai-org/glm-5-3"]
+                )
+            }
+        )
+        assert oc.custom_providers["enmaas"].models == ["rits/zai-org/glm-5-3"]
+
     def test_duplicate_model_ids_rejected(self) -> None:
         with pytest.raises(ValueError, match="must not contain duplicate"):
             OpencodeConfig(

@@ -46,6 +46,7 @@ nav:
     - restart: commands/restart.md
     - upgrade: commands/upgrade.md
     - doctor: commands/doctor.md
+    - policy: commands/policy.md
     - config: commands/config.md
     - mlflow: commands/mlflow.md
   - Configuration:

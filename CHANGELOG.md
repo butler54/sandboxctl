@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.28.0 (2026-10-14)
+
+### Features
+
+- **policy**: Policy show/sync commands, drift warnings at open, sandbox-profile association (#207)
+  ([#215](https://github.com/butler54/sandboxctl/pull/215),
+  [`220eda6`](https://github.com/butler54/sandboxctl/commit/220eda6dc634b0f7f535610c87b86fa82f11db66))
+
+
 ## v1.27.0 (2026-10-14)
 
 ### Features

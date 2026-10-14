@@ -17,10 +17,16 @@ from typing import Any
 
 import yaml
 
-OPENCODE_BINARIES = (
-    "/usr/local/bin/opencode",
-    "/usr/lib/node_modules/opencode-ai/bin/opencode.exe",
+OPENCODE_LAUNCHERS = ("/usr/local/bin/opencode", "/usr/bin/opencode")
+# OpenCode's compiled binary lives inside its npm package root, whose layout
+# changes per image generation (opencode-ai on the 0.x image, @opencode/cli on
+# the v2 image — #142, #204). Allowlist the package-level globs the policy
+# engine already supports (copilot/codex rules use e.g. @github/**).
+OPENCODE_COMPILED_BINARIES = (
+    "/usr/lib/node_modules/opencode-ai/**",
+    "/usr/lib/node_modules/@opencode/**",
 )
+OPENCODE_BINARIES = OPENCODE_LAUNCHERS + OPENCODE_COMPILED_BINARIES
 MATILDA_ENDPOINT = {"host": "matilda.maincode.com", "port": 443}
 
 
@@ -71,8 +77,15 @@ def apply_policy(data: dict[str, Any]) -> list[str]:
                 endpoint["allow_encoded_slash"] = True
                 changes.append(f"{name}: allow encoded slashes for npm scoped packages")
 
-        if name == "copilot" and _ensure_binaries(rule, OPENCODE_BINARIES):
-            changes.append("copilot: allow OpenCode's compiled executable")
+        # Any rule that already authorizes an OpenCode launcher must also cover
+        # the compiled binaries it spawns, for every supported image layout —
+        # the launcher alone matches no kernel-level connection (#142, #204).
+        current = rule.get("binaries")
+        existing = {_binary_path(entry) for entry in current} if isinstance(current, list) else set()
+        if any(launcher in existing for launcher in OPENCODE_LAUNCHERS) and _ensure_binaries(
+            rule, OPENCODE_COMPILED_BINARIES
+        ):
+            changes.append(f"{name}: allow OpenCode's compiled executables")
 
     matilda = policies.get("matilda")
     if matilda is None:

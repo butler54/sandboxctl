@@ -103,4 +103,5 @@ def test_fix_policy_drift_renders_openshell_binary_objects(tmp_path: Path) -> No
         result = fix_policy_drift("dev", config)
 
     assert result.success
-    assert "- path: /usr/lib/node_modules/opencode-ai/bin/opencode.exe" in captured["content"]
+    assert "- path: /usr/lib/node_modules/opencode-ai/**" in captured["content"]
+    assert "- path: /usr/lib/node_modules/@opencode/**" in captured["content"]

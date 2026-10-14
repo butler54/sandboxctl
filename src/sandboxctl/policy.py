@@ -7,7 +7,16 @@ from pathlib import Path
 import yaml
 
 _OPENCODE_LAUNCHERS = {"/usr/local/bin/opencode", "/usr/bin/opencode"}
-_OPENCODE_COMPILED_BINARY = "/usr/lib/node_modules/opencode-ai/bin/opencode.exe"
+# The opencode launcher spawns a compiled binary inside its npm package
+# directory and requires_binary_identity matches the kernel exec path, not the
+# launcher. The package layout differs per image generation (opencode-ai on the
+# 0.x image, the scoped @opencode/cli on the v2 image — #142, #204), and the
+# binary sit inside each package root, so allowlist each known package root as a
+# glob instead of pinning a per-layout executable path.
+_OPENCODE_COMPILED_BINARIES = (
+    "/usr/lib/node_modules/opencode-ai/**",
+    "/usr/lib/node_modules/@opencode/**",
+)
 _NPM_LAUNCHERS = {"/usr/local/bin/npm", "/usr/bin/npm"}
 _NPM_CLI = "/usr/lib/node_modules/npm/bin/npm-cli.js"
 _CLAUDE_LAUNCHER = "/usr/local/bin/claude"
@@ -130,8 +139,10 @@ def render_policy(path: Path, profiles_dir: Path) -> str:
         binaries = normalized
         policy["binaries"] = binaries
         paths = {path for entry in binaries if (path := _binary_path(entry)) is not None}
-        if _OPENCODE_LAUNCHERS.intersection(paths) and _OPENCODE_COMPILED_BINARY not in paths:
-            binaries.append({"path": _OPENCODE_COMPILED_BINARY})
+        if _OPENCODE_LAUNCHERS.intersection(paths):
+            for compiled in _OPENCODE_COMPILED_BINARIES:
+                if compiled not in paths:
+                    binaries.append({"path": compiled})
         # npm's launcher is a script, so OpenShell identifies direct npm
         # connections as npm-cli.js and Claude-managed plugin installs as the
         # Claude launcher. Preserve the user's explicit npm allowlist while

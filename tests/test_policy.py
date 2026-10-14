@@ -23,11 +23,13 @@ def test_render_policy_includes_fragment(tmp_path: Path) -> None:
         "  opencode:\n"
         "    binaries:\n"
         "    - path: /usr/local/bin/opencode\n"
-        "    - path: /usr/lib/node_modules/opencode-ai/bin/opencode.exe\n"
+        "    - path: /usr/lib/node_modules/opencode-ai/**\n"
+        "    - path: /usr/lib/node_modules/@opencode/**\n"
     )
 
 
-def test_render_policy_adds_opencode_kernel_path(tmp_path: Path) -> None:
+def test_render_policy_adds_opencode_kernel_paths(tmp_path: Path) -> None:
+    """Both image layouts' compiled-binary globs are added for a launcher rule (#204)."""
     profiles = tmp_path / "profiles"
     profile = profiles / "dev"
     profile.mkdir(parents=True)
@@ -35,7 +37,8 @@ def test_render_policy_adds_opencode_kernel_path(tmp_path: Path) -> None:
     policy.write_text("network_policies:\n  opencode:\n    binaries:\n      - { path: /usr/local/bin/opencode }\n")
 
     rendered = render_policy(policy, profiles)
-    assert rendered.count("/usr/lib/node_modules/opencode-ai/bin/opencode.exe") == 1
+    assert rendered.count("/usr/lib/node_modules/opencode-ai/**") == 1
+    assert rendered.count("/usr/lib/node_modules/@opencode/**") == 1
 
 
 def test_render_policy_adds_npm_cli_path(tmp_path: Path) -> None:
@@ -88,7 +91,8 @@ def test_prepare_policy_for_apply_renders_opencode_policy(tmp_path: Path) -> Non
     target_dir.mkdir()
     rendered = prepare_policy_for_apply(policy, tmp_path, target_dir)
     assert rendered == target_dir / "policy.yaml"
-    assert "/usr/lib/node_modules/opencode-ai/bin/opencode.exe" in rendered.read_text()
+    assert "/usr/lib/node_modules/opencode-ai/**" in rendered.read_text()
+    assert "/usr/lib/node_modules/@opencode/**" in rendered.read_text()
 
 
 def test_prepare_policy_for_apply_normalizes_non_opencode_legacy_binary(tmp_path: Path) -> None:
@@ -119,7 +123,8 @@ def test_render_policy_handles_openshell_binary_objects(tmp_path: Path) -> None:
     assert rendered["network_policies"]["nvidia_inference"]["binaries"] == [
         {"path": "/usr/bin/curl"},
         {"path": "/usr/local/bin/opencode"},
-        {"path": "/usr/lib/node_modules/opencode-ai/bin/opencode.exe"},
+        {"path": "/usr/lib/node_modules/opencode-ai/**"},
+        {"path": "/usr/lib/node_modules/@opencode/**"},
     ]
 
 
@@ -133,10 +138,13 @@ def test_render_policy_does_not_duplicate_existing_binary_object(tmp_path: Path)
         "  opencode:\n"
         "    binaries:\n"
         "      - { path: /usr/local/bin/opencode }\n"
-        "      - { path: /usr/lib/node_modules/opencode-ai/bin/opencode.exe }\n"
+        "      - { path: /usr/lib/node_modules/opencode-ai/** }\n"
+        "      - { path: /usr/lib/node_modules/@opencode/** }\n"
     )
 
-    assert render_policy(policy, profiles).count("/usr/lib/node_modules/opencode-ai/bin/opencode.exe") == 1
+    rendered = render_policy(policy, profiles)
+    assert rendered.count("/usr/lib/node_modules/opencode-ai/**") == 1
+    assert rendered.count("/usr/lib/node_modules/@opencode/**") == 1
 
 
 def test_render_policy_normalizes_legacy_binary_strings(tmp_path: Path) -> None:
@@ -149,7 +157,8 @@ def test_render_policy_normalizes_legacy_binary_strings(tmp_path: Path) -> None:
     rendered = yaml.safe_load(render_policy(policy, profiles))
     assert rendered["network_policies"]["opencode"]["binaries"] == [
         {"path": "/usr/bin/opencode"},
-        {"path": "/usr/lib/node_modules/opencode-ai/bin/opencode.exe"},
+        {"path": "/usr/lib/node_modules/opencode-ai/**"},
+        {"path": "/usr/lib/node_modules/@opencode/**"},
     ]
 
 

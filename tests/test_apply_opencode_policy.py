@@ -22,8 +22,10 @@ def test_apply_policy_adds_required_opencode_rules() -> None:
         "network_policies": {
             "npm": {"endpoints": [{"host": "registry.npmjs.org", "port": 443}]},
             "copilot": {"endpoints": [{"host": "api.githubcopilot.com", "port": 443}]},
+            "opencode": {"endpoints": [{"host": "registry.npmjs.org", "port": 443}]},
         }
     }
+    policy["network_policies"]["opencode"]["binaries"] = [{"path": "/usr/local/bin/opencode"}]
 
     changes = script.apply_policy(policy)
 
@@ -33,9 +35,15 @@ def test_apply_policy_adds_required_opencode_rules() -> None:
     assert {entry["path"] for entry in policy["network_policies"]["matilda"]["binaries"]} == set(
         script.OPENCODE_BINARIES
     )
-    assert {entry["path"] for entry in policy["network_policies"]["copilot"]["binaries"]} == set(
-        script.OPENCODE_BINARIES
-    )
+    # A rule that authorizes an OpenCode launcher gains the compiled-binary
+    # globs for both supported image layouts (#142, #204).
+    assert {entry["path"] for entry in policy["network_policies"]["opencode"]["binaries"]} == {
+        "/usr/local/bin/opencode",
+        *script.OPENCODE_COMPILED_BINARIES,
+    }
+    # Rules that do not authorize an OpenCode launcher are left alone — adding
+    # launchers would invent intent the profile never stated.
+    assert "binaries" not in policy["network_policies"]["copilot"]
     assert changes
 
 

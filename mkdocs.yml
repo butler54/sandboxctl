@@ -53,4 +53,5 @@ nav:
     - Overview: configuration/index.md
     - Profiles: configuration/profiles.md
     - Credentials: configuration/credentials.md
+  - Troubleshooting Egress: troubleshooting-egress.md
   - Contributing: contributing.md

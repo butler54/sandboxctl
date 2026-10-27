@@ -304,8 +304,13 @@ def open_cmd(
     claude_only: bool = typer.Option(False, "--claude-only", help="Open Claude Code (legacy)."),
     code: bool = typer.Option(False, "--code", help="Open both VS Code and OpenCode."),
     opencode_server: bool = typer.Option(False, "--opencode-server", help="OpenCode server + SSH port-forward."),
+    new_session: bool = typer.Option(
+        False,
+        "--new",
+        help="Start a fresh agent session instead of resuming the most recent one.",
+    ),
 ) -> None:
-    """Open a sandbox (default: OpenCode interactive)."""
+    """Open a sandbox (default: OpenCode interactive, resuming the most recent session)."""
     from sandboxctl.open_cmd import open_sandbox
 
     cfg = load_config()
@@ -323,7 +328,7 @@ def open_cmd(
     else:
         mode = "opencode"
 
-    open_sandbox(name, cfg, mode=mode)
+    open_sandbox(name, cfg, mode=mode, new_session=new_session)
 
 
 @app.command("delete")

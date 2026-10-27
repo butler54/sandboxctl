@@ -116,7 +116,7 @@ configuration.
 | Command | Description |
 |---|---|
 | `sandboxctl create --profile <name>` | Create a sandbox from a profile |
-| `sandboxctl open <name>` | Open a sandbox in VS Code, Claude Code, or shell |
+| `sandboxctl open <name>` | Open a sandbox (default: OpenCode resuming the most recent session; `--new` for a fresh session) |
 | `sandboxctl restart <name>` | Delete and recreate a sandbox (with data loss warning) |
 | `sandboxctl delete <name>` | Delete a sandbox |
 

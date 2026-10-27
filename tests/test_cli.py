@@ -473,6 +473,7 @@ class TestOpenCommand:
         assert "--code" in output
         assert "--code-only" in output
         assert "--claude-only" in output
+        assert "--new" in output
 
 
 class TestBundledProfiles:

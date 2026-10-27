@@ -81,6 +81,23 @@ class TestOpenClaudeMode:
         assert "--continue" in first_cmd
         assert "--continue" not in second_cmd
 
+    def test_new_session_skips_continue_flag(self) -> None:
+        """new_session=True skips the claude --continue resume attempt (FR-005)."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=0) as mock_exec,
+        ):
+            open_sandbox("mybox", config, mode="claude", new_session=True)
+
+        mock_exec.assert_called_once()
+        cmd = mock_exec.call_args[0][1]
+        assert "claude" in cmd
+        assert "--continue" not in cmd
+
     def test_uses_default_repo_when_set(self) -> None:
         """Claude mode cds into profile.sandbox.default_repo before launching."""
         report = MagicMock(healthy=True)
@@ -258,6 +275,49 @@ class TestBothMode:
         cmd = mock_exec.call_args[0][1]
         assert "opencode" in cmd
         assert "claude" not in cmd
+
+    def test_both_mode_opencode_half_resumes_by_default(self) -> None:
+        """Mode 'both' OpenCode half resumes via 'opencode -c' by default (data-model matrix)."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+        profile = MagicMock()
+        profile.sandbox.default_repo = ""
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.open_cmd.subprocess.run"),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=0) as mock_exec,
+        ):
+            open_sandbox("mybox", config, mode="both")
+
+        mock_exec.assert_called_once()
+        cmd = mock_exec.call_args[0][1]
+        assert "opencode -c" in cmd
+
+    def test_both_mode_opencode_half_honors_new_session(self) -> None:
+        """Mode 'both' OpenCode half honors new_session=True with plain 'opencode'."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+        profile = MagicMock()
+        profile.sandbox.default_repo = ""
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.find_vscode_bin", return_value="/usr/bin/code"),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_pipe", return_value="yes"),
+            patch("sandboxctl.open_cmd.subprocess.run"),
+            patch("sandboxctl.profile.load_profile", return_value=profile),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=0) as mock_exec,
+        ):
+            open_sandbox("mybox", config, mode="both", new_session=True)
+
+        mock_exec.assert_called_once()
+        cmd = mock_exec.call_args[0][1]
+        assert "opencode" in cmd
+        assert "opencode -c" not in cmd
 
 
 class TestExtensionInstallHook:
@@ -461,6 +521,90 @@ class TestOpenOpenCodeMode:
 
         cmd = mock_exec.call_args[0][1]
         assert "opencode" in cmd
+
+    def test_default_resumes_with_continue_flag(self) -> None:
+        """opencode mode resumes the most recent session via 'opencode -c' (FR-001)."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=0) as mock_exec,
+        ):
+            open_sandbox("mybox", config, mode="opencode")
+
+        mock_exec.assert_called_once()
+        cmd = mock_exec.call_args[0][1]
+        assert "opencode -c" in cmd
+
+    def test_falls_back_to_fresh_when_continue_fails(self) -> None:
+        """When 'opencode -c' returns non-zero (no prior session), a fresh session starts (FR-003)."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        exec_results = iter([1, 0])
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", side_effect=exec_results) as mock_exec,
+        ):
+            open_sandbox("mybox", config, mode="opencode")
+
+        assert mock_exec.call_count == 2
+        first_cmd = mock_exec.call_args_list[0][0][1]
+        second_cmd = mock_exec.call_args_list[1][0][1]
+        assert "opencode -c" in first_cmd
+        assert "opencode -c" not in second_cmd
+        assert "opencode" in second_cmd
+
+    def test_new_session_skips_continue_flag(self) -> None:
+        """new_session=True launches plain 'opencode' with no continue flag (FR-002)."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=0) as mock_exec,
+        ):
+            open_sandbox("mybox", config, mode="opencode", new_session=True)
+
+        mock_exec.assert_called_once()
+        cmd = mock_exec.call_args[0][1]
+        assert "opencode" in cmd
+        assert "opencode -c" not in cmd
+
+    def test_new_session_falls_back_to_shell_on_failure(self) -> None:
+        """new_session=True still falls back to sandbox_connect when exec fails (FR-006)."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError),
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive", return_value=1),
+            patch("sandboxctl.open_cmd.osh.sandbox_connect") as mock_connect,
+        ):
+            open_sandbox("mybox", config, mode="opencode", new_session=True)
+
+        mock_connect.assert_called_once_with("mybox")
+
+    def test_shell_mode_ignores_new_session(self) -> None:
+        """new_session=True with shell mode is a no-op: shell opens normally (FR-004)."""
+        report = MagicMock(healthy=True)
+        config = MagicMock()
+
+        with (
+            patch("sandboxctl.open_cmd.diagnose", return_value=report),
+            patch("sandboxctl.open_cmd.osh.sandbox_connect") as mock_connect,
+            patch("sandboxctl.open_cmd.osh.sandbox_exec_interactive") as mock_exec,
+        ):
+            open_sandbox("mybox", config, mode="shell", new_session=True)
+
+        mock_connect.assert_called_once_with("mybox")
+        mock_exec.assert_not_called()
 
 
 class TestOpenCodeServerMode:

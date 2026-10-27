@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.30.1 (2026-10-27)
+
+### Bug Fixes
+
+- **config**: Allow uppercase characters in custom provider model IDs
+  ([`0969763`](https://github.com/butler54/sandboxctl/commit/0969763b802e6bc5fba1460bebd8963e6c28675c))
+
+
 ## v1.30.0 (2026-10-27)
 
 ### Features

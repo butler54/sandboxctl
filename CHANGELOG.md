@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.30.0 (2026-10-27)
+
+### Features
+
+- **open**: Resume most recent OpenCode session by default, add --new flag
+  ([#223](https://github.com/butler54/sandboxctl/pull/223),
+  [`6fe9b82`](https://github.com/butler54/sandboxctl/commit/6fe9b82ab73e514c0da35e21c72b65a809bf42a7))
+
+
 ## v1.29.1 (2026-10-14)
 
 ### Bug Fixes

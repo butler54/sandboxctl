@@ -972,6 +972,38 @@ class TestCreateSandbox:
         assert mock_policy_set.call_args.args[0] == "test"
         assert mock_policy_set.call_args.args[1].name == "policy.yaml"
 
+    def test_auto_open_uses_default_open(self, tmp_path: Path) -> None:
+        """Post-create auto-open invokes open_sandbox with default parameters (003-opencode-open-continue US3)."""
+        profile = Profile(name="test", sandbox=SandboxConfig(image="ghcr.io/org/img:v1"))
+        policy_dir = tmp_path / "profiles" / "test"
+        policy_dir.mkdir(parents=True)
+        (policy_dir / "policy.yaml").write_text("network: {}")
+
+        config = MagicMock(
+            default_model="claude-sonnet-4-20250514",
+            default_theme="dark",
+            ssh_key=MagicMock(exists=MagicMock(return_value=False)),
+            vertex_project_id="proj",
+            vertex_region="us-central1",
+            profiles_dir=tmp_path / "profiles",
+            config_dir=tmp_path,
+        )
+
+        with (
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.create.setup_providers", return_value=["github", "vertex-claude"]),
+            patch("sandboxctl.create.osh.sandbox_create"),
+            patch("sandboxctl.create.osh.update_local_ssh_config"),
+            patch("sandboxctl.create.osh.policy_set"),
+            patch("sandboxctl.create.post_launch_setup"),
+            patch("sandboxctl.create.clone_repos", return_value=[]),
+            patch("sandboxctl.create.generate_workspace"),
+            patch("sandboxctl.open_cmd.open_sandbox") as mock_open,
+        ):
+            create_sandbox(profile, config, open_editor=True)
+
+        mock_open.assert_called_once_with("test", config)
+
     def test_ephemeral_passes_no_keep(self, tmp_path: Path) -> None:
         profile = Profile(name="test", sandbox=SandboxConfig(image="img:v1"))
         config = MagicMock(

@@ -50,6 +50,7 @@ def open_sandbox(
     name: str,
     config: SandboxctlConfig,
     mode: str = "opencode",
+    new_session: bool = False,
 ) -> None:
     # VSCODE-04 Layer 2: Container-death recovery
     report = diagnose(name, auto_recover=True)
@@ -112,8 +113,20 @@ def open_sandbox(
     if mode in ("both", "opencode"):
         default_repo = _get_default_repo(name, config)
         base_dir = f"/sandbox/workspace/{default_repo}" if default_repo else "/sandbox"
-        typer.echo(f"Launching OpenCode in: {base_dir}")
-        result = osh.sandbox_exec_interactive(name, f"cd {base_dir} && opencode")
+
+        if new_session:
+            typer.echo(f"Launching OpenCode (new session) in: {base_dir}")
+            result = osh.sandbox_exec_interactive(name, f"cd {base_dir} && opencode")
+        else:
+            # 003-opencode-open-continue: resume the most recent session by
+            # default (FR-001); fall back to a fresh session when there is
+            # nothing to resume (FR-003), mirroring the claude-mode pattern.
+            typer.echo(f"Resuming OpenCode session in: {base_dir}")
+            result = osh.sandbox_exec_interactive(name, f"cd {base_dir} && opencode -c")
+            if result != 0:
+                typer.echo("Starting new OpenCode session...")
+                result = osh.sandbox_exec_interactive(name, f"cd {base_dir} && opencode")
+
         if result != 0:
             typer.echo("\nCould not start OpenCode. Connecting via shell.")
             typer.echo(f"  Run inside sandbox: cd {base_dir} && opencode")
@@ -146,16 +159,22 @@ def open_sandbox(
         default_repo = _get_default_repo(name, config)
         base_dir = f"/sandbox/workspace/{default_repo}" if default_repo else "/sandbox"
 
-        typer.echo(f"Resuming Claude Code session in: {base_dir}")
-        resume_cmd = f"cd {base_dir} && claude --continue"
-        result = osh.sandbox_exec_interactive(name, resume_cmd)
+        if new_session:
+            # 003-opencode-open-continue (FR-005): --new skips the resume attempt.
+            typer.echo(f"Starting new Claude Code session in: {base_dir}")
+            result = osh.sandbox_exec_interactive(name, f"cd {base_dir} && claude")
+        else:
+            typer.echo(f"Resuming Claude Code session in: {base_dir}")
+            resume_cmd = f"cd {base_dir} && claude --continue"
+            result = osh.sandbox_exec_interactive(name, resume_cmd)
 
-        if result == 0:
-            return
+            if result == 0:
+                return
 
-        typer.echo("Starting new Claude Code session...")
-        fresh_cmd = f"cd {base_dir} && claude"
-        result = osh.sandbox_exec_interactive(name, fresh_cmd)
+            typer.echo("Starting new Claude Code session...")
+            fresh_cmd = f"cd {base_dir} && claude"
+            result = osh.sandbox_exec_interactive(name, fresh_cmd)
+
         if result != 0:
             typer.echo("\nExisting session may be running. Reconnecting via shell.")
             typer.echo(f"  Resume with: cd {base_dir} && claude --continue")

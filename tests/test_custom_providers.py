@@ -114,11 +114,15 @@ class TestCustomProviderConfig:
         oc = OpencodeConfig(
             custom_providers={
                 "enmaas": CustomProviderConfig(
-                    base_url="https://api.enmaas.devshift.net/v1", models=["rits/zai-org/glm-5-3"]
+                    base_url="https://api.enmaas.devshift.net/v1",
+                    models=["rits/zai-org/glm-5-3", "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017"],
                 )
             }
         )
-        assert oc.custom_providers["enmaas"].models == ["rits/zai-org/glm-5-3"]
+        assert oc.custom_providers["enmaas"].models == [
+            "rits/zai-org/glm-5-3",
+            "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017",
+        ]
 
     def test_duplicate_model_ids_rejected(self) -> None:
         with pytest.raises(ValueError, match="must not contain duplicate"):

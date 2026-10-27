@@ -179,11 +179,12 @@ class OpencodeConfig(_SubConfig):
         from urllib.parse import urlparse
 
         id_pattern = re.compile(r"^[a-z0-9]([a-z0-9._-]{1,31})$")
-        # Custom provider model IDs may contain "/" — namespaced upstream IDs
-        # such as EnMaaS's "rits/zai-org/glm-5-3" are sent verbatim to the
-        # endpoint, and OpenCode's model references allow slashes in the part
-        # after the provider prefix.
-        model_pattern = re.compile(r"^[a-z0-9][a-z0-9._/-]{0,127}$")
+        # Custom provider model IDs may contain "/" and uppercase — namespaced
+        # upstream IDs such as EnMaaS's "rits/zai-org/glm-5-3" and
+        # "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017" are sent verbatim to
+        # the endpoint, and OpenCode's model references allow slashes in the
+        # part after the provider prefix.
+        model_pattern = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$")
         env_pattern = re.compile(r"^[A-Z][A-Z0-9_]*$")
         service_pattern = re.compile(r"^[a-zA-Z0-9._/-]+$")
 

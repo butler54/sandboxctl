@@ -32,6 +32,8 @@ _BACKEND_CLI = "cli"
 # Process-wide state (see data-model.md "Backend selection"):
 _backend_decision: str | None = None
 _client: Any = None
+# 005: per-gateway client cache, keyed by openshell gateway name.
+_clients: dict[str, Any] = {}
 
 
 class SdkUnavailable(Exception):
@@ -61,29 +63,57 @@ def sdk_enabled() -> bool:
     return _backend_mode() != _BACKEND_CLI
 
 
-def _build_client() -> Any:
+def _build_client(gateway: str | None = None) -> Any:
     """Import and construct the SDK client (patched in tests)."""
     from openshell import SandboxClient
 
     # auto_refresh=False: fail-closed consumer of the CLI's token cache
     # (FR-012) — no background refresh, no writes to shared state.
-    return SandboxClient.from_active_cluster(auto_refresh=False)
+    # 005: an explicit gateway name constructs a client for that gateway;
+    # None uses the active cluster (004 behavior).
+    return SandboxClient.from_active_cluster(cluster=gateway, auto_refresh=False)
 
 
-def get_client() -> Any:
-    """Return the process-wide SDK client or raise ``SdkUnavailable``."""
+def get_client(gateway: str | None = None) -> Any:
+    """Return an SDK client, or raise ``SdkUnavailable``.
+
+    ``gateway=None`` (004 behavior): the process-wide active-cluster client;
+    construction failure falls back to the CLI via ``SdkUnavailable``.
+
+    ``gateway=<name>`` (005): a cached per-gateway client. Construction
+    failure for a *named* gateway is a loud ``SandboxError`` — never a
+    CLI-backend fallback and never a redirect to the active gateway
+    (research R-8) — except an absent SDK (ImportError), which falls back
+    to the CLI path with the gateway env injected.
+    """
     global _client
-    if _client is not None:
+    if gateway is None:
+        if _client is not None:
+            return _client
+        if not sdk_enabled():
+            raise SdkUnavailable(f"{_BACKEND_ENV}={_BACKEND_CLI} forces the CLI backend")
+        try:
+            _client = _build_client()
+        except SdkUnavailable:
+            raise
+        except Exception as exc:  # construction failure -> CLI fallback (R-3)
+            raise SdkUnavailable(f"openshell SDK client could not initialize: {exc}") from exc
         return _client
-    if not sdk_enabled():
-        raise SdkUnavailable(f"{_BACKEND_ENV}={_BACKEND_CLI} forces the CLI backend")
+
+    cached = _clients.get(gateway)
+    if cached is not None:
+        return cached
     try:
-        _client = _build_client()
-    except SdkUnavailable:
-        raise
-    except Exception as exc:  # construction failure -> CLI fallback (R-3)
-        raise SdkUnavailable(f"openshell SDK client could not initialize: {exc}") from exc
-    return _client
+        cached = _build_client(gateway)
+    except ImportError as exc:
+        # SDK absent: the CLI can still reach the named gateway (the facade
+        # injects OPENSHELL_GATEWAY), so this remains a backend fallback.
+        raise SdkUnavailable(f"openshell SDK not installed: {exc}") from exc
+    except Exception as exc:
+        # Registry/auth problem for the named gateway: loud, never redirected.
+        raise _map_error(f"initialize client for gateway '{gateway}'", exc) from exc
+    _clients[gateway] = cached
+    return cached
 
 
 def _map_error(action: str, exc: Exception) -> Exception:
@@ -99,50 +129,56 @@ def _map_error(action: str, exc: Exception) -> Exception:
 
 
 def _run_sdk(action: str, operation: Callable[[], Any]) -> Any:
-    """Run an SDK operation with error mapping; never falls back mid-flight."""
-    get_client()  # raises SdkUnavailable at acquisition time only
+    """Run an SDK operation with error mapping; never falls back mid-flight.
+
+    ``SdkUnavailable`` (raised by the operation's own ``get_client`` at
+    acquisition time) propagates for the facade to fall back to the CLI;
+    already-mapped facade errors (e.g. named-gateway init failures, R-8)
+    re-raise unchanged; every other failure maps to a loud ``SandboxError``.
+    """
+    from sandboxctl.openshell import SandboxError as FacadeSandboxError
+
     try:
         return operation()
     except SdkUnavailable:
+        raise
+    except FacadeSandboxError:
         raise
     except Exception as exc:
         raise _map_error(action, exc) from exc
 
 
-def exec_command(name: str, command: list[str], stdin: bytes | None = None) -> Any:
+def exec_command(name: str, command: list[str], stdin: bytes | None = None, gateway: str | None = None) -> Any:
     """Execute a command in a sandbox; returns the SDK ExecResult."""
-    workspace = resolve_workspace()
 
     def operation() -> Any:
-        client = get_client()
-        return client.exec(name, command, workspace=workspace, stdin=stdin)
+        client = get_client(gateway)
+        return client.exec(name, command, workspace=resolve_workspace(), stdin=stdin)
 
     return _run_sdk(f"exec in sandbox '{name}'", operation)
 
 
-def delete_sandbox(name: str) -> Any:
+def delete_sandbox(name: str, gateway: str | None = None) -> Any:
     """Delete a sandbox; returns the SDK DeletionResult.
 
     ``allow_missing=True`` preserves the CLI's fire-and-forget semantics for
     absent sandboxes (parity, SC-003). Real gateway errors — including a
     workspace mismatch — raise ``SandboxError`` loudly (FR-010).
     """
-    workspace = resolve_workspace()
 
     def operation() -> Any:
-        client = get_client()
-        return client.delete(name, workspace=workspace, allow_missing=True)
+        client = get_client(gateway)
+        return client.delete(name, workspace=resolve_workspace(), allow_missing=True)
 
     return _run_sdk(f"delete sandbox '{name}'", operation)
 
 
-def wait_deleted(name: str, timeout_seconds: float = 60.0) -> None:
+def wait_deleted(name: str, timeout_seconds: float = 60.0, gateway: str | None = None) -> None:
     """Block until a sandbox is gone (used by restart before re-creating)."""
-    workspace = resolve_workspace()
 
     def operation() -> None:
-        client = get_client()
-        client.wait_deleted(name, workspace=workspace, timeout_seconds=timeout_seconds)
+        client = get_client(gateway)
+        client.wait_deleted(name, workspace=resolve_workspace(), timeout_seconds=timeout_seconds)
 
     _run_sdk(f"wait for deletion of sandbox '{name}'", operation)
 
@@ -152,3 +188,4 @@ def _reset_for_tests() -> None:
     global _backend_decision, _client
     _backend_decision = None
     _client = None
+    _clients.clear()

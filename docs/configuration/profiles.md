@@ -302,3 +302,23 @@ Bare-minimum profile with empty sections -- no repos, no extras.
     ```bash
     cp examples/profiles/dev.toml ~/.config/sandboxctl/profiles/my-project.toml
     ```
+
+## Gateway Selection
+
+A profile can target a specific openshell gateway (see
+[Gateways](index.md#gateways) in the configuration reference):
+
+```toml
+# Target the openshell gateway registered as "k8s-prod"
+gateway = "k8s-prod"
+
+[sandbox]
+image = "ghcr.io/..."
+```
+
+- The key must reference a `[gateways.<key>]` entry in `config.toml`; an
+  unknown key fails loudly at creation, before any provisioning starts.
+- Omit the key to use the CLI's currently active gateway (the default).
+- The sandbox→gateway association is recorded at creation, so later
+  operations (`open`, `delete`, `restart`, `status`, `doctor`) route to
+  that gateway automatically.

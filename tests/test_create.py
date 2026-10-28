@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from sandboxctl.config import GatewayEntry
 from sandboxctl.create import (
     clone_repos,
     create_sandbox,
@@ -29,6 +30,7 @@ from sandboxctl.create import (
     stage_skills,
 )
 from sandboxctl.models import Profile, SandboxConfig, WorkspaceConfig
+from sandboxctl.openshell import SandboxError
 
 
 class TestStageSkills:
@@ -285,7 +287,7 @@ class TestGenerateProviderYaml:
         mock_import.assert_called_once()
         yaml_path = mock_import.call_args[0][0]
         assert mock_import.call_args[0][1] == "google-vertex-ai"
-        mock_create.assert_called_once_with("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
+        mock_create.assert_called_once_with("vertex-claude", "google-vertex-ai", from_gcloud_adc=True, gateway=None)
 
         # The OpenShell 0.1 profile supplies the ADC credential schema before
         # sandboxctl creates the provider from it.
@@ -323,7 +325,7 @@ class TestGenerateProviderYaml:
         ):
             providers = setup_providers(config)
         assert "anthropic-direct" in providers
-        mock_create.assert_called_once_with("anthropic-direct", "anthropic", "ANTHROPIC_API_KEY=sk-test")
+        mock_create.assert_called_once_with("anthropic-direct", "anthropic", "ANTHROPIC_API_KEY=sk-test", gateway=None)
 
     def test_github_provider_rehydrated_from_keychain(self, tmp_path: Path) -> None:
         config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)
@@ -338,7 +340,7 @@ class TestGenerateProviderYaml:
         profile_path = mock_import.call_args[0][0]
         assert mock_import.call_args[0][1] == "github"
         assert "id: github" in profile_path.read_text()
-        mock_create.assert_any_call("github", "github", "GITHUB_TOKEN=token")
+        mock_create.assert_any_call("github", "github", "GITHUB_TOKEN=token", gateway=None)
 
     def test_provider_profile_inherits_rendered_policy_enforcement(self, tmp_path: Path) -> None:
         policy = tmp_path / "policy.yaml"
@@ -977,6 +979,82 @@ class TestGenerateWorkspace:
 
 
 class TestCreateSandbox:
+    def test_create_on_gateway_threads_and_records_association(self, tmp_path: Path) -> None:
+        """005 US2/T011: profile gateway routes provisioning and is recorded."""
+        from sandboxctl.gateways import lookup_gateway_association
+
+        profile = Profile(
+            name="test",
+            sandbox=SandboxConfig(image="ghcr.io/org/img:v1"),
+            gateway="k8s-prod",
+        )
+        policy_dir = tmp_path / "profiles" / "test"
+        policy_dir.mkdir(parents=True)
+        (policy_dir / "policy.yaml").write_text("network: {}")
+
+        config = MagicMock(
+            default_model="claude-sonnet-4-20250514",
+            default_theme="dark",
+            ssh_key=MagicMock(exists=MagicMock(return_value=False)),
+            vertex_project_id="",
+            vertex_region="global",
+            profiles_dir=tmp_path / "profiles",
+            config_dir=tmp_path,
+        )
+        config.gateways = {"k8s-prod": GatewayEntry()}
+
+        with (
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.create.setup_providers", return_value=[]) as mock_providers,
+            patch("sandboxctl.create.osh.sandbox_create") as mock_create,
+            patch("sandboxctl.create.osh.gateway_status") as mock_gw_status,
+            patch("sandboxctl.create.osh.policy_set") as mock_policy,
+            patch("sandboxctl.create.osh.update_local_ssh_config"),
+            patch("sandboxctl.create.post_launch_setup"),
+            patch("sandboxctl.create.clone_repos", return_value=[]),
+            patch("sandboxctl.create.generate_workspace"),
+            patch("sandboxctl.create.record_policy_association"),
+        ):
+            name = create_sandbox(profile, config, open_editor=False)
+
+        assert name == "test"
+        # Reachability verified before provisioning (R-4, FR-008)
+        mock_gw_status.assert_called_once_with("k8s-prod")
+        # Every provisioning call targets the gateway
+        assert mock_create.call_args.kwargs["gateway"] == "k8s-prod"
+        assert mock_providers.call_args.kwargs["gateway"] == "k8s-prod"
+        assert mock_policy.call_args.kwargs["gateway"] == "k8s-prod"
+        # Association recorded for later routing (FR-003)
+        assert lookup_gateway_association(config, "test") == "k8s-prod"
+
+    def test_create_unknown_gateway_key_fails_before_provisioning(self, tmp_path: Path) -> None:
+        """005 FR-008: an unknown gateway key is loud before anything runs."""
+        profile = Profile(
+            name="test",
+            sandbox=SandboxConfig(image="img:v1"),
+            gateway="not-configured",
+        )
+        config = MagicMock(
+            default_model="m",
+            default_theme="d",
+            ssh_key=MagicMock(exists=MagicMock(return_value=False)),
+            vertex_project_id="",
+            profiles_dir=tmp_path / "profiles",
+            config_dir=tmp_path,
+        )
+        config.gateways = {"k8s-prod": GatewayEntry()}
+
+        with (
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.create.osh.sandbox_create") as mock_create,
+            patch("sandboxctl.create.setup_providers") as mock_providers,
+            pytest.raises(SandboxError, match="not-configured"),
+        ):
+            create_sandbox(profile, config, open_editor=False)
+
+        mock_create.assert_not_called()
+        mock_providers.assert_not_called()
+
     def test_happy_path(self, tmp_path: Path) -> None:
         profile = Profile(name="test", sandbox=SandboxConfig(image="ghcr.io/org/img:v1"))
         policy_dir = tmp_path / "profiles" / "test"
@@ -1006,7 +1084,7 @@ class TestCreateSandbox:
             name = create_sandbox(profile, config, open_editor=False)
 
         assert name == "test"
-        mock_ssh.assert_called_once_with("test")
+        mock_ssh.assert_called_once_with("test", gateway=None)
         assert mock_policy_set.call_args.args[0] == "test"
         assert mock_policy_set.call_args.args[1].name == "policy.yaml"
 

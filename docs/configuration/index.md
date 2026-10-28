@@ -122,6 +122,35 @@ config-file values — they are not mapped into `config.toml` sections.
 See the [installation section](../../README.md#optional-openshell-sdk-backend) for
 the `sdk` extra.
 
+## Gateways
+
+Multiple openshell gateways are supported (for example, a local gateway and
+an openshell instance on a Kubernetes cluster). Gateways are **referenced by
+name**: each entry points at a gateway registered with the openshell CLI
+(`openshell` owns endpoints, TLS, and authentication under
+`~/.config/openshell/gateways/<name>/`), so sandboxctl never stores
+credential material.
+
+```toml
+[gateways.k8s-prod]        # key = the name you use in profiles
+# openshell_name = "k8s-prod"   # optional: the registered name, if different
+kubernetes = true          # optional type hint: enables cluster-access checks in doctor
+```
+
+- **Default**: with no `[gateways]` section and no per-profile `gateway`
+  key, every operation targets the CLI's currently active gateway — exactly
+  the previous behavior.
+- **Routing**: a profile's `gateway = "<key>"` records a sandbox→gateway
+  association at creation; every later operation (open, delete, restart,
+  status, doctor, connect) targets that gateway regardless of the CLI's
+  active gateway. A missing or unreachable gateway is a loud error —
+  operations never silently fall back to another gateway.
+- **Visibility**: `sandboxctl list`, `status`, and `doctor` cover all
+  configured gateways plus the active one; each sandbox row identifies its
+  gateway, and unreachable gateways are reported rather than omitted.
+- **Secrets**: gateway entries hold only names and a type hint. Provider
+  credentials continue to flow through the secure credential store.
+
 ### Precedence
 
 Configuration sources are loaded in this order, with earlier sources taking

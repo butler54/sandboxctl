@@ -435,26 +435,35 @@ def _ensure_github_provider_yaml(config_dir: Path, policy_path: Path | None = No
     return _ensure_provider_yaml(config_dir, "github", GITHUB_PROFILE, policy_path)
 
 
-def setup_providers(config: SandboxctlConfig, policy_path: Path | None = None) -> list[str]:
-    """Register providers with OpenShell. Returns list of provider names to attach."""
+def setup_providers(
+    config: SandboxctlConfig,
+    policy_path: Path | None = None,
+    gateway: str | None = None,
+) -> list[str]:
+    """Register providers with OpenShell. Returns list of provider names to attach.
+
+    ``gateway`` (005): the openshell gateway name to register providers on —
+    providers are per-gateway objects, so creation must target the same
+    gateway the sandbox will be created on (spec FR-005).
+    """
     providers: list[str] = []
 
     github_token = get_credential(config.keychain_github, os.environ.get("USER", "sandboxctl"))
     if github_token:
         github_profile = _ensure_github_provider_yaml(config.config_dir, policy_path)
-        osh.provider_profile_import(github_profile, "github")
-        osh.provider_create("github", "github", f"GITHUB_TOKEN={github_token}")
+        osh.provider_profile_import(github_profile, "github", gateway=gateway)
+        osh.provider_create("github", "github", f"GITHUB_TOKEN={github_token}", gateway=gateway)
         providers.append("github")
     else:
         typer.echo("  GitHub provider: no keychain entry, skipped")
 
     if config.vertex_project_id:
-        osh.settings_set("providers_v2_enabled", "true")
+        osh.settings_set("providers_v2_enabled", "true", gateway=gateway)
         yaml_path = _ensure_vertex_provider_yaml(config.config_dir, policy_path)
         # OpenShell 0.1 requires the profile to exist before a provider can be
         # created from it. The helper updates our managed global profile when
         # it was imported by an earlier sandboxctl run.
-        osh.provider_profile_import(yaml_path, "google-vertex-ai")
+        osh.provider_profile_import(yaml_path, "google-vertex-ai", gateway=gateway)
         # Provider type must be a real OpenShell provider profile id ("google-vertex-ai"),
         # not the provider *name* — the previous "vertex-claude" type made provider_create's
         # upsert fail silently (delete succeeds, create is rejected: "unsupported provider
@@ -462,12 +471,12 @@ def setup_providers(config: SandboxctlConfig, policy_path: Path | None = None) -
         # secret and isn't part of this profile's credential schema (token-only:
         # service_account_key/service_account_token/gcloud_adc_token), so it's exported
         # directly into the sandbox's .bashrc in post_launch_setup instead.
-        osh.provider_create("vertex-claude", "google-vertex-ai", from_gcloud_adc=True)
+        osh.provider_create("vertex-claude", "google-vertex-ai", from_gcloud_adc=True, gateway=gateway)
         providers.append("vertex-claude")
     else:
         api_key = get_credential(config.keychain_github, "anthropic-api-key") or ""
         if api_key:
-            osh.provider_create("anthropic-direct", "anthropic", f"ANTHROPIC_API_KEY={api_key}")
+            osh.provider_create("anthropic-direct", "anthropic", f"ANTHROPIC_API_KEY={api_key}", gateway=gateway)
             providers.append("anthropic-direct")
 
     # Custom OpenAI-compatible providers (#178, #205): registered like the managed
@@ -482,11 +491,11 @@ def setup_providers(config: SandboxctlConfig, policy_path: Path | None = None) -
             custom_provider_profile(provider_id, provider.display_name, provider.base_url, provider.api_key_env),
             policy_path,
         )
-        osh.provider_profile_import(yaml_path, provider_id)
+        osh.provider_profile_import(yaml_path, provider_id, gateway=gateway)
         credential = get_credential(provider.keychain_service, account_user)
         if not credential:
             raise RuntimeError(_missing_credential_message(provider_id, provider.keychain_service))
-        osh.provider_create(provider_id, provider_id, f"{provider.api_key_env}={credential}")
+        osh.provider_create(provider_id, provider_id, f"{provider.api_key_env}={credential}", gateway=gateway)
         providers.append(provider_id)
 
     return providers
@@ -974,7 +983,18 @@ def create_sandbox(
         policy_path = profiles_dir / profile.name / profile.sandbox.policy
         policy_path = prepare_policy_for_apply(policy_path, profiles_dir, Path(policy_root))
 
-        providers = setup_providers(config, policy_path)
+        # 005 multi-gateway: resolve the profile's gateway once (loud on
+        # unknown keys, FR-008) and verify reachability before any
+        # provisioning starts (research R-4) — never a partial create on the
+        # wrong or dead gateway.
+        from sandboxctl import gateways
+
+        gateway_name = gateways.resolve_openshell_name(config, profile.gateway) if profile.gateway else None
+        if gateway_name is not None:
+            typer.echo(f"  Gateway: {gateway_name}")
+            osh.gateway_status(gateway_name)  # loud SandboxError on failure
+
+        providers = setup_providers(config, policy_path, gateway=gateway_name)
         typer.echo(f"  Providers: {', '.join(providers)}")
 
         typer.echo("\nCreating sandbox...")
@@ -986,13 +1006,20 @@ def create_sandbox(
                 providers=providers,
                 upload=stage_dir,
                 no_keep=ephemeral,
+                gateway=gateway_name,
             )
         finally:
             if cleanup_dir:
                 shutil.rmtree(cleanup_dir, ignore_errors=True)
 
+        # Record the gateway association as soon as the sandbox exists so all
+        # subsequent setup operations (exec/upload/policy) route to it —
+        # including the facade's automatic association resolution (R-2/R-4).
+        if profile.gateway:
+            gateways.record_gateway_association(config, name, profile.gateway)
+
         if policy_path.exists():
-            osh.policy_set(name, policy_path)
+            osh.policy_set(name, policy_path, gateway=gateway_name)
             typer.echo("  Policy re-applied (TLS directives active)")
 
     typer.echo(f"\nSandbox '{name}' created.")
@@ -1004,7 +1031,7 @@ def create_sandbox(
     except Exception:  # noqa: BLE001
         typer.echo("  Policy association: not recorded (non-fatal)")
 
-    osh.update_local_ssh_config(name)
+    osh.update_local_ssh_config(name, gateway=gateway_name)
     typer.echo("  SSH config: updated")
 
     post_launch_setup(name, profile, config)

@@ -259,7 +259,7 @@ class TestSetupProviders:
         config = _config_with_custom_providers(tmp_path)
         order: list[tuple[str, str]] = []
 
-        def fake_import(path: Path, profile_id: str) -> None:
+        def fake_import(path: Path, profile_id: str, **_kwargs: object) -> None:
             order.append(("import", profile_id))
 
         def fake_create(name: str, profile_type: str, *_args: object, **_kwargs: object) -> None:
@@ -278,7 +278,7 @@ class TestSetupProviders:
         assert "my-llm" in providers
         # OpenShell 0.1 requires the profile to exist before provider creation (#181).
         assert order.index(("import", "my-llm")) < order.index(("create", "my-llm"))
-        mock_create.assert_any_call("my-llm", "my-llm", "MY_LLM_API_KEY=sk-custom")
+        mock_create.assert_any_call("my-llm", "my-llm", "MY_LLM_API_KEY=sk-custom", gateway=None)
 
         yaml_path = tmp_path / "providers" / "my-llm.yaml"
         assert yaml_path.exists()
@@ -404,7 +404,7 @@ class TestSetupCmdProviders:
         )
         order: list[tuple[str, str]] = []
 
-        def fake_import(path: Path, profile_id: str) -> None:
+        def fake_import(path: Path, profile_id: str, **_kwargs: object) -> None:
             order.append(("import", profile_id))
 
         def fake_create(name: str, profile_type: str, *_args: object, **_kwargs: object) -> None:

@@ -96,6 +96,9 @@ class Profile(BaseModel):
 
     name: str
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
+    # 005: gateway key referencing a [gateways] entry in config.toml;
+    # None = the CLI-active gateway (spec FR-001).
+    gateway: str | None = None
     workspace: WorkspaceConfig = Field(default_factory=WorkspaceConfig)
     repos: dict[str, list[str]] = Field(default_factory=dict)
     ssh: dict[str, SshHostConfig] = Field(default_factory=dict)

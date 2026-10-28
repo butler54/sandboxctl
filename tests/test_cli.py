@@ -106,7 +106,7 @@ class TestListCommand:
         ):
             result = runner.invoke(app, ["list"])
             assert result.exit_code == 1
-            assert "Could not list sandboxes: not running" in result.output
+            assert "Gateway unreachable — active: not running" in result.output
 
 
 class TestStatusCommand:
@@ -120,7 +120,7 @@ class TestStatusCommand:
         with patch("sandboxctl.openshell.gateway_status", side_effect=SandboxError("down")):
             result = runner.invoke(app, ["status"])
             assert result.exit_code == 1
-            assert "Could not reach gateway: down" in result.output
+            assert "Gateway unreachable — active: down" in result.output
 
     def test_status_stderr_error(self) -> None:
         with patch(

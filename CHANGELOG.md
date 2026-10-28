@@ -2,6 +2,43 @@
 
 <!-- version list -->
 
+## v1.31.0 (2026-10-28)
+
+### Bug Fixes
+
+- **ci**: Satisfy pre-commit gate; document backend override in config docs
+  ([#225](https://github.com/butler54/sandboxctl/pull/225),
+  [`13f02f4`](https://github.com/butler54/sandboxctl/commit/13f02f4f179cb3799738d4df1e8cee944ddf03f3))
+
+### Chores
+
+- Bump actions/create-github-app-token from 3.2.0 to 3.3.0
+  ([#219](https://github.com/butler54/sandboxctl/pull/219),
+  [`7413f95`](https://github.com/butler54/sandboxctl/commit/7413f957515a24957cd9a42ff7a3be4555cc0b19))
+
+- Bump pypa/gh-action-pypi-publish from 1.14.2 to 1.14.3
+  ([#221](https://github.com/butler54/sandboxctl/pull/221),
+  [`eb5919f`](https://github.com/butler54/sandboxctl/commit/eb5919f5e110c772770cad1a0d565ac8cc43e394))
+
+- Bump step-security/harden-runner from 2.22.1 to 2.22.2
+  ([#222](https://github.com/butler54/sandboxctl/pull/222),
+  [`279c3f9`](https://github.com/butler54/sandboxctl/commit/279c3f9f8965f4b35abbbdb74d22660cde7fe267))
+
+- Bump the codeql-action group with 3 updates
+  ([#220](https://github.com/butler54/sandboxctl/pull/220),
+  [`47aa57d`](https://github.com/butler54/sandboxctl/commit/47aa57d37ab1da176ae0549d0af7fb06a9279c90))
+
+### Features
+
+- **openshell**: Route non-interactive exec/delete through the openshell SDK
+  ([#225](https://github.com/butler54/sandboxctl/pull/225),
+  [`13f02f4`](https://github.com/butler54/sandboxctl/commit/13f02f4f179cb3799738d4df1e8cee944ddf03f3))
+
+- **openshell**: Route non-interactive exec/delete through the openshell SDK (Phase 1)
+  ([#225](https://github.com/butler54/sandboxctl/pull/225),
+  [`13f02f4`](https://github.com/butler54/sandboxctl/commit/13f02f4f179cb3799738d4df1e8cee944ddf03f3))
+
+
 ## v1.30.1 (2026-10-27)
 
 ### Bug Fixes

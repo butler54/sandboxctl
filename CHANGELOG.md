@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.32.0 (2026-10-28)
+
+### Features
+
+- **gateways**: Multi-gateway support — per-sandbox gateway routing
+  ([#226](https://github.com/butler54/sandboxctl/pull/226),
+  [`79ebbce`](https://github.com/butler54/sandboxctl/commit/79ebbce17ca2f1a0507bbd60e4de9c487a702e0a))
+
+
 ## v1.31.0 (2026-10-28)
 
 ### Bug Fixes

@@ -134,6 +134,7 @@ configuration.
 |---|---|
 | `sandboxctl create --profile <name>` | Create a sandbox from a profile |
 | `sandboxctl open <name>` | Open a sandbox (default: OpenCode resuming the most recent session; `--new` for a fresh session) |
+| `sandboxctl create --profile <name>` | Create a sandbox from a profile (optionally on a named [gateway](docs/configuration/index.md#gateways)) |
 | `sandboxctl restart <name>` | Delete and recreate a sandbox (with data loss warning) |
 | `sandboxctl delete <name>` | Delete a sandbox |
 

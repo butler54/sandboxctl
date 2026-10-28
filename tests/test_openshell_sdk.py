@@ -203,6 +203,58 @@ class TestBackendSelection:
         assert openshell_sdk.sdk_enabled() is True
 
 
+class TestPerGatewayClients:
+    """005: per-gateway client cache (T009) — named gateways never redirect."""
+
+    def test_named_gateway_client_cached_and_cluster_passed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SANDBOXCTL_OPENSHELL_BACKEND", "auto")
+        monkeypatch.setattr(openshell_sdk, "_backend_decision", "auto")
+        built: list[str | None] = []
+        fake = MagicMock()
+
+        def _build(gateway: str | None = None) -> MagicMock:
+            built.append(gateway)
+            return fake
+
+        monkeypatch.setattr(openshell_sdk, "_build_client", _build)
+        openshell_sdk._clients.clear()
+
+        assert openshell_sdk.get_client("gw-a") is fake
+        assert openshell_sdk.get_client("gw-a") is fake  # cached
+        assert openshell_sdk.get_client("gw-b") is fake
+        assert built == ["gw-a", "gw-b"]  # gw-a constructed once
+
+    def test_named_gateway_failure_is_loud_not_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """R-8: a named gateway's construction failure never redirects."""
+        from sandboxctl.openshell import SandboxError as FacadeSandboxError
+
+        monkeypatch.setenv("SANDBOXCTL_OPENSHELL_BACKEND", "auto")
+        monkeypatch.setattr(openshell_sdk, "_backend_decision", "auto")
+        openshell_sdk._clients.clear()
+
+        def _missing(gateway: str | None = None) -> object:
+            raise RuntimeError(f"gateway '{gateway}' not found")
+
+        monkeypatch.setattr(openshell_sdk, "_build_client", _missing)
+        with pytest.raises(FacadeSandboxError) as excinfo:
+            openshell_sdk.get_client("gw-a")
+        assert "gw-a" in str(excinfo.value)
+        assert not isinstance(excinfo.value, openshell_sdk.SdkUnavailable)
+
+    def test_named_gateway_sdk_absent_is_backend_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SDK missing for a named gateway: CLI fallback (env-injected) applies."""
+        monkeypatch.setenv("SANDBOXCTL_OPENSHELL_BACKEND", "auto")
+        monkeypatch.setattr(openshell_sdk, "_backend_decision", "auto")
+        openshell_sdk._clients.clear()
+
+        def _no_sdk(gateway: str | None = None) -> object:
+            raise ImportError("no module")
+
+        monkeypatch.setattr(openshell_sdk, "_build_client", _no_sdk)
+        with pytest.raises(openshell_sdk.SdkUnavailable):
+            openshell_sdk.get_client("gw-a")
+
+
 class TestWorkspaceSeam:
     """004 US3/SC-004: exactly one workspace resolution point (T013)."""
 

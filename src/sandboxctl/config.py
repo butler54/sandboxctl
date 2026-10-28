@@ -29,6 +29,20 @@ class IdentityConfig(_SubConfig):
     user_email: str = ""
 
 
+class GatewayEntry(_SubConfig):
+    """A named gateway reference (005 multi-gateway).
+
+    References a gateway registered with openshell (which owns endpoint,
+    TLS, and OIDC material in ~/.config/openshell/gateways/<name>/) —
+    deliberately carries no endpoint/credential fields (constitution III).
+    """
+
+    # openshell-registered gateway name; default: the [gateways] key itself.
+    openshell_name: str | None = None
+    # Type hint: Kubernetes-hosted gateway (drives diagnostics/derivation).
+    kubernetes: bool = False
+
+
 class DefaultsConfig(_SubConfig):
     model: str = "claude-sonnet-4-20250514"
     theme: str = "dark"
@@ -275,6 +289,7 @@ class SandboxctlConfig(BaseSettings):
     profiles_dir: Path | None = None
 
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
+    gateways: dict[str, GatewayEntry] = Field(default_factory=dict)
     defaults: DefaultsConfig = Field(default_factory=DefaultsConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)

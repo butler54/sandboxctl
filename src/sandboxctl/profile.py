@@ -27,6 +27,7 @@ def load_profile(name: str, config: SandboxctlConfig) -> Profile:
         data = tomllib.load(f)
 
     sandbox = SandboxConfig(**data.get("sandbox", {}))
+    gateway: str | None = data.get("gateway")
     workspace = WorkspaceConfig(**data.get("workspace", {}))
     repos: dict[str, list[str]] = data.get("repos", {})
     ssh: dict[str, SshHostConfig] = {host: SshHostConfig(**cfg) for host, cfg in data.get("ssh", {}).items()}
@@ -41,6 +42,7 @@ def load_profile(name: str, config: SandboxctlConfig) -> Profile:
     return Profile(
         name=name,
         sandbox=sandbox,
+        gateway=gateway,
         workspace=workspace,
         repos=repos,
         ssh=ssh,

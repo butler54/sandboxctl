@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import time
@@ -45,10 +46,57 @@ def _dispatch[T](sdk_op: Callable[[], T], cli_op: Callable[[], T]) -> T:
     return cli_op()
 
 
-def _run_checked_status(args: list[str], action: str) -> subprocess.CompletedProcess[str]:
+# ---------------------------------------------------------------------------
+# Gateway routing (005): resolution + CLI env injection — single points.
+# ---------------------------------------------------------------------------
+
+
+def _target_gateway(name: str, gateway: str | None) -> str | None:
+    """Resolve the openshell gateway name for a sandbox operation (005).
+
+    An explicit ``gateway`` (already an openshell name, resolved by the
+    caller via the gateways seam) wins; otherwise the sandbox's recorded
+    association resolves through the seam; no association = None (the
+    CLI-active gateway, FR-001). A recorded-but-unconfigured key raises
+    loudly (FR-008) — never a silent redirect to the active gateway.
+    """
+    if gateway is not None:
+        return gateway
+    from sandboxctl import gateways
+
+    try:
+        from sandboxctl.config import load_config
+
+        config = load_config()
+    except Exception:  # noqa: BLE001 — config unloadable = no gateway knowledge
+        return None
+    return gateways.resolve_gateway_for_sandbox(name, config)
+
+
+def _cli_env(gateway: str | None) -> dict[str, str] | None:
+    """Subprocess env for CLI calls targeting a non-active gateway (R-1).
+
+    None (inherit the environment untouched) when the target is the active
+    gateway or unspecified — byte-identical invocations (FR-011). This is
+    the single OPENSHELL_GATEWAY injection point (seam audit, FR-010).
+    """
+    if gateway is None:
+        return None
+    from sandboxctl import gateways
+
+    if gateway == gateways.active_gateway_name():
+        return None
+    return {**os.environ, "OPENSHELL_GATEWAY": gateway}
+
+
+def _run_checked_status(
+    args: list[str],
+    action: str,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     """Run a read-only OpenShell command and retain meaningful failure details."""
     try:
-        result = _run(args, check=False)
+        result = _run(args, check=False, env=env)
     except FileNotFoundError as exc:
         raise SandboxError("openshell executable not found") from exc
     except subprocess.TimeoutExpired as exc:
@@ -72,6 +120,7 @@ def _run(
     check: bool = True,
     capture: bool = True,
     stdin_data: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         args,
@@ -79,6 +128,7 @@ def _run(
         capture_output=capture,
         text=True,
         input=stdin_data,
+        env=env,
     )
 
 
@@ -90,6 +140,8 @@ def sandbox_create(
     upload: Path,
     no_keep: bool = False,
     no_git_ignore: bool = True,
+    *,
+    gateway: str | None = None,
 ) -> None:
     cmd = [
         "openshell",
@@ -114,7 +166,7 @@ def sandbox_create(
     # that process without attaching a command and leaves the sandbox ready for
     # post-launch setup.
     cmd.append("--detach")
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True, env=_cli_env(gateway))
     if result.returncode != 0:
         msg = f"sandbox create failed (exit {result.returncode})"
         details = result.stderr.strip() or result.stdout.strip()
@@ -127,21 +179,23 @@ def sandbox_exec(
     name: str,
     command: list[str],
     tty: bool = False,
+    *,
+    gateway: str | None = None,
 ) -> str:
-    return _exec_outcome(name, command, None, tty=tty).stdout
+    return _exec_outcome(name, command, None, tty=tty, gateway=gateway).stdout
 
 
-def sandbox_exec_pipe(name: str, script: str) -> str:
-    return _exec_outcome(name, ["bash"], script).stdout.strip()
+def sandbox_exec_pipe(name: str, script: str, *, gateway: str | None = None) -> str:
+    return _exec_outcome(name, ["bash"], script, gateway=gateway).stdout.strip()
 
 
-def sandbox_exec_pipe_result(name: str, script: str) -> ExecOutcome:
+def sandbox_exec_pipe_result(name: str, script: str, *, gateway: str | None = None) -> ExecOutcome:
     """Like ``sandbox_exec_pipe`` but returns exit code and stderr too.
 
     Raw (unstripped) streams; use for sites that must detect failures the
     stdout-only helper silently discards (004 FR-002).
     """
-    return _exec_outcome(name, ["bash"], script)
+    return _exec_outcome(name, ["bash"], script, gateway=gateway)
 
 
 def _exec_outcome(
@@ -149,14 +203,16 @@ def _exec_outcome(
     command: list[str],
     stdin_data: str | None,
     tty: bool = False,
+    gateway: str | None = None,
 ) -> ExecOutcome:
     """Execute a command in a sandbox on the SDK backend (CLI fallback)."""
+    gw = _target_gateway(name, gateway)
 
     def sdk_op() -> ExecOutcome:
         from sandboxctl import openshell_sdk as sdk
 
         stdin = stdin_data.encode() if stdin_data is not None else None
-        result = sdk.exec_command(name, command, stdin=stdin)
+        result = sdk.exec_command(name, command, stdin=stdin, gateway=gw)
         return ExecOutcome(
             exit_code=result.exit_code,
             stdout=result.stdout,
@@ -169,7 +225,7 @@ def _exec_outcome(
             cmd.append("--tty")
         cmd.append("--")
         cmd.extend(command)
-        result = _run(cmd, check=False, capture=True, stdin_data=stdin_data)
+        result = _run(cmd, check=False, capture=True, stdin_data=stdin_data, env=_cli_env(gw))
         return ExecOutcome(
             exit_code=result.returncode,
             stdout=result.stdout,
@@ -179,7 +235,7 @@ def _exec_outcome(
     return _dispatch(sdk_op, cli_op)
 
 
-def sandbox_exec_interactive(name: str, command: str) -> int:
+def sandbox_exec_interactive(name: str, command: str, *, gateway: str | None = None) -> int:
     cmd = [
         "openshell",
         "sandbox",
@@ -192,34 +248,47 @@ def sandbox_exec_interactive(name: str, command: str) -> int:
         "-lc",
         command,
     ]
-    result = subprocess.run(cmd, check=False)
+    result = subprocess.run(cmd, check=False, env=_cli_env(_target_gateway(name, gateway)))
     return result.returncode
 
 
-def sandbox_delete(name: str) -> None:
+def sandbox_delete(name: str, *, gateway: str | None = None) -> None:
+    gw = _target_gateway(name, gateway)
+
     def sdk_op() -> None:
         from sandboxctl import openshell_sdk as sdk
 
-        sdk.delete_sandbox(name)
+        sdk.delete_sandbox(name, gateway=gw)
 
     def cli_op() -> None:
-        _run(["openshell", "sandbox", "delete", name], check=False, capture=False)
+        _run(
+            ["openshell", "sandbox", "delete", name],
+            check=False,
+            capture=False,
+            env=_cli_env(gw),
+        )
 
     _dispatch(sdk_op, cli_op)
 
 
-def sandbox_wait_deleted(name: str, timeout_seconds: float = 60.0) -> None:
+def sandbox_wait_deleted(name: str, timeout_seconds: float = 60.0, *, gateway: str | None = None) -> None:
     """Block until a sandbox is gone (restart re-creates after this)."""
+    gw = _target_gateway(name, gateway)
 
     def sdk_op() -> None:
         from sandboxctl import openshell_sdk as sdk
 
-        sdk.wait_deleted(name, timeout_seconds=timeout_seconds)
+        sdk.wait_deleted(name, timeout_seconds=timeout_seconds, gateway=gw)
 
     def cli_op() -> None:
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
-            result = _run(["openshell", "sandbox", "get", name], check=False, capture=True)
+            result = _run(
+                ["openshell", "sandbox", "get", name],
+                check=False,
+                capture=True,
+                env=_cli_env(gw),
+            )
             if result.returncode != 0:
                 return
             time.sleep(1.0)
@@ -228,8 +297,10 @@ def sandbox_wait_deleted(name: str, timeout_seconds: float = 60.0) -> None:
     _dispatch(sdk_op, cli_op)
 
 
-def sandbox_list() -> list[dict[str, str]]:
-    result = _run_checked_status(["openshell", "sandbox", "list"], "sandbox list")
+def sandbox_list(gateway: str | None = None) -> list[dict[str, str]]:
+    """List sandboxes on a gateway (``gateway`` is an openshell gateway name;
+    None = the active gateway — today's behavior)."""
+    result = _run_checked_status(["openshell", "sandbox", "list"], "sandbox list", env=_cli_env(gateway))
     lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
     sandboxes: list[dict[str, str]] = []
     for line in lines[1:]:
@@ -245,54 +316,64 @@ def sandbox_list() -> list[dict[str, str]]:
     return sandboxes
 
 
-def sandbox_get(name: str) -> bool:
-    result = _run(["openshell", "sandbox", "get", name], check=False, capture=True)
+def sandbox_get(name: str, *, gateway: str | None = None) -> bool:
+    result = _run(
+        ["openshell", "sandbox", "get", name],
+        check=False,
+        capture=True,
+        env=_cli_env(_target_gateway(name, gateway)),
+    )
     return result.returncode == 0
 
 
-def sandbox_connect(name: str, editor: str | None = None) -> None:
+def sandbox_connect(name: str, editor: str | None = None, *, gateway: str | None = None) -> None:
     cmd = ["openshell", "sandbox", "connect", name]
     if editor:
         cmd.extend(["--editor", editor])
-    subprocess.run(cmd, check=False)
+    subprocess.run(cmd, check=False, env=_cli_env(_target_gateway(name, gateway)))
 
 
-def sandbox_upload(name: str, local: Path, remote: str) -> None:
+def sandbox_upload(name: str, local: Path, remote: str, *, gateway: str | None = None) -> None:
     _run(
         ["openshell", "sandbox", "upload", name, str(local), remote],
         check=True,
         capture=False,
+        env=_cli_env(_target_gateway(name, gateway)),
     )
 
 
-def sandbox_download(name: str, remote: str, local: Path) -> None:
+def sandbox_download(name: str, remote: str, local: Path, *, gateway: str | None = None) -> None:
     _run(
         ["openshell", "sandbox", "download", name, remote, str(local)],
         check=True,
         capture=False,
+        env=_cli_env(_target_gateway(name, gateway)),
     )
 
 
-def policy_set(name: str, policy_path: Path) -> None:
+def policy_set(name: str, policy_path: Path, *, gateway: str | None = None) -> None:
     _run(
         ["openshell", "policy", "set", name, "--policy", str(policy_path), "--wait"],
         check=True,
         capture=False,
+        env=_cli_env(_target_gateway(name, gateway)),
     )
 
 
-def policy_get_base(name: str) -> str:
+def policy_get_base(name: str, *, gateway: str | None = None) -> str:
     """Return the active, non-provider-composed policy as JSON."""
     result = _run(
         ["openshell", "policy", "get", name, "--base", "--output", "json"],
         check=False,
         capture=True,
+        env=_cli_env(_target_gateway(name, gateway)),
     )
     return result.stdout if result.returncode == 0 else ""
 
 
-def gateway_status() -> dict[str, str]:
-    result = _run_checked_status(["openshell", "status"], "gateway status")
+def gateway_status(gateway: str | None = None) -> dict[str, str]:
+    """Gateway status (``gateway`` is an openshell gateway name; None = active)."""
+    result = _run_checked_status(["openshell", "status"], "gateway status", env=_cli_env(gateway))
     info: dict[str, str] = {}
     for line in result.stdout.split("\n"):
         line = line.strip()
@@ -307,8 +388,8 @@ def gateway_status() -> dict[str, str]:
     return info
 
 
-def provider_list() -> str:
-    result = _run(["openshell", "provider", "list"], check=False)
+def provider_list(gateway: str | None = None) -> str:
+    result = _run(["openshell", "provider", "list"], check=False, env=_cli_env(gateway))
     return result.stdout
 
 
@@ -318,10 +399,12 @@ def provider_create(
     credential: str = "",
     *,
     from_gcloud_adc: bool = False,
+    gateway: str | None = None,
 ) -> None:
+    env = _cli_env(gateway)
     # Delete first so stale credentials are never inherited (upsert semantics).
     # No-op when the provider does not exist (check=False).
-    _run(["openshell", "provider", "delete", name], check=False, capture=True)
+    _run(["openshell", "provider", "delete", name], check=False, capture=True, env=env)
     cmd = ["openshell", "provider", "create", "--name", name, "--type", provider_type]
     cmd += ["--from-gcloud-adc"] if from_gcloud_adc else ["--credential", credential]
     # Capture output so we can suppress the benign "already exists" case (#121):
@@ -329,7 +412,7 @@ def provider_create(
     # sandbox, leaving the create to report an already-exists error. That's harmless —
     # the existing provider is reused — so it should not surface as a raw error. Any
     # other failure is surfaced to the user.
-    result = _run(cmd, check=False, capture=True)
+    result = _run(cmd, check=False, capture=True, env=env)
     if result.returncode != 0:
         combined = f"{result.stdout}\n{result.stderr}"
         if "already exists" in combined:
@@ -341,14 +424,20 @@ def provider_create(
         raise SandboxError(message)
 
 
-def provider_delete(name: str) -> None:
-    _run(["openshell", "provider", "delete", name], check=False, capture=True)
+def provider_delete(name: str, *, gateway: str | None = None) -> None:
+    _run(
+        ["openshell", "provider", "delete", name],
+        check=False,
+        capture=True,
+        env=_cli_env(gateway),
+    )
 
 
-def provider_profile_import(path: Path, profile_id: str) -> None:
+def provider_profile_import(path: Path, profile_id: str, *, gateway: str | None = None) -> None:
     """Import or update a sandboxctl-managed platform provider profile."""
+    env = _cli_env(gateway)
     import_cmd = ["openshell", "provider", "profile", "import", "-f", str(path), "--global"]
-    result = _run(import_cmd, check=False, capture=True)
+    result = _run(import_cmd, check=False, capture=True, env=env)
     if result.returncode == 0:
         return
 
@@ -364,7 +453,7 @@ def provider_profile_import(path: Path, profile_id: str) -> None:
             "yaml",
             profile_id,
         ]
-        exported = _run(export_cmd, check=False, capture=True)
+        exported = _run(export_cmd, check=False, capture=True, env=env)
         if exported.returncode != 0:
             details = exported.stderr.strip() or exported.stdout.strip()
             message = f"provider profile '{profile_id}' could not be exported for update"
@@ -399,7 +488,7 @@ def provider_profile_import(path: Path, profile_id: str) -> None:
             "--global",
             profile_id,
         ]
-        result = _run(update_cmd, check=False, capture=True)
+        result = _run(update_cmd, check=False, capture=True, env=env)
         if result.returncode == 0:
             return
         combined = f"{result.stdout}\n{result.stderr}"
@@ -411,17 +500,21 @@ def provider_profile_import(path: Path, profile_id: str) -> None:
     raise SandboxError(message)
 
 
-def sandbox_ssh_config(name: str) -> str:
-    result = _run(["openshell", "sandbox", "ssh-config", name], check=False)
+def sandbox_ssh_config(name: str, *, gateway: str | None = None) -> str:
+    result = _run(
+        ["openshell", "sandbox", "ssh-config", name],
+        check=False,
+        env=_cli_env(_target_gateway(name, gateway)),
+    )
     return result.stdout
 
 
-def update_local_ssh_config(name: str) -> None:
+def update_local_ssh_config(name: str, *, gateway: str | None = None) -> None:
     ssh_config_dir = Path.home() / ".config" / "openshell"
     ssh_config_dir.mkdir(parents=True, exist_ok=True)
     ssh_config_path = ssh_config_dir / "ssh_config"
 
-    new_block = sandbox_ssh_config(name)
+    new_block = sandbox_ssh_config(name, gateway=gateway)
     if not new_block.strip():
         return
 
@@ -472,9 +565,10 @@ def ensure_ssh_keepalive() -> None:
         f.write(keepalive_block)
 
 
-def settings_set(key: str, value: str) -> None:
+def settings_set(key: str, value: str, *, gateway: str | None = None) -> None:
     _run(
         ["openshell", "settings", "set", "--global", "--key", key, "--value", value, "--yes"],
         check=False,
         capture=True,
+        env=_cli_env(gateway),
     )

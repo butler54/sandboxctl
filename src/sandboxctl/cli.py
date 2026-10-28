@@ -228,34 +228,67 @@ def list_cmd() -> None:
         typer.echo("No profiles found.")
 
     typer.echo()
-    try:
-        sandboxes = osh.sandbox_list()
-        if sandboxes:
-            table = Table(title="Running Sandboxes")
-            table.add_column("Name")
-            table.add_column("Created")
-            table.add_column("Phase")
-            table.add_column("Policy")
-            for sb in sandboxes:
-                table.add_row(sb["name"], sb["created"], sb["phase"], _sandbox_policy_label(sb["name"], cfg))
-            from rich.console import Console
+    from sandboxctl import gateways
 
-            Console().print(table)
-        else:
-            typer.echo("No running sandboxes.")
-    except osh.SandboxError as exc:
-        typer.echo(f"Could not list sandboxes: {exc}")
+    rows: list[list[str]] = []
+    gateway_errors: list[str] = []
+    for gateway_name in gateways.gateway_targets(cfg):
+        label = gateway_name if gateway_name is not None else "active"
+        try:
+            sandboxes = osh.sandbox_list(gateway_name)
+        except osh.SandboxError as exc:
+            # FR-007/FR-008: unreachable gateways are reported, never omitted.
+            gateway_errors.append(f"{label}: {exc}")
+            continue
+        for sb in sandboxes:
+            rows.append(
+                [
+                    sb["name"],
+                    sb["created"],
+                    sb["phase"],
+                    _sandbox_policy_label(sb["name"], cfg),
+                    label,
+                ]
+            )
+    if rows:
+        table = Table(title="Running Sandboxes")
+        table.add_column("Name")
+        table.add_column("Created")
+        table.add_column("Phase")
+        table.add_column("Policy")
+        table.add_column("Gateway")
+        for row in rows:
+            table.add_row(*row)
+        from rich.console import Console
+
+        Console().print(table)
+    elif gateway_errors:
+        typer.echo("No running sandboxes (some gateways unreachable).")
+    else:
+        typer.echo("No running sandboxes.")
+    for err in gateway_errors:
+        typer.echo(f"Gateway unreachable — {err}")
+    if gateway_errors and not rows:
         raise typer.Exit(1) from None
 
 
 @app.command()
 def status() -> None:
     """Show gateway and sandbox status."""
+    from sandboxctl import gateways
     from sandboxctl import openshell as osh
 
-    try:
-        gw = osh.gateway_status()
-        table = Table(title="Gateway")
+    cfg = load_config()
+    any_reachable = False
+    for gateway_name in gateways.gateway_targets(cfg):
+        label = gateway_name if gateway_name is not None else "active"
+        try:
+            gw = osh.gateway_status(gateway_name)
+        except osh.SandboxError as exc:
+            typer.echo(f"Gateway unreachable — {label}: {exc}")
+            continue
+        any_reachable = True
+        table = Table(title=f"Gateway: {label}")
         table.add_column("Property")
         table.add_column("Value")
         for k, v in gw.items():
@@ -263,8 +296,7 @@ def status() -> None:
         from rich.console import Console
 
         Console().print(table)
-    except osh.SandboxError as exc:
-        typer.echo(f"Could not reach gateway: {exc}")
+    if not any_reachable:
         raise typer.Exit(1) from None
 
 
@@ -349,6 +381,12 @@ def delete_cmd(name: str = typer.Argument(help="Sandbox name.", callback=_valida
     osh.sandbox_delete(name)
     try:
         remove_policy_association(cfg, name)
+    except Exception:  # noqa: BLE001, S110
+        pass
+    from sandboxctl.gateways import remove_gateway_association
+
+    try:
+        remove_gateway_association(cfg, name)
     except Exception:  # noqa: BLE001, S110
         pass
     typer.echo(f"Deleted sandbox: {name}")
@@ -602,7 +640,48 @@ def restart(
     # 004: SDK deletion can be asynchronous (ACCEPTED outcome) — wait for the
     # name to be free before re-creating so restart never races deletion.
     osh.sandbox_wait_deleted(name)
+    # 005: drop the gateway association before re-creating — the new sandbox's
+    # gateway comes from the (possibly changed) profile, and a stale
+    # association would route operations to the wrong gateway (FR-008).
+    from sandboxctl.gateways import remove_gateway_association
+
+    try:
+        remove_gateway_association(cfg, name)
+    except Exception:  # noqa: BLE001, S110
+        pass
     create_sandbox(prof, cfg, sandbox_name=name, open_editor=not no_editor)
+
+
+def _kubernetes_gateway_hint() -> str:
+    """Best-effort cluster-access check for an unreachable k8s gateway (005).
+
+    Diagnostics only (research R-6 layer 3): reports whether the user's
+    Kubernetes access is usable so the failure can be attributed to the
+    gateway's registration/credentials rather than missing cluster access.
+    User-supplied credentials remain the fallback (spec FR-006).
+    """
+    import shutil
+
+    kubectl = shutil.which("kubectl")
+    if not kubectl:
+        return " (kubernetes gateway: kubectl not found; user-supplied gateway credentials required)"
+    try:
+        result = subprocess.run(
+            [kubectl, "config", "current-context"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return " (kubernetes gateway: cluster access check failed)"
+    if result.returncode == 0 and result.stdout.strip():
+        context = result.stdout.strip()
+        return (
+            f" (kubernetes gateway: cluster access OK (context '{context}'); "
+            "check the gateway's openshell registration/token)"
+        )
+    return " (kubernetes gateway: no active cluster context; user-supplied gateway credentials required)"
 
 
 @app.command()
@@ -652,6 +731,26 @@ def doctor(
     else:
         symbol = "✓" if disk_usage.severity == "ok" else "!" if disk_usage.severity == "warn" else "✗"
         typer.echo(f"  {symbol} {disk_usage.details}")
+
+    # Section 2b: Gateways (005 multi-gateway) — per-gateway health for all
+    # configured gateways; unreachable ones are reported, never omitted
+    # (FR-007/FR-008). Kubernetes-hinted gateways get a cluster-access check.
+    typer.echo("\n--- Gateways ---")
+    from sandboxctl import gateways
+
+    for gateway_name in gateways.gateway_targets(cfg):
+        label = gateway_name if gateway_name is not None else "active"
+        k8s = any(
+            gateways.gateway_is_kubernetes(cfg, key) and gateways.resolve_openshell_name(cfg, key) == gateway_name
+            for key in cfg.gateways
+        )
+        try:
+            osh.gateway_status(gateway_name)
+            typer.echo(f"  ✓ {label}: reachable" + (" (kubernetes)" if k8s else ""))
+        except osh.SandboxError as exc:
+            hint = _kubernetes_gateway_hint() if k8s else ""
+            typer.echo(f"  ✗ {label}: {exc}{hint}")
+
     if storage:
         typer.echo("\n--- Storage Breakdown ---")
         breakdown = check_storage_breakdown(name)

@@ -396,6 +396,44 @@ class TestPostLaunchSetup:
         )
         return config
 
+    def test_ssh_key_chmod_failure_warns(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """004 FR-002: a failed chmod 600 on the sandbox SSH key is surfaced."""
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe",
+                return_value="failed",
+            ),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.out
+        assert "chmod 600" in captured.out
+
+    def test_ssh_key_chmod_success_is_silent(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """No warning when the chmod probe reports ok."""
+        config = self._make_config(tmp_path)
+        profile = Profile(name="test", mlflow=False)
+
+        with (
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe",
+                return_value="ok",
+            ),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        assert "WARNING" not in capsys.readouterr().out
+
     def test_vertex_env_vars_injected(self, tmp_path: Path) -> None:
         config = self._make_config(tmp_path, vertex=True)
         profile = Profile(name="test", mlflow=False)

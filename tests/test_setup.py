@@ -260,6 +260,7 @@ class TestRestartCommand:
             patch("sandboxctl.cli.load_config", return_value=cfg),
             patch("sandboxctl.profile.load_profile", return_value=prof),
             patch("sandboxctl.openshell.sandbox_delete") as mock_delete,
+            patch("sandboxctl.openshell.sandbox_wait_deleted"),
             patch("sandboxctl.create.create_sandbox") as mock_create,
         ):
             result = runner.invoke(app, ["restart", "mybox", "--yes"])

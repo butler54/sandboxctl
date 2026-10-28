@@ -165,11 +165,28 @@ class TestValidateCommand:
         report = MagicMock(healthy=True)
         with (
             patch("sandboxctl.health.diagnose", return_value=report),
-            patch("sandboxctl.openshell.sandbox_exec_pipe", return_value="ok 1 - test\n"),
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=0, stdout="ok 1 - test\n", stderr=""),
+            ),
         ):
             result = runner.invoke(app, ["validate", "mybox"])
             assert result.exit_code == 0
             assert "Running validation" in result.output
+
+    def test_validate_failure_exits_nonzero(self) -> None:
+        """004 FR-002: validate.sh's exit code must propagate (was silently 0)."""
+        report = MagicMock(healthy=True)
+        with (
+            patch("sandboxctl.health.diagnose", return_value=report),
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=3, stdout="fail 1 - check\n", stderr=""),
+            ),
+        ):
+            result = runner.invoke(app, ["validate", "mybox"])
+            assert result.exit_code == 1
+            assert "Validation failed (exit 3)" in result.output
 
     def test_validate_unhealthy(self) -> None:
         report = MagicMock(healthy=False)

@@ -433,8 +433,13 @@ def validate(name: str = typer.Argument(help="Sandbox name.", callback=_validate
         raise typer.Exit(1)
 
     typer.echo(f"Running validation on sandbox: {name}\n")
-    result = osh.sandbox_exec_pipe(name, "source /sandbox/.bashrc\nvalidate.sh")
-    typer.echo(result)
+    # 004 FR-002: validate.sh's exit code was discarded — a failing
+    # validation printed output but exited 0.
+    outcome = osh.sandbox_exec_pipe_result(name, "source /sandbox/.bashrc\nvalidate.sh")
+    typer.echo(outcome.stdout)
+    if outcome.exit_code != 0:
+        typer.echo(f"Validation failed (exit {outcome.exit_code})")
+        raise typer.Exit(1)
 
 
 @app.command("init")
@@ -594,6 +599,9 @@ def restart(
 
     typer.echo(f"Restarting sandbox: {name}")
     osh.sandbox_delete(name)
+    # 004: SDK deletion can be asynchronous (ACCEPTED outcome) — wait for the
+    # name to be free before re-creating so restart never races deletion.
+    osh.sandbox_wait_deleted(name)
     create_sandbox(prof, cfg, sandbox_name=name, open_editor=not no_editor)
 
 

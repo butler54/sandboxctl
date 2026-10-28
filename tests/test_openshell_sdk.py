@@ -43,9 +43,7 @@ class FakeClient:
         stdin: bytes | None = None,
         **_: object,
     ) -> object:
-        self.exec_calls.append(
-            {"name": name, "command": list(command), "workspace": workspace, "stdin": stdin}
-        )
+        self.exec_calls.append({"name": name, "command": list(command), "workspace": workspace, "stdin": stdin})
         if self.exec_error is not None:
             raise self.exec_error
         return self.exec_result
@@ -58,9 +56,7 @@ class FakeClient:
         allow_missing: bool = False,
         **_: object,
     ) -> object:
-        self.delete_calls.append(
-            {"name": name, "workspace": workspace, "allow_missing": allow_missing}
-        )
+        self.delete_calls.append({"name": name, "workspace": workspace, "allow_missing": allow_missing})
         return MagicMock(outcome=1)
 
     def wait_deleted(
@@ -71,9 +67,7 @@ class FakeClient:
         timeout_seconds: float = 60.0,
         **_: object,
     ) -> None:
-        self.wait_deleted_calls.append(
-            {"name": name, "workspace": workspace, "timeout": timeout_seconds}
-        )
+        self.wait_deleted_calls.append({"name": name, "workspace": workspace, "timeout": timeout_seconds})
 
 
 @pytest.fixture
@@ -119,15 +113,11 @@ class TestAdapterOperations:
 
     def test_delete_uses_allow_missing_and_workspace(self, fake_client: FakeClient) -> None:
         osh.sandbox_delete("mybox")
-        assert fake_client.delete_calls == [
-            {"name": "mybox", "workspace": "default", "allow_missing": True}
-        ]
+        assert fake_client.delete_calls == [{"name": "mybox", "workspace": "default", "allow_missing": True}]
 
     def test_wait_deleted_passes_workspace_and_timeout(self, fake_client: FakeClient) -> None:
         osh.sandbox_wait_deleted("mybox", timeout_seconds=5.0)
-        assert fake_client.wait_deleted_calls == [
-            {"name": "mybox", "workspace": "default", "timeout": 5.0}
-        ]
+        assert fake_client.wait_deleted_calls == [{"name": "mybox", "workspace": "default", "timeout": 5.0}]
 
 
 class TestAdapterErrorMapping:
@@ -157,9 +147,7 @@ class TestAdapterErrorMapping:
 class TestBackendSelection:
     """004 US2: fallback, override, and caching (T010)."""
 
-    def test_construction_failure_falls_back_to_cli(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_construction_failure_falls_back_to_cli(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SANDBOXCTL_OPENSHELL_BACKEND", "auto")
         monkeypatch.setattr(openshell_sdk, "_backend_decision", "auto")
         monkeypatch.setattr(openshell_sdk, "_client", None)
@@ -209,9 +197,7 @@ class TestBackendSelection:
         monkeypatch.setenv("SANDBOXCTL_OPENSHELL_BACKEND", "cli")
         assert openshell_sdk.sdk_enabled() is True
 
-    def test_invalid_backend_value_defaults_to_auto(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_invalid_backend_value_defaults_to_auto(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(openshell_sdk, "_backend_decision", None)
         monkeypatch.setenv("SANDBOXCTL_OPENSHELL_BACKEND", "nonsense")
         assert openshell_sdk.sdk_enabled() is True
@@ -241,8 +227,7 @@ class TestWorkspaceSeam:
             if "resolve_workspace" in text or "DEFAULT_WORKSPACE" in text:
                 offenders.append(py.name)
             elif "workspace=" in text and any(
-                marker in text
-                for marker in ("get_client", "SandboxClient", "openshell_sdk")
+                marker in text for marker in ("get_client", "SandboxClient", "openshell_sdk")
             ):
                 offenders.append(py.name)
         assert offenders == [], f"workspace references outside the seam: {offenders}"

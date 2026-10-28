@@ -223,10 +223,7 @@ def sandbox_wait_deleted(name: str, timeout_seconds: float = 60.0) -> None:
             if result.returncode != 0:
                 return
             time.sleep(1.0)
-        raise SandboxError(
-            f"wait for deletion of sandbox '{name}' failed: "
-            f"timed out after {timeout_seconds:.0f}s"
-        )
+        raise SandboxError(f"wait for deletion of sandbox '{name}' failed: timed out after {timeout_seconds:.0f}s")
 
     _dispatch(sdk_op, cli_op)
 

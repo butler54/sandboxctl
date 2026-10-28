@@ -4,11 +4,45 @@ from __future__ import annotations
 
 import re
 import subprocess
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 
 class SandboxError(Exception):
     """Raised when an openshell command fails."""
+
+
+@dataclass(frozen=True)
+class ExecOutcome:
+    """Result of a non-interactive sandbox execution (004 FR-001/FR-002).
+
+    Carries the exit code the legacy stdout-only helpers discarded.
+    """
+
+    exit_code: int
+    stdout: str
+    stderr: str
+
+
+def _dispatch[T](sdk_op: Callable[[], T], cli_op: Callable[[], T]) -> T:
+    """Run an operation on the SDK backend, falling back to the CLI.
+
+    004 (research.md R-3): fallback applies ONLY at client acquisition —
+    import or construction failure routes the operation to the CLI. Once an
+    operation dispatches to a backend, failures raise SandboxError and are
+    never retried on the other backend: an exec that failed mid-flight may
+    have already run server-side.
+    """
+    from sandboxctl import openshell_sdk as sdk
+
+    if sdk.sdk_enabled():
+        try:
+            return sdk_op()
+        except sdk.SdkUnavailable:
+            pass
+    return cli_op()
 
 
 def _run_checked_status(args: list[str], action: str) -> subprocess.CompletedProcess[str]:
@@ -94,19 +128,55 @@ def sandbox_exec(
     command: list[str],
     tty: bool = False,
 ) -> str:
-    cmd = ["openshell", "sandbox", "exec", "-n", name]
-    if tty:
-        cmd.append("--tty")
-    cmd.append("--")
-    cmd.extend(command)
-    result = _run(cmd, check=False, capture=True)
-    return result.stdout
+    return _exec_outcome(name, command, None, tty=tty).stdout
 
 
 def sandbox_exec_pipe(name: str, script: str) -> str:
-    cmd = ["openshell", "sandbox", "exec", "-n", name, "--", "bash"]
-    result = _run(cmd, check=False, capture=True, stdin_data=script)
-    return result.stdout.strip()
+    return _exec_outcome(name, ["bash"], script).stdout.strip()
+
+
+def sandbox_exec_pipe_result(name: str, script: str) -> ExecOutcome:
+    """Like ``sandbox_exec_pipe`` but returns exit code and stderr too.
+
+    Raw (unstripped) streams; use for sites that must detect failures the
+    stdout-only helper silently discards (004 FR-002).
+    """
+    return _exec_outcome(name, ["bash"], script)
+
+
+def _exec_outcome(
+    name: str,
+    command: list[str],
+    stdin_data: str | None,
+    tty: bool = False,
+) -> ExecOutcome:
+    """Execute a command in a sandbox on the SDK backend (CLI fallback)."""
+
+    def sdk_op() -> ExecOutcome:
+        from sandboxctl import openshell_sdk as sdk
+
+        stdin = stdin_data.encode() if stdin_data is not None else None
+        result = sdk.exec_command(name, command, stdin=stdin)
+        return ExecOutcome(
+            exit_code=result.exit_code,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+
+    def cli_op() -> ExecOutcome:
+        cmd = ["openshell", "sandbox", "exec", "-n", name]
+        if tty:
+            cmd.append("--tty")
+        cmd.append("--")
+        cmd.extend(command)
+        result = _run(cmd, check=False, capture=True, stdin_data=stdin_data)
+        return ExecOutcome(
+            exit_code=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+
+    return _dispatch(sdk_op, cli_op)
 
 
 def sandbox_exec_interactive(name: str, command: str) -> int:
@@ -127,7 +197,35 @@ def sandbox_exec_interactive(name: str, command: str) -> int:
 
 
 def sandbox_delete(name: str) -> None:
-    _run(["openshell", "sandbox", "delete", name], check=False, capture=False)
+    def sdk_op() -> None:
+        from sandboxctl import openshell_sdk as sdk
+
+        sdk.delete_sandbox(name)
+
+    def cli_op() -> None:
+        _run(["openshell", "sandbox", "delete", name], check=False, capture=False)
+
+    _dispatch(sdk_op, cli_op)
+
+
+def sandbox_wait_deleted(name: str, timeout_seconds: float = 60.0) -> None:
+    """Block until a sandbox is gone (restart re-creates after this)."""
+
+    def sdk_op() -> None:
+        from sandboxctl import openshell_sdk as sdk
+
+        sdk.wait_deleted(name, timeout_seconds=timeout_seconds)
+
+    def cli_op() -> None:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            result = _run(["openshell", "sandbox", "get", name], check=False, capture=True)
+            if result.returncode != 0:
+                return
+            time.sleep(1.0)
+        raise SandboxError(f"wait for deletion of sandbox '{name}' failed: timed out after {timeout_seconds:.0f}s")
+
+    _dispatch(sdk_op, cli_op)
 
 
 def sandbox_list() -> list[dict[str, str]]:

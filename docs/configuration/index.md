@@ -110,6 +110,18 @@ export SANDBOXCTL_PROVIDERS__VERTEX_PROJECT_ID="my-gcp-project"
 export SANDBOXCTL_PATHS__SSH_KEY="~/.ssh/id_ed25519"
 ```
 
+### Runtime Overrides
+
+Some `SANDBOXCTL_` environment variables are runtime switches rather than
+config-file values — they are not mapped into `config.toml` sections.
+
+| Variable | Values | Effect |
+|----------|--------|--------|
+| `SANDBOXCTL_OPENSHELL_BACKEND` | `auto` (default), `cli` | Selects the backend for non-interactive gateway operations (script execution, delete). `auto` uses the [openshell Python SDK](https://pypi.org/project/openshell/) when installed (enable with `pip install sandboxctl[sdk]`), falling back to the `openshell` CLI; `cli` always uses the CLI — useful for diagnostics and rollback. The choice is made once per invocation. |
+
+See the [installation section](../../README.md#optional-openshell-sdk-backend) for
+the `sdk` extra.
+
 ### Precedence
 
 Configuration sources are loaded in this order, with earlier sources taking

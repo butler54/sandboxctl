@@ -505,7 +505,15 @@ def post_launch_setup(
         '&& echo "done"; else echo "no staging dir found"; fi',
     )
 
-    osh.sandbox_exec_pipe(name, "chmod 600 /sandbox/.ssh/id_ed25519 2>/dev/null; echo ok")
+    # 004 FR-002: the old form ("... 2>/dev/null; echo ok") masked the chmod
+    # result — a wrong-permission SSH key is a security-relevant silent
+    # failure. Probe form keeps this callable unchanged for every caller
+    # that mocks sandbox_exec_pipe, while surfacing the failure loudly.
+    chmod_result = osh.sandbox_exec_pipe(
+        name, "chmod 600 /sandbox/.ssh/id_ed25519 2>/dev/null && echo ok || echo failed"
+    )
+    if "failed" in chmod_result:
+        typer.echo("  WARNING: could not chmod 600 the sandbox SSH key; SSH may fail")
 
     from sandboxctl.context import restore_claude_context
 

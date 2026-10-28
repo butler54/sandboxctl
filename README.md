@@ -38,6 +38,23 @@ Or install with [uv](https://docs.astral.sh/uv/):
 uv tool install sandboxctl
 ```
 
+### Optional: OpenShell SDK backend
+
+Non-interactive gateway operations (script execution, delete) can run
+against the gateway through the [openshell Python SDK](https://pypi.org/project/openshell/)
+instead of shelling out to the `openshell` CLI. Install the extra to enable
+it (falls back to the CLI automatically when unavailable):
+
+```bash
+pip install sandboxctl[sdk]
+```
+
+Force the legacy CLI path at any time (diagnostics/rollback):
+
+```bash
+export SANDBOXCTL_OPENSHELL_BACKEND=cli   # default: auto
+```
+
 For development:
 
 ```bash

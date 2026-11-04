@@ -273,6 +273,34 @@ def check_compute_state() -> ComputeState:
         return ComputeState.UNKNOWN
 
 
+# OpenShell >= 0.1.7 no longer ships a Homebrew service in its formula; the
+# gateway runs as a user LaunchAgent under the historical brew label
+# (sh.brew.openshell, or a versioned variant like sh.brew.openshell@0.1.7).
+_GATEWAY_LAUNCHAGENT_PREFIX = "sh.brew.openshell"
+
+
+def _gateway_launchagent() -> tuple[str, bool] | None:
+    """Return ``(label, running)`` for the OpenShell gateway LaunchAgent, if loaded.
+
+    ``launchctl list`` prints ``PID\\tStatus\\tLabel`` per line; a numeric PID
+    means the agent currently has a live process.
+    """
+    try:
+        result = _run(["launchctl", "list"])
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        fields = line.split("\t")
+        if len(fields) < 3:
+            continue
+        label = fields[2].strip()
+        if label == _GATEWAY_LAUNCHAGENT_PREFIX or label.startswith(f"{_GATEWAY_LAUNCHAGENT_PREFIX}@"):
+            return label, fields[0].strip() not in ("", "-")
+    return None
+
+
 def check_gateway_state() -> GatewayState:
     """Check the platform service that hosts the OpenShell gateway."""
     if sys.platform == "darwin":
@@ -292,6 +320,13 @@ def check_gateway_state() -> GatewayState:
             fields = line.split()
             if fields and fields[0] == "openshell":
                 return GatewayState.RUNNING if "started" in fields else GatewayState.STOPPED
+        # OpenShell >= 0.1.7 dropped the Homebrew service from the formula,
+        # so `brew services list` no longer shows it even when the gateway is
+        # healthy. Fall back to the LaunchAgent the formula's installer (or
+        # the operator, following the release formula's service script) runs.
+        agent = _gateway_launchagent()
+        if agent is not None:
+            return GatewayState.RUNNING if agent[1] else GatewayState.STOPPED
         return GatewayState.STOPPED
 
     try:
@@ -415,13 +450,30 @@ def recover_compute() -> bool:
 
 def recover_gateway() -> bool:
     """Restart the platform-managed OpenShell gateway service."""
-    command = (
-        ["brew", "services", "restart", "openshell"]
-        if sys.platform == "darwin"
-        else ["systemctl", "--user", "restart", "openshell-gateway"]
-    )
+    if sys.platform == "darwin":
+        try:
+            if _run(["brew", "services", "restart", "openshell"], timeout=60).returncode == 0:
+                return True
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        # OpenShell >= 0.1.7 has no brew service to restart; bounce the
+        # LaunchAgent instead.
+        agent = _gateway_launchagent()
+        if agent is None:
+            return False
+        try:
+            return (
+                _run(
+                    ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{agent[0]}"],
+                    timeout=60,
+                ).returncode
+                == 0
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+
     try:
-        return _run(command, timeout=60).returncode == 0
+        return _run(["systemctl", "--user", "restart", "openshell-gateway"], timeout=60).returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 

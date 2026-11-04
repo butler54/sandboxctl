@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -80,6 +81,107 @@ class TestGatewayState:
             mock_sys.platform = "linux"
             mock_run.return_value = MagicMock(returncode=0, stdout="LoadState=not-found\nActiveState=inactive\n")
             assert check_gateway_state() == GatewayState.MISSING
+
+    def test_brew_service_takes_precedence_on_darwin(self) -> None:
+        brew_list = MagicMock(returncode=0)
+        brew_services = MagicMock(returncode=0, stdout="Name      Status User File\nopenshell started\n")
+
+        def fake_run(cmd: list[str], **_kwargs: object) -> MagicMock:
+            if cmd[:2] == ["brew", "list"]:
+                return brew_list
+            assert cmd[:2] == ["brew", "services"], f"unexpected command: {cmd}"
+            return brew_services
+
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run", side_effect=fake_run),
+        ):
+            mock_sys.platform = "darwin"
+            assert check_gateway_state() == GatewayState.RUNNING
+
+    def test_launchagent_running_on_darwin(self) -> None:
+        """OpenShell >= 0.1.7: the formula ships no brew service; the gateway
+        runs as a user LaunchAgent under the historical brew label."""
+        brew_list = MagicMock(returncode=0)
+        brew_services = MagicMock(returncode=0, stdout="Name      Status User File\nblack     none\n")
+        launchctl = MagicMock(returncode=0, stdout="-\t0\tcom.apple.foo\n20426\t0\tsh.brew.openshell@0.1.7\n")
+
+        def fake_run(cmd: list[str], **_kwargs: object) -> MagicMock:
+            if cmd[:2] == ["brew", "list"]:
+                return brew_list
+            if cmd[:2] == ["brew", "services"]:
+                return brew_services
+            assert cmd[0] == "launchctl", f"unexpected command: {cmd}"
+            return launchctl
+
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run", side_effect=fake_run),
+        ):
+            mock_sys.platform = "darwin"
+            assert check_gateway_state() == GatewayState.RUNNING
+
+    def test_launchagent_stopped_on_darwin(self) -> None:
+        brew_list = MagicMock(returncode=0)
+        brew_services = MagicMock(returncode=0, stdout="Name      Status User File\n")
+        launchctl = MagicMock(returncode=0, stdout="-\t78\tsh.brew.openshell\n")
+
+        def fake_run(cmd: list[str], **_kwargs: object) -> MagicMock:
+            if cmd[:2] == ["brew", "list"]:
+                return brew_list
+            if cmd[:2] == ["brew", "services"]:
+                return brew_services
+            assert cmd[0] == "launchctl", f"unexpected command: {cmd}"
+            return launchctl
+
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run", side_effect=fake_run),
+        ):
+            mock_sys.platform = "darwin"
+            assert check_gateway_state() == GatewayState.STOPPED
+
+    def test_launchagent_absent_reports_stopped_on_darwin(self) -> None:
+        brew_list = MagicMock(returncode=0)
+        brew_services = MagicMock(returncode=0, stdout="Name      Status User File\n")
+        launchctl = MagicMock(returncode=0, stdout="-\t0\tcom.apple.foo\n")
+
+        def fake_run(cmd: list[str], **_kwargs: object) -> MagicMock:
+            if cmd[:2] == ["brew", "list"]:
+                return brew_list
+            if cmd[:2] == ["brew", "services"]:
+                return brew_services
+            assert cmd[0] == "launchctl", f"unexpected command: {cmd}"
+            return launchctl
+
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run", side_effect=fake_run),
+        ):
+            mock_sys.platform = "darwin"
+            assert check_gateway_state() == GatewayState.STOPPED
+
+    def test_recover_gateway_falls_back_to_launchagent_on_darwin(self) -> None:
+        brew_restart = MagicMock(returncode=1)  # formula >= 0.1.7 has no service
+        launchctl_list = MagicMock(returncode=0, stdout="20426\t0\tsh.brew.openshell@0.1.7\n")
+        kickstart = MagicMock(returncode=0)
+
+        def fake_run(cmd: list[str], **_kwargs: object) -> MagicMock:
+            if cmd[:3] == ["brew", "services", "restart"]:
+                return brew_restart
+            if cmd == ["launchctl", "list"]:
+                return launchctl_list
+            assert cmd[:2] == ["launchctl", "kickstart"], f"unexpected command: {cmd}"
+            return kickstart
+
+        with (
+            patch("sandboxctl.health.sys") as mock_sys,
+            patch("sandboxctl.health._run", side_effect=fake_run) as mock_run,
+        ):
+            mock_sys.platform = "darwin"
+            assert recover_gateway() is True
+            kickstart_cmd = mock_run.call_args_list[-1][0][0]
+            assert kickstart_cmd[-1] == f"gui/{os.getuid()}/sh.brew.openshell@0.1.7"
 
     def test_api_unreachable(self) -> None:
         with patch("sandboxctl.openshell.gateway_status", side_effect=SandboxError):

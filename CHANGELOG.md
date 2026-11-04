@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.32.2 (2026-11-04)
+
+### Bug Fixes
+
+- **health**: Detect the OpenShell >= 0.1.7 gateway LaunchAgent
+  ([#233](https://github.com/butler54/sandboxctl/pull/233),
+  [`cff4d93`](https://github.com/butler54/sandboxctl/commit/cff4d937131e5cee77200cd5ef1795e48134afad))
+
+
 ## v1.32.1 (2026-11-04)
 
 ### Bug Fixes

@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.32.1 (2026-11-04)
+
+### Bug Fixes
+
+- **openshell**: Sync tls/allow_uninspected_credentials from profile policy into provider profiles
+  ([#232](https://github.com/butler54/sandboxctl/pull/232),
+  [`4b4a907`](https://github.com/butler54/sandboxctl/commit/4b4a9073630c2248d8fa525160aedb429ce65dfe))
+
+
 ## v1.32.0 (2026-10-28)
 
 ### Features

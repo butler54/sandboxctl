@@ -286,6 +286,46 @@ class TestSetupProviders:
         assert profile["id"] == "my-llm"
         assert profile["endpoints"][0]["host"] == "host.example.com"
 
+    def test_custom_provider_profile_inherits_policy_tls_settings(self, tmp_path: Path) -> None:
+        """tls/allow_uninspected_credentials from the profile policy sync into the
+        composed provider profile (#218 incident 2, gateway >= 0.1.7 ambiguity
+        validation): a tls: skip passthrough section for a provider host must
+        reach the generated _provider_<id> endpoints, not only the hand-authored
+        rule."""
+        policy = tmp_path / "policy.yaml"
+        policy.write_text(
+            """\
+network_policies:
+  my-llm:
+    endpoints:
+      - host: host.example.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-write
+        tls: skip
+        allow_uninspected_credentials: true
+"""
+        )
+        config = _config_with_custom_providers(tmp_path)
+
+        def credential_for(service: str, account: str) -> str | None:
+            return "sk-custom" if service == "sandboxctl-my-llm-api-key" else None
+
+        with (
+            patch("sandboxctl.create.get_credential", side_effect=credential_for),
+            patch("sandboxctl.create.osh.provider_profile_import"),
+            patch("sandboxctl.create.osh.provider_create"),
+        ):
+            setup_providers(config, policy)
+
+        profile = yaml.safe_load((tmp_path / "providers" / "my-llm.yaml").read_text())
+        endpoint = profile["endpoints"][0]
+        assert endpoint["host"] == "host.example.com"
+        assert endpoint["enforcement"] == "enforce"
+        assert endpoint["tls"] == "skip"
+        assert endpoint["allow_uninspected_credentials"] is True
+
     def test_missing_credential_fails_closed(self, tmp_path: Path) -> None:
         config = _config_with_custom_providers(tmp_path)
         with (

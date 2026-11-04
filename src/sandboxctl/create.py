@@ -399,6 +399,49 @@ def _policy_endpoint_enforcement(policy_path: Path | None) -> dict[tuple[str, in
     return enforcement
 
 
+# Endpoint-level settings synced from a profile's policy into the generated
+# OpenShell provider profiles. Beyond enforcement (synced for a long time),
+# tls/allow_uninspected_credentials must follow the profile policy too: the
+# gateway (>= 0.1.7) rejects endpoint ambiguity when the provider-attached
+# section and a profile section for the same host:port disagree on them
+# (e.g. terminate-TLS provider sections vs a tls: skip passthrough policy).
+_SYNCED_ENDPOINT_KEYS = ("tls", "allow_uninspected_credentials")
+
+
+def _policy_endpoint_settings(policy_path: Path | None) -> dict[tuple[str, int, str], dict]:
+    """Return policy-declared endpoint settings (enforcement + synced keys) by endpoint identity."""
+    if policy_path is None or not policy_path.exists():
+        return {}
+    try:
+        policy = yaml.safe_load(policy_path.read_text()) or {}
+    except yaml.YAMLError:
+        return {}
+    network_policies = policy.get("network_policies", {}) if isinstance(policy, dict) else {}
+    if not isinstance(network_policies, dict):
+        return {}
+
+    settings: dict[tuple[str, int, str], dict] = {}
+    for rule in network_policies.values():
+        if not isinstance(rule, dict):
+            continue
+        endpoints = [rule, *(rule.get("endpoints", []) if isinstance(rule.get("endpoints"), list) else [])]
+        for endpoint in endpoints:
+            if not isinstance(endpoint, dict):
+                continue
+            host, port = endpoint.get("host"), endpoint.get("port")
+            if not isinstance(host, str) or not isinstance(port, int):
+                continue
+            path = endpoint.get("path") if isinstance(endpoint.get("path"), str) else ""
+            entry = settings.setdefault((host, port, path), {})
+            mode = endpoint.get("enforcement")
+            if isinstance(mode, str):
+                entry["enforcement"] = mode
+            for key in _SYNCED_ENDPOINT_KEYS:
+                if key in endpoint:
+                    entry[key] = endpoint[key]
+    return settings
+
+
 def _ensure_provider_yaml(
     config_dir: Path,
     profile_id: str,
@@ -417,10 +460,10 @@ def _ensure_provider_yaml(
         if not isinstance(host, str) or not isinstance(port, int):
             continue
         path = endpoint.get("path") if isinstance(endpoint.get("path"), str) else ""
-        policy_enforcement = _policy_endpoint_enforcement(policy_path)
-        matching = policy_enforcement.get((host, port, path)) or policy_enforcement.get((host, port, ""))
+        policy_settings = _policy_endpoint_settings(policy_path)
+        matching = policy_settings.get((host, port, path)) or policy_settings.get((host, port, ""))
         if matching:
-            endpoint["enforcement"] = matching
+            endpoint.update(matching)
     yaml_path.write_text(yaml.safe_dump(profile, sort_keys=False))
     return yaml_path
 

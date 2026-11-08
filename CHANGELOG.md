@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.32.3 (2026-11-08)
+
+### Bug Fixes
+
+- **recover**: Gateway-mediated sandbox recovery for OpenShell >= 0.1.7
+  ([`348e2f5`](https://github.com/butler54/sandboxctl/commit/348e2f5d84287973c5791aa5ebaddfd11a4230de))
+
+
 ## v1.32.2 (2026-11-04)
 
 ### Bug Fixes

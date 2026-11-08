@@ -528,15 +528,54 @@ class TestRecoveryFunctions:
             mock.return_value = MagicMock(returncode=0)
             assert recover_container("test") is True
 
-    def test_recover_container_uses_resolved_name(self) -> None:
+    def test_recover_container_is_gateway_mediated(self) -> None:
+        """The gateway must start the sandbox; raw podman start cannot re-provision."""
+        with (
+            patch("sandboxctl.health.resolve_container_name") as mock_resolve,
+            patch("sandboxctl.health._run") as mock,
+        ):
+            mock.return_value = MagicMock(returncode=0)
+            assert recover_container("mybox") is True
+            cmd = mock.call_args[0][0]
+            assert cmd == ["openshell", "sandbox", "start", "mybox"]
+            mock_resolve.assert_not_called()
+
+    def test_recover_container_error_phase_stops_then_starts(self) -> None:
+        """Sandboxes in the Error phase must be stopped before StartSandbox."""
+        results = [
+            MagicMock(returncode=1, stderr="stop the sandbox before retrying start", stdout=""),
+            MagicMock(returncode=0, stderr="", stdout=""),
+            MagicMock(returncode=0, stderr="", stdout=""),
+        ]
+        with (
+            patch("sandboxctl.health.resolve_container_name") as mock_resolve,
+            patch("sandboxctl.health._run", side_effect=results) as mock,
+        ):
+            assert recover_container("test") is True
+            cmds = [call.args[0] for call in mock.call_args_list]
+            assert cmds == [
+                ["openshell", "sandbox", "start", "test"],
+                ["openshell", "sandbox", "stop", "test"],
+                ["openshell", "sandbox", "start", "test"],
+            ]
+            mock_resolve.assert_not_called()
+
+    def test_recover_container_falls_back_to_podman_start(self) -> None:
+        """Older gateways / unreachable gateway: raw podman start with the resolved name."""
         with (
             patch("sandboxctl.health.resolve_container_name", return_value=f"{_CONTAINER_PREFIX}mybox"),
             patch("sandboxctl.health._run") as mock,
         ):
-            mock.return_value = MagicMock(returncode=0)
-            recover_container("mybox")
-            cmd = mock.call_args[0][0]
-            assert f"{_CONTAINER_PREFIX}mybox" in cmd
+            # First call: gateway start fails; second: podman start succeeds.
+            results = [
+                MagicMock(returncode=1, stderr="gateway unreachable", stdout=""),
+                MagicMock(returncode=0, stderr="", stdout=""),
+            ]
+            mock.side_effect = results
+            assert recover_container("mybox") is True
+            cmds = [call.args[0] for call in mock.call_args_list]
+            assert cmds[0] == ["openshell", "sandbox", "start", "mybox"]
+            assert cmds[1] == ["podman", "start", f"{_CONTAINER_PREFIX}mybox"]
 
     def test_recover_container_failure(self) -> None:
         with (
@@ -546,7 +585,12 @@ class TestRecoveryFunctions:
             assert recover_container("test") is False
 
     def test_recover_container_missing_returns_false(self) -> None:
-        with patch("sandboxctl.health.resolve_container_name", return_value=None):
+        with (
+            patch("sandboxctl.health.resolve_container_name", return_value=None),
+            patch("sandboxctl.health._run") as mock,
+        ):
+            # Gateway start fails and there is no container to fall back to.
+            mock.return_value = MagicMock(returncode=1, stderr="not found", stdout="")
             assert recover_container("test") is False
 
 

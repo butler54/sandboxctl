@@ -140,6 +140,7 @@ def sandbox_create(
     upload: Path,
     no_keep: bool = False,
     no_git_ignore: bool = True,
+    restart_policy: str = "",
     *,
     gateway: str | None = None,
 ) -> None:
@@ -154,6 +155,8 @@ def sandbox_create(
         "--policy",
         str(policy),
     ]
+    if restart_policy:
+        cmd.extend(["--restart-policy", restart_policy])
     for p in providers:
         cmd.extend(["--provider", p])
     cmd.extend(["--upload", f"{upload}:/sandbox"])
@@ -250,6 +253,22 @@ def sandbox_exec_interactive(name: str, command: str, *, gateway: str | None = N
     ]
     result = subprocess.run(cmd, check=False, env=_cli_env(_target_gateway(name, gateway)))
     return result.returncode
+
+
+def sandbox_stop(name: str, *, gateway: str | None = None) -> bool:
+    """Stop a sandbox gracefully via the gateway (workspace is preserved).
+
+    This is the supported pre-reboot path: a sandbox stopped this way can be
+    brought back with ``openshell sandbox start`` / ``sandboxctl recover``
+    because the gateway retains its provisioning state. There is no SDK
+    stop/start surface yet, so this is CLI-only.
+    """
+    gw = _target_gateway(name, gateway)
+    try:
+        result = _run(["openshell", "sandbox", "stop", name], check=False, env=_cli_env(gw))
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    return result.returncode == 0
 
 
 def sandbox_delete(name: str, *, gateway: str | None = None) -> None:

@@ -547,6 +547,53 @@ def recover(
 
 
 @app.command()
+def stop(
+    name: str | None = typer.Argument(
+        None,
+        help="Sandbox name (omit to stop all).",
+        callback=lambda v: _validate_name(v) if v else v,
+    ),
+) -> None:
+    """Stop sandboxes gracefully (workspace preserved; use before reboot).
+
+    Stopping through the gateway (rather than killing the podman machine)
+    keeps the sandbox's provisioning state, so `sandboxctl recover` or
+    `sandboxctl open` can bring it back after a host reboot or
+    `podman machine stop`.
+    """
+    from sandboxctl import openshell as osh
+
+    if name:
+        targets = [name]
+    else:
+        try:
+            sandboxes = osh.sandbox_list()
+            targets = [sb["name"] for sb in sandboxes]
+        except osh.SandboxError as exc:
+            targets = []
+            typer.echo(f"Could not list sandboxes: {exc}")
+            raise typer.Exit(1) from None
+
+    if not targets:
+        typer.echo("No sandboxes found.")
+        return
+
+    stopped = 0
+    failed = 0
+    for sname in targets:
+        if osh.sandbox_stop(sname):
+            typer.echo(f"  {sname}: stopped")
+            stopped += 1
+        else:
+            typer.echo(f"  {sname}: stop failed")
+            failed += 1
+
+    typer.echo(f"\n{stopped} stopped, {failed} failed.")
+    if failed == 0 and stopped > 0:
+        typer.echo("Safe to reboot or run `podman machine stop`.")
+
+
+@app.command()
 def upgrade() -> None:
     """Upgrade OpenShell to latest version."""
     typer.echo("Upgrading OpenShell...")

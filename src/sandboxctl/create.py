@@ -1049,6 +1049,7 @@ def create_sandbox(
                 providers=providers,
                 upload=stage_dir,
                 no_keep=ephemeral,
+                restart_policy=profile.sandbox.restart_policy,
                 gateway=gateway_name,
             )
         finally:

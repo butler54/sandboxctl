@@ -478,14 +478,51 @@ def recover_gateway() -> bool:
         return False
 
 
+def _openshell_cli(args: list[str], timeout: int = 180) -> subprocess.CompletedProcess[str] | None:
+    """Run a gateway-mediated `openshell` command; None when the CLI is unavailable."""
+    try:
+        return _run(["openshell", *args], timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+
 def recover_container(sandbox_name: str) -> bool:
-    """Attempt to start a stopped container (safe — no data loss)."""
+    """Attempt to start a stopped sandbox (safe — no data loss).
+
+    Gateway-mediated first: on OpenShell >= 0.1.7 the boundary bootstrap
+    (``/.openshell/channel/sandbox/bootstrap.json``) is written by the gateway
+    during StartSandbox and is not persisted in the channel volume, so a raw
+    ``podman start`` of the sandbox container makes it exit(1) on the missing
+    file (and the supervisor container, created with restart=no, is never
+    started at all). When the sandbox sits in the Error phase the gateway
+    rejects StartSandbox ("stop the sandbox before retrying start"), so stop
+    first and retry. Raw ``podman start`` remains as a fallback for older
+    gateways or when the gateway is unreachable.
+    """
+    # Preferred: gateway-mediated start (re-provisions supervisor + bootstrap).
+    result = _openshell_cli(["sandbox", "start", sandbox_name])
+    if result is not None and result.returncode == 0:
+        return True
+
+    # Sandboxes wedged in the Error phase must be stopped before starting.
+    if (
+        result is not None
+        and result.returncode != 0
+        and "stop the sandbox before retrying start" in f"{result.stderr}{result.stdout}"
+    ):
+        stopped = _openshell_cli(["sandbox", "stop", sandbox_name])
+        if stopped is not None and stopped.returncode == 0:
+            retry = _openshell_cli(["sandbox", "start", sandbox_name])
+            if retry is not None and retry.returncode == 0:
+                return True
+
+    # Fallback: raw container start (pre-0.1.7 gateways, gateway unreachable).
     container_name = resolve_container_name(sandbox_name)
     if container_name is None:
         return False
     try:
-        result = _run(["podman", "start", container_name], timeout=30, env=_podman_env())
-        return result.returncode == 0
+        started = _run(["podman", "start", container_name], timeout=30, env=_podman_env())
+        return started.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 

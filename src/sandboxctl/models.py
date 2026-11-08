@@ -13,6 +13,11 @@ class SandboxConfig(BaseModel):
     policy: str = "policy.yaml"
     default_repo: str = ""
     model: str = ""
+    # OpenShell restart policy passed to `openshell sandbox create
+    # --restart-policy` (never | on-failure | always). Empty = CLI default
+    # (never). "always" makes the gateway re-assert the running intent after
+    # a gateway/podman restart instead of leaving sandboxes in Error.
+    restart_policy: str = ""
 
     model_config = {"extra": "ignore"}
 

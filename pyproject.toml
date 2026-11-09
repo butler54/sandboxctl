@@ -71,7 +71,7 @@ run = "pytest {args}"
 cov = "pytest --cov=sandboxctl --cov-report=term-missing {args}"
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.12", "3.13"]
+python = ["3.12", "3.13", "3.14"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

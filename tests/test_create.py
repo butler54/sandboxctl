@@ -553,6 +553,86 @@ class TestPostLaunchSetup:
         assert list(providers["openai-work"]["models"]) == ["gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra"]
         assert list(providers["openai-personal"]["models"]) == ["gpt-5.6-sol"]
 
+    def test_profile_opencode_config_merges_into_patch(self, tmp_path: Path) -> None:
+        """[opencode.config] profile fragments deep-merge into OPENCODE_CONFIG_CONTENT."""
+        import base64 as _b64
+        import json as _json
+
+        from sandboxctl.models import OpencodeProfileConfig
+
+        config = self._make_config(tmp_path)
+        config.opencode.enabled_providers = ["enmaas"]
+        profile = Profile(
+            name="test",
+            mlflow=False,
+            opencode=OpencodeProfileConfig(
+                model="enmaas/rits/zai-org/glm-5-3",
+                build_model="enmaas/rits/zai-org/glm-5-3",
+                plan_model="enmaas/rits/zai-org/glm-5-3",
+                config={
+                    "agent": {
+                        "osac-reviewer": {
+                            "mode": "subagent",
+                            "model": "enmaas/rits/deepseek-ai/DeepSeek-V4.1-Flash-1017",
+                        }
+                    },
+                    "mcp": {
+                        "atlassian": {
+                            "type": "remote",
+                            "url": "https://mcp.atlassian.com/mcp",
+                            "enabled": True,
+                        }
+                    },
+                },
+            ),
+        )
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.create.get_credential", return_value="sk-x"),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        cfg_calls = [c for c in mock_pipe.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(c)]
+        assert len(cfg_calls) == 1
+        script = cfg_calls[0][0][1]
+        b64 = next(tok for tok in script.split() if tok.startswith("eyJ"))
+        patch_obj = _json.loads(_b64.b64decode(b64).decode())
+        # Profile-config agents merge with (not replace) the generated ones.
+        assert patch_obj["agent"]["build"]["model"] == "enmaas/rits/zai-org/glm-5-3"
+        assert patch_obj["agent"]["osac-reviewer"]["mode"] == "subagent"
+        assert patch_obj["agent"]["osac-reviewer"]["model"] == "enmaas/rits/deepseek-ai/DeepSeek-V4.1-Flash-1017"
+        # MCP server declarations pass through untouched.
+        assert patch_obj["mcp"]["atlassian"]["type"] == "remote"
+        assert patch_obj["mcp"]["atlassian"]["url"] == "https://mcp.atlassian.com/mcp"
+
+    def test_deep_merge_config_merges_dicts_and_replaces_scalars(self) -> None:
+        """Nested dicts merge key-by-key; lists and scalars replace wholesale."""
+        from sandboxctl.create import _deep_merge_config
+
+        base = {
+            "model": "a",
+            "agent": {"build": {"model": "a"}, "reviewer": {"model": "r"}},
+            "provider": {"enmaas": {"models": {"glm": {}}}},
+            "mcp": {"codebase-memory": {"type": "local"}},
+        }
+        overlay = {
+            "model": "b",
+            "agent": {"build": {"model": "b"}, "extra": {"model": "e"}},
+            "provider": {"enmaas": {"models": {"glm": {"variants": ["high"]}}}},
+            "mcp": {"atlassian": {"type": "remote"}},
+        }
+        merged = _deep_merge_config(base, overlay)
+        assert merged["model"] == "b"
+        assert merged["agent"]["build"]["model"] == "b"
+        assert merged["agent"]["reviewer"]["model"] == "r"  # untouched sibling
+        assert merged["agent"]["extra"]["model"] == "e"
+        assert merged["provider"]["enmaas"]["models"]["glm"] == {"variants": ["high"]}
+        assert merged["mcp"]["codebase-memory"]["type"] == "local"  # preserved
+        assert merged["mcp"]["atlassian"]["type"] == "remote"
+
     def test_openai_models_default_to_curated_list(self, tmp_path: Path) -> None:
         """Existing accounts keep the legacy model catalog until configured."""
         import base64 as _b64

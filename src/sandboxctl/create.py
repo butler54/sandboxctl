@@ -212,6 +212,23 @@ def _inject_env_secret(name: str, variable: str, value: str) -> None:
     upsert_bashrc_export(name, variable, value)
 
 
+def _deep_merge_config(base: dict, overlay: dict) -> dict:
+    """Recursively merge ``overlay`` into ``base`` (dicts merge, else replace).
+
+    Used to fold a profile's raw ``[opencode.config]`` fragment into the
+    OPENCODE_CONFIG_CONTENT patch: nested dicts (agents, providers, mcp
+    servers, model entries) merge key-by-key so a profile can add or refine
+    entries without clobbering what sandboxctl or the host config already
+    contributed. Lists and scalars replace wholesale.
+    """
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge_config(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
 def _opencode_runtime_config(config: SandboxctlConfig, profile: Profile | None = None) -> dict:
     """Return OpenCode settings controlled by sandboxctl's host config."""
     host_opencode = config.opencode
@@ -701,6 +718,14 @@ def post_launch_setup(
     opencode_config = _opencode_runtime_config(config, profile)
     if opencode_providers:
         opencode_config["provider"] = opencode_providers
+
+    # Profile-level raw opencode config ([opencode.config] in the profile
+    # TOML): deep-merged into the patch so profiles can add agents, MCP
+    # servers, provider model tweaks, etc. without sandboxctl hardcoding
+    # them. Merged after the generated keys so a profile may refine them.
+    profile_opencode_raw = profile.opencode.config if profile and profile.opencode else {}
+    if profile_opencode_raw:
+        _deep_merge_config(opencode_config, profile_opencode_raw)
 
     # codebase-memory-mcp (#123): the base image ships this as a static binary
     # (arm64-only). When present in the sandbox, register it as a local MCP server for

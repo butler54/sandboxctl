@@ -17,7 +17,7 @@ import yaml
 from sandboxctl import mlflow_cmd
 from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig, resolved_custom_providers
-from sandboxctl.credentials import get_credential
+from sandboxctl.credentials import get_credential, upsert_bashrc_export
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile
 from sandboxctl.policy import prepare_policy_for_apply, record_policy_association
 from sandboxctl.provider_profiles import GITHUB_PROFILE, GOOGLE_VERTEX_AI_PROFILE, custom_provider_profile
@@ -203,16 +203,13 @@ def _inject_opencode_auth_content(name: str, auth: dict) -> None:
 
 
 def _inject_env_secret(name: str, variable: str, value: str) -> None:
-    """Append one base64-encoded secret export to the sandbox shell profile."""
-    encoded = base64.b64encode(value.encode()).decode()
-    osh.sandbox_exec_pipe(
-        name,
-        f"grep -q {variable}= /sandbox/.bashrc 2>/dev/null || "
-        f"{{ printf 'export {variable}=' >> /sandbox/.bashrc && "
-        f"echo {encoded} | base64 -d >> /sandbox/.bashrc && "
-        "echo >> /sandbox/.bashrc; }; "
-        f'echo "{variable}: configured"',
-    )
+    """Upsert a base64-encoded secret export in the sandbox shell profile.
+
+    Replaces any existing export for the variable so rotated credentials
+    propagate on re-runs instead of being skipped (see
+    credentials.upsert_bashrc_export).
+    """
+    upsert_bashrc_export(name, variable, value)
 
 
 def _opencode_runtime_config(config: SandboxctlConfig, profile: Profile | None = None) -> dict:

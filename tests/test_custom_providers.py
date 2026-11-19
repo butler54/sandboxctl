@@ -569,14 +569,41 @@ class TestCustomProvidersCheck:
         )
         with (
             patch("sandboxctl.doctor.get_credential", return_value="sk-x"),
-            patch("sandboxctl.doctor.osh.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
         ):
             result = CustomProvidersCheck().fix("mybox", config)
         assert result.success is True
         assert "MY_LLM_API_KEY" in result.details
         script = mock_pipe.call_args.args[1]
-        assert "grep -q MY_LLM_API_KEY /sandbox/.bashrc" in script
-        assert base64.b64encode(b'export MY_LLM_API_KEY="sk-x"').decode() in script
+        # Upsert semantics: an existing export is replaced, not skipped, so
+        # rotated credentials propagate to running sandboxes.
+        assert "sed -i '/^export MY_LLM_API_KEY=/d' /sandbox/.bashrc" in script
+        assert base64.b64encode(b"sk-x").decode() in script
+        # The plaintext secret never appears in the transport script.
+        assert "sk-x" not in script
+
+    def test_fix_replaces_rotated_credential(self, tmp_path: Path) -> None:
+        """A second fix with a rotated key must replace the stale export."""
+        config = SandboxctlConfig(
+            config_dir=tmp_path,
+            opencode=OpencodeConfig(custom_providers={"my-llm": MY_LLM}),
+        )
+        scripts: list[str] = []
+        with (
+            patch("sandboxctl.doctor.get_credential", side_effect=["sk-old", "sk-new"]),
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+        ):
+            first = CustomProvidersCheck().fix("mybox", config)
+            second = CustomProvidersCheck().fix("mybox", config)
+            scripts = [call.args[1] for call in mock_pipe.call_args_list]
+        assert first.success is True
+        assert second.success is True
+        assert len(scripts) == 2
+        assert base64.b64encode(b"sk-old").decode() in scripts[0]
+        assert base64.b64encode(b"sk-new").decode() in scripts[1]
+        # Both scripts replace rather than skip an existing export.
+        for script in scripts:
+            assert "sed -i '/^export MY_LLM_API_KEY=/d' /sandbox/.bashrc" in script
 
     def test_fix_missing_credential_fails(self, tmp_path: Path) -> None:
         config = SandboxctlConfig(

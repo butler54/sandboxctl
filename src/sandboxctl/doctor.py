@@ -14,7 +14,7 @@ from pathlib import Path
 
 from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig, resolved_custom_providers
-from sandboxctl.credentials import get_credential
+from sandboxctl.credentials import get_credential, upsert_bashrc_export
 from sandboxctl.health import diagnose
 from sandboxctl.models import CredentialConfig
 from sandboxctl.policy import (
@@ -202,19 +202,15 @@ class GitLabPATCheck(CredentialCheck):
                 details="No GitLab token available to inject",
             )
         servers = self._discover_servers(config)
-        # Inject GITLAB_TOKEN env var and configure git credential helper per server
-        env_line = f'export GITLAB_TOKEN="{token}"'
-        encoded_env = base64.b64encode(env_line.encode()).decode()
-        script_parts = [
-            f"grep -q GITLAB_TOKEN /sandbox/.bashrc 2>/dev/null || echo {encoded_env} | base64 -d >> /sandbox/.bashrc",
-        ]
+        # Upsert GITLAB_TOKEN (replaces a stale export after rotation) and
+        # configure the git credential helper per server.
+        upsert_bashrc_export(sandbox_name, "GITLAB_TOKEN", token)
         for server in servers:
-            script_parts.append(
+            osh.sandbox_exec_pipe(
+                sandbox_name,
                 f"git config --global credential.https://{server}.helper "
-                f'\'!f() {{ echo "username=oauth2"; echo "password=$GITLAB_TOKEN"; }}; f\''
+                f'\'!f() {{ echo "username=oauth2"; echo "password=$GITLAB_TOKEN"; }}; f\'',
             )
-        script = " && ".join(script_parts)
-        osh.sandbox_exec_pipe(sandbox_name, script)
         return FixResult(
             success=True,
             name=self.check_name,
@@ -840,14 +836,9 @@ class CustomProvidersCheck(CredentialCheck):
             if not key:
                 missing.append(provider.keychain_service)
                 continue
-            # base64 so arbitrary key characters survive shell transport; the
-            # grep guard keeps the export idempotent.
-            encoded = base64.b64encode(f'export {provider.api_key_env}="{key}"'.encode()).decode()
-            osh.sandbox_exec_pipe(
-                sandbox_name,
-                f"grep -q {provider.api_key_env} /sandbox/.bashrc 2>/dev/null || "
-                f"echo {encoded} | base64 -d >> /sandbox/.bashrc",
-            )
+            # Upsert (replace-on-change) so rotated credentials propagate to
+            # running sandboxes instead of being skipped by a stale export.
+            upsert_bashrc_export(sandbox_name, provider.api_key_env, key)
             injected.append(provider.api_key_env)
         if missing:
             return FixResult(

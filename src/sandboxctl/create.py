@@ -442,6 +442,41 @@ def _policy_endpoint_settings(policy_path: Path | None) -> dict[tuple[str, int, 
     return settings
 
 
+def _existing_endpoint_settings(yaml_path: Path) -> dict[tuple[str, int, str], dict]:
+    """Return synced endpoint settings already present in a managed provider profile.
+
+    Provider profiles are global, but the policy sync runs per-create driven by
+    the profile being created. Without this carry-over, creating a profile whose
+    policy is silent about an endpoint would silently strip keys a previous
+    create synced (e.g. ``tls: skip`` for a passthrough provider) — the gateway
+    (>= 0.1.7) then fails its startup endpoint-ambiguity preflight against
+    sandboxes whose stored policies still declare the old metadata, and
+    crash-loops until the profile is repaired.
+    """
+    if not yaml_path.exists():
+        return {}
+    try:
+        existing = yaml.safe_load(yaml_path.read_text()) or {}
+    except yaml.YAMLError:
+        return {}
+    endpoints = existing.get("endpoints", []) if isinstance(existing, dict) else []
+    if not isinstance(endpoints, list):
+        return {}
+    settings: dict[tuple[str, int, str], dict] = {}
+    for endpoint in endpoints:
+        if not isinstance(endpoint, dict):
+            continue
+        host, port = endpoint.get("host"), endpoint.get("port")
+        if not isinstance(host, str) or not isinstance(port, int):
+            continue
+        path = endpoint.get("path") if isinstance(endpoint.get("path"), str) else ""
+        entry = settings.setdefault((host, port, path), {})
+        for key in (*_SYNCED_ENDPOINT_KEYS, "enforcement"):
+            if key in endpoint:
+                entry[key] = endpoint[key]
+    return settings
+
+
 def _ensure_provider_yaml(
     config_dir: Path,
     profile_id: str,
@@ -453,6 +488,8 @@ def _ensure_provider_yaml(
     providers_dir.mkdir(parents=True, exist_ok=True)
     yaml_path = providers_dir / f"{profile_id}.yaml"
     profile = yaml.safe_load(content)
+    policy_settings = _policy_endpoint_settings(policy_path)
+    existing_settings = _existing_endpoint_settings(yaml_path)
     for endpoint in profile.get("endpoints", []):
         if not isinstance(endpoint, dict):
             continue
@@ -460,10 +497,16 @@ def _ensure_provider_yaml(
         if not isinstance(host, str) or not isinstance(port, int):
             continue
         path = endpoint.get("path") if isinstance(endpoint.get("path"), str) else ""
-        policy_settings = _policy_endpoint_settings(policy_path)
         matching = policy_settings.get((host, port, path)) or policy_settings.get((host, port, ""))
         if matching:
             endpoint.update(matching)
+        elif (host, port, path) in existing_settings or (host, port, "") in existing_settings:
+            # This create's policy is silent about the endpoint: keep keys an
+            # earlier create synced instead of resetting them to the template
+            # defaults (see _existing_endpoint_settings).
+            carried = existing_settings.get((host, port, path)) or existing_settings.get((host, port, ""))
+            for key, value in carried.items():
+                endpoint.setdefault(key, value)
     yaml_path.write_text(yaml.safe_dump(profile, sort_keys=False))
     return yaml_path
 

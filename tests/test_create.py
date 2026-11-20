@@ -11,8 +11,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from sandboxctl.config import GatewayEntry
+from sandboxctl.config import CustomProviderConfig, GatewayEntry
 from sandboxctl.create import (
+    _inject_opencode_auth_content,
+    _inject_opencode_config_content,
+    _refresh_opencode_configuration,
     clone_repos,
     create_sandbox,
     generate_workspace,
@@ -31,6 +34,21 @@ from sandboxctl.create import (
 )
 from sandboxctl.models import Profile, SandboxConfig, WorkspaceConfig
 from sandboxctl.openshell import SandboxError
+
+
+@pytest.fixture(autouse=True)
+def _benign_exec_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default success outcome for osh.sandbox_exec_pipe_result.
+
+    Failure-loud injections (OPENCODE_CONFIG_CONTENT, auth.json) check the
+    exec outcome; tests that don't care get a benign success so unpatched
+    calls never reach a real gateway. Tests may override with their own
+    patch — nested patches take precedence.
+    """
+    from sandboxctl import openshell as osh
+
+    ok = MagicMock(exit_code=0, stdout="configured\n", stderr="")
+    monkeypatch.setattr(osh, "sandbox_exec_pipe_result", MagicMock(return_value=ok))
 
 
 class TestStageSkills:
@@ -373,6 +391,60 @@ network_policies:
         profile = yaml.safe_load(mock_import.call_args[0][0].read_text())
         assert [endpoint["enforcement"] for endpoint in profile["endpoints"]] == ["audit", "audit", "audit"]
 
+    def test_provider_profile_preserves_synced_keys_when_policy_silent(self, tmp_path: Path) -> None:
+        """A create whose policy omits an endpoint must not strip synced keys.
+
+        Provider profiles are global but the sync is per-create: without
+        carry-over, creating a profile that never mentions the provider's
+        host:port resets tls/allow_uninspected_credentials to the template
+        defaults, and the gateway's startup endpoint-ambiguity preflight then
+        rejects sandboxes whose stored policies still declare the synced
+        values (observed in the wild: network profile synced tls: skip,
+        a later osac create wiped it, gateway crash-looped).
+        """
+        from sandboxctl.create import _ensure_provider_yaml
+
+        provider_yaml = """\
+id: matilda
+description: Custom OpenAI-compatible provider (sandboxctl-managed)
+endpoints:
+  - host: matilda.maincode.com
+    port: 443
+    protocol: rest
+    access: read-write
+    enforcement: enforce
+"""
+        tls_policy = tmp_path / "policy-tls.yaml"
+        tls_policy.write_text(
+            """\
+network_policies:
+  matilda:
+    endpoints:
+      - host: matilda.maincode.com
+        port: 443
+        enforcement: enforce
+        tls: skip
+        allow_uninspected_credentials: true
+"""
+        )
+        silent_policy = tmp_path / "policy-silent.yaml"
+        silent_policy.write_text(
+            "network_policies:\n  unifi:\n    endpoints:\n      - host: unifi.ui.com\n        port: 443\n"
+        )
+
+        # First create (network-like profile): syncs tls keys into the profile.
+        path = _ensure_provider_yaml(tmp_path, "matilda", provider_yaml, tls_policy)
+        synced = yaml.safe_load(path.read_text())["endpoints"][0]
+        assert synced["tls"] == "skip"
+        assert synced["allow_uninspected_credentials"] is True
+
+        # Second create (osac-like profile): policy silent about the endpoint.
+        path = _ensure_provider_yaml(tmp_path, "matilda", provider_yaml, silent_policy)
+        carried = yaml.safe_load(path.read_text())["endpoints"][0]
+        assert carried["tls"] == "skip", "silent policy must not strip synced tls"
+        assert carried["allow_uninspected_credentials"] is True
+        assert carried["enforcement"] == "enforce"
+
     def test_github_provider_skipped_without_keychain_token(self, tmp_path: Path) -> None:
         config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)
         with (
@@ -383,6 +455,93 @@ network_policies:
 
         assert providers == []
         mock_create.assert_not_called()
+
+
+class TestOpencodeConfigInjection:
+    """Upsert semantics + auth.json + per-model context limits."""
+
+    @staticmethod
+    def _assert_valid_bash(script: str) -> None:
+        """The injected script must be valid bash.
+
+        A regression (2026-11-20) shipped an unclosed brace group: the shell
+        aborted with 'syntax error: unexpected end of file' while the
+        stdout-only exec helper silently discarded the failure — the
+        injection reported success and did nothing.
+        """
+        import subprocess
+
+        result = subprocess.run(["bash", "-n"], input=script, capture_output=True, text=True, check=False)
+        assert result.returncode == 0, f"invalid bash script: {result.stderr}"
+
+    def test_config_content_upserts_instead_of_skip(self) -> None:
+        """Re-injection must replace an existing export, not skip-if-present.
+
+        The old grep guard meant a regenerated patch (new models, provider
+        changes) never reached running sandboxes — same failure mode as the
+        rotated-credential bug fixed in c967321.
+        """
+        ok = MagicMock(exit_code=0, stdout="OpenCode config content: configured\n", stderr="")
+        with patch("sandboxctl.openshell.sandbox_exec_pipe_result", return_value=ok) as mock_exec:
+            _inject_opencode_config_content("mybox", {"model": "x"})
+        script = mock_exec.call_args[0][1]
+        self._assert_valid_bash(script)
+        assert "sed -i '/^export OPENCODE_CONFIG_CONTENT=/d'" in script
+        assert "grep -q OPENCODE_CONFIG_CONTENT" not in script
+        assert "OPENCODE_CONFIG_CONTENT" in script
+
+    def test_config_content_injection_failure_is_loud(self) -> None:
+        """A failing injection must raise, not silently do nothing."""
+        bad = MagicMock(exit_code=2, stdout="", stderr="bash: line 2: syntax error: unexpected end of file")
+        with patch("sandboxctl.openshell.sandbox_exec_pipe_result", return_value=bad):
+            with pytest.raises(SandboxError, match="injection failed"):
+                _inject_opencode_config_content("mybox", {"model": "x"})
+
+    def test_auth_content_writes_auth_json(self) -> None:
+        """opencode reads ~/.local/share/opencode/auth.json, not an env var."""
+        ok = MagicMock(exit_code=0, stdout="OpenCode authentication: configured\n", stderr="")
+        with patch("sandboxctl.openshell.sandbox_exec_pipe_result", return_value=ok) as mock_exec:
+            _inject_opencode_auth_content("mybox", {"opencode-go": {"type": "api", "key": "k"}})
+        script = mock_exec.call_args[0][1]
+        self._assert_valid_bash(script)
+        assert "/sandbox/.local/share/opencode/auth.json" in script
+        assert "chmod 600" in script
+        # Legacy dead env-var export from older sandboxctl versions is removed.
+        assert "sed -i '/^export OPENCODE_AUTH_CONTENT=/d'" in script
+
+    def test_custom_provider_models_carry_context_limits(self) -> None:
+        """Configured context_windows land as per-model limits in the patch."""
+        provider = CustomProviderConfig(
+            base_url="https://api.example.com/v1",
+            display_name="Example",
+            models=["m-1m", "m-std"],
+            api_key_env="EXAMPLE_KEY",
+            context_windows={"m-1m": 1000000},
+        )
+        config = MagicMock()
+        config.opencode.openai_accounts = []
+        config.opencode.go = False
+        ok = MagicMock(exit_code=0, stdout="configured\n", stderr="")
+        with (
+            patch("sandboxctl.create.resolved_custom_providers", return_value={"example": provider}),
+            patch("sandboxctl.create.get_credential", return_value="sk-test"),
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+            patch("sandboxctl.openshell.sandbox_exec_pipe_result", return_value=ok) as mock_exec,
+        ):
+            _refresh_opencode_configuration("mybox", config, None)
+
+        # Find the OPENCODE_CONFIG_CONTENT injection and decode its payload.
+        config_scripts = [
+            call.args[1] for call in mock_exec.call_args_list if "OPENCODE_CONFIG_CONTENT" in call.args[1]
+        ]
+        assert config_scripts, "OPENCODE_CONFIG_CONTENT was not injected"
+        import re as _re
+
+        b64 = _re.search(r"echo ([A-Za-z0-9+/=]+) \| base64 -d", config_scripts[0]).group(1)
+        patch_dict = json.loads(base64.b64decode(b64))
+        models = patch_dict["provider"]["example"]["models"]
+        assert models["m-1m"] == {"limit": {"context": 1000000}}
+        assert models["m-std"] == {}
 
 
 class TestPostLaunchSetup:
@@ -533,14 +692,18 @@ class TestPostLaunchSetup:
         profile = Profile(name="test", mlflow=False)
 
         with (
-            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=0, stdout="configured\n", stderr=""),
+            ) as mock_result,
             patch("sandboxctl.create.get_credential", return_value="sk-x"),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 
-        cfg_calls = [c for c in mock_pipe.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(c)]
+        cfg_calls = [c for c in mock_result.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(c)]
         assert len(cfg_calls) == 1
         # Decode the base64 JSON payload embedded in the injection script.
         script = cfg_calls[0][0][1]
@@ -553,6 +716,90 @@ class TestPostLaunchSetup:
         assert list(providers["openai-work"]["models"]) == ["gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra"]
         assert list(providers["openai-personal"]["models"]) == ["gpt-5.6-sol"]
 
+    def test_profile_opencode_config_merges_into_patch(self, tmp_path: Path) -> None:
+        """[opencode.config] profile fragments deep-merge into OPENCODE_CONFIG_CONTENT."""
+        import base64 as _b64
+        import json as _json
+
+        from sandboxctl.models import OpencodeProfileConfig
+
+        config = self._make_config(tmp_path)
+        config.opencode.enabled_providers = ["enmaas"]
+        profile = Profile(
+            name="test",
+            mlflow=False,
+            opencode=OpencodeProfileConfig(
+                model="enmaas/rits/zai-org/glm-5-3",
+                build_model="enmaas/rits/zai-org/glm-5-3",
+                plan_model="enmaas/rits/zai-org/glm-5-3",
+                config={
+                    "agent": {
+                        "osac-reviewer": {
+                            "mode": "subagent",
+                            "model": "enmaas/rits/deepseek-ai/DeepSeek-V4.1-Flash-1017",
+                        }
+                    },
+                    "mcp": {
+                        "atlassian": {
+                            "type": "remote",
+                            "url": "https://mcp.atlassian.com/mcp",
+                            "enabled": True,
+                        }
+                    },
+                },
+            ),
+        )
+
+        with (
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=0, stdout="configured\n", stderr=""),
+            ) as mock_result,
+            patch("sandboxctl.create.get_credential", return_value="sk-x"),
+            patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
+            patch("sandboxctl.context.restore_claude_context", return_value=False),
+        ):
+            post_launch_setup("mybox", profile, config)
+
+        cfg_calls = [c for c in mock_result.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(c)]
+        assert len(cfg_calls) == 1
+        script = cfg_calls[0][0][1]
+        b64 = next(tok for tok in script.split() if tok.startswith("eyJ"))
+        patch_obj = _json.loads(_b64.b64decode(b64).decode())
+        # Profile-config agents merge with (not replace) the generated ones.
+        assert patch_obj["agent"]["build"]["model"] == "enmaas/rits/zai-org/glm-5-3"
+        assert patch_obj["agent"]["osac-reviewer"]["mode"] == "subagent"
+        assert patch_obj["agent"]["osac-reviewer"]["model"] == "enmaas/rits/deepseek-ai/DeepSeek-V4.1-Flash-1017"
+        # MCP server declarations pass through untouched.
+        assert patch_obj["mcp"]["atlassian"]["type"] == "remote"
+        assert patch_obj["mcp"]["atlassian"]["url"] == "https://mcp.atlassian.com/mcp"
+
+    def test_deep_merge_config_merges_dicts_and_replaces_scalars(self) -> None:
+        """Nested dicts merge key-by-key; lists and scalars replace wholesale."""
+        from sandboxctl.create import _deep_merge_config
+
+        base = {
+            "model": "a",
+            "agent": {"build": {"model": "a"}, "reviewer": {"model": "r"}},
+            "provider": {"enmaas": {"models": {"glm": {}}}},
+            "mcp": {"codebase-memory": {"type": "local"}},
+        }
+        overlay = {
+            "model": "b",
+            "agent": {"build": {"model": "b"}, "extra": {"model": "e"}},
+            "provider": {"enmaas": {"models": {"glm": {"variants": ["high"]}}}},
+            "mcp": {"atlassian": {"type": "remote"}},
+        }
+        merged = _deep_merge_config(base, overlay)
+        assert merged["model"] == "b"
+        assert merged["agent"]["build"]["model"] == "b"
+        assert merged["agent"]["reviewer"]["model"] == "r"  # untouched sibling
+        assert merged["agent"]["extra"]["model"] == "e"
+        assert merged["provider"]["enmaas"]["models"]["glm"] == {"variants": ["high"]}
+        assert merged["mcp"]["codebase-memory"]["type"] == "local"  # preserved
+        assert merged["mcp"]["atlassian"]["type"] == "remote"
+
     def test_openai_models_default_to_curated_list(self, tmp_path: Path) -> None:
         """Existing accounts keep the legacy model catalog until configured."""
         import base64 as _b64
@@ -563,14 +810,18 @@ class TestPostLaunchSetup:
         profile = Profile(name="test", mlflow=False)
 
         with (
-            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=0, stdout="configured\n", stderr=""),
+            ) as mock_result,
             patch("sandboxctl.create.get_credential", return_value="sk-x"),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 
-        cfg_script = next(call.args[1] for call in mock_pipe.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(call))
+        cfg_script = next(call.args[1] for call in mock_result.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(call))
         encoded = next(token for token in cfg_script.split() if token.startswith("eyJ"))
         providers = _json.loads(_b64.b64decode(encoded))["provider"]
         assert "gpt-5.6-sol" in providers["openai-work"]["models"]
@@ -628,6 +879,10 @@ class TestPostLaunchSetup:
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=fake_exec) as mock_pipe,
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=0, stdout="configured\n", stderr=""),
+            ) as mock_result,
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -638,7 +893,7 @@ class TestPostLaunchSetup:
         # Claude Code: .mcp.json written
         assert any(".mcp.json" in s for s in scripts)
         # opencode: mcp entry present in the injected OPENCODE_CONFIG_CONTENT
-        cfg_calls = [s for s in scripts if "OPENCODE_CONFIG_CONTENT" in s]
+        cfg_calls = [c.args[1] for c in mock_result.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(c)]
         assert len(cfg_calls) == 1
         b64 = next(tok for tok in cfg_calls[0].split() if tok.startswith("eyJ"))
         patch_obj = _json.loads(_b64.b64decode(b64).decode())

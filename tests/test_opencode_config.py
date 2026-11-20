@@ -113,10 +113,13 @@ def test_runtime_config_ignores_partial_mock_attributes() -> None:
 
 
 def test_go_auth_uses_opencode_runtime_auth_override() -> None:
-    with patch("sandboxctl.create.osh.sandbox_exec_pipe") as sandbox_exec:
+    ok = MagicMock(exit_code=0, stdout="OpenCode authentication: configured\n", stderr="")
+    with patch("sandboxctl.openshell.sandbox_exec_pipe_result", return_value=ok) as sandbox_exec:
         _inject_opencode_auth_content("test", {"opencode-go": {"type": "api", "key": "secret"}})
 
     script = sandbox_exec.call_args.args[1]
     encoded = script.split("echo ")[1].split(" |", 1)[0]
     assert json.loads(base64.b64decode(encoded)) == {"opencode-go": {"type": "api", "key": "secret"}}
-    assert "OPENCODE_AUTH_CONTENT=$(echo" in script
+    # opencode reads credentials from auth.json, not an env var.
+    assert "/sandbox/.local/share/opencode/auth.json" in script
+    assert "chmod 600" in script

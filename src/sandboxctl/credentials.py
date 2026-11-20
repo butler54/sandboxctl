@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -177,3 +179,31 @@ def store_credential(service: str, account: str, secret: str) -> None:
 def delete_credential(service: str, account: str) -> bool:
     """Delete a credential using the detected backend."""
     return get_backend().delete(service, account)
+
+
+_ENV_VAR_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def upsert_bashrc_export(sandbox_name: str, variable: str, value: str) -> None:
+    """Idempotently create or replace an export line in a sandbox's .bashrc.
+
+    Unlike an append-only "skip if present" guard, any existing
+    ``export VARIABLE=`` line is removed first so that rotating a credential
+    in the host store propagates to running sandboxes (e.g. via
+    ``sandboxctl doctor --fix``). The value is base64-encoded for transport
+    and single-quoted in the profile so arbitrary characters survive the
+    shell round-trip and sourcing without expansion.
+    """
+    if not _ENV_VAR_PATTERN.fullmatch(variable):
+        msg = f"Invalid environment variable name: {variable!r}"
+        raise ValueError(msg)
+    from sandboxctl import openshell as osh
+
+    encoded = base64.b64encode(value.encode()).decode()
+    script = (
+        f"sed -i '/^export {variable}=/d' /sandbox/.bashrc 2>/dev/null; "
+        f'printf "export {variable}=\'" >> /sandbox/.bashrc && '
+        f"echo {encoded} | base64 -d >> /sandbox/.bashrc && "
+        f'printf "\'\\n" >> /sandbox/.bashrc'
+    )
+    osh.sandbox_exec_pipe(sandbox_name, script)

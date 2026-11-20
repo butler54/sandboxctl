@@ -196,3 +196,29 @@ class TestModuleLevelFunctions:
             mock_shutil.which.return_value = None
             assert delete_credential("test-svc", "default") is True
         sandboxctl.credentials._backend = None
+
+
+class TestUpsertBashrcExport:
+    """Tests for the .bashrc export upsert used for credential injection."""
+
+    def test_script_replaces_existing_export(self) -> None:
+        import base64
+
+        from sandboxctl.credentials import upsert_bashrc_export
+
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe:
+            upsert_bashrc_export("mybox", "MY_LLM_API_KEY", "sk-x")
+        script = mock_pipe.call_args.args[1]
+        assert mock_pipe.call_args.args[0] == "mybox"
+        # Existing export line is deleted first (rotation propagates).
+        assert "sed -i '/^export MY_LLM_API_KEY=/d' /sandbox/.bashrc" in script
+        # Value travels base64-encoded, single-quoted, never in plaintext.
+        assert base64.b64encode(b"sk-x").decode() in script
+        assert "sk-x" not in script
+        assert 'printf "export MY_LLM_API_KEY=\'" >> /sandbox/.bashrc' in script
+
+    def test_invalid_variable_name_rejected(self) -> None:
+        from sandboxctl.credentials import upsert_bashrc_export
+
+        with pytest.raises(ValueError, match="Invalid environment variable name"):
+            upsert_bashrc_export("mybox", "EVIL; rm -rf", "sk-x")

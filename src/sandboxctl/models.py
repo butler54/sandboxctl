@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -92,6 +94,7 @@ class OpencodeProfileConfig(BaseModel):
     model: str = ""
     build_model: str = ""
     plan_model: str = ""
+    config: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"extra": "ignore"}
 

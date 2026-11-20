@@ -373,6 +373,60 @@ network_policies:
         profile = yaml.safe_load(mock_import.call_args[0][0].read_text())
         assert [endpoint["enforcement"] for endpoint in profile["endpoints"]] == ["audit", "audit", "audit"]
 
+    def test_provider_profile_preserves_synced_keys_when_policy_silent(self, tmp_path: Path) -> None:
+        """A create whose policy omits an endpoint must not strip synced keys.
+
+        Provider profiles are global but the sync is per-create: without
+        carry-over, creating a profile that never mentions the provider's
+        host:port resets tls/allow_uninspected_credentials to the template
+        defaults, and the gateway's startup endpoint-ambiguity preflight then
+        rejects sandboxes whose stored policies still declare the synced
+        values (observed in the wild: network profile synced tls: skip,
+        a later osac create wiped it, gateway crash-looped).
+        """
+        from sandboxctl.create import _ensure_provider_yaml
+
+        provider_yaml = """\
+id: matilda
+description: Custom OpenAI-compatible provider (sandboxctl-managed)
+endpoints:
+  - host: matilda.maincode.com
+    port: 443
+    protocol: rest
+    access: read-write
+    enforcement: enforce
+"""
+        tls_policy = tmp_path / "policy-tls.yaml"
+        tls_policy.write_text(
+            """\
+network_policies:
+  matilda:
+    endpoints:
+      - host: matilda.maincode.com
+        port: 443
+        enforcement: enforce
+        tls: skip
+        allow_uninspected_credentials: true
+"""
+        )
+        silent_policy = tmp_path / "policy-silent.yaml"
+        silent_policy.write_text(
+            "network_policies:\n  unifi:\n    endpoints:\n      - host: unifi.ui.com\n        port: 443\n"
+        )
+
+        # First create (network-like profile): syncs tls keys into the profile.
+        path = _ensure_provider_yaml(tmp_path, "matilda", provider_yaml, tls_policy)
+        synced = yaml.safe_load(path.read_text())["endpoints"][0]
+        assert synced["tls"] == "skip"
+        assert synced["allow_uninspected_credentials"] is True
+
+        # Second create (osac-like profile): policy silent about the endpoint.
+        path = _ensure_provider_yaml(tmp_path, "matilda", provider_yaml, silent_policy)
+        carried = yaml.safe_load(path.read_text())["endpoints"][0]
+        assert carried["tls"] == "skip", "silent policy must not strip synced tls"
+        assert carried["allow_uninspected_credentials"] is True
+        assert carried["enforcement"] == "enforce"
+
     def test_github_provider_skipped_without_keychain_token(self, tmp_path: Path) -> None:
         config = MagicMock(vertex_project_id="", keychain_github="sandboxctl-github-token", config_dir=tmp_path)
         with (

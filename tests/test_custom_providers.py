@@ -23,6 +23,21 @@ from sandboxctl.doctor import CustomProvidersCheck
 from sandboxctl.models import Profile
 from sandboxctl.provider_profiles import custom_provider_profile
 
+
+@pytest.fixture(autouse=True)
+def _benign_exec_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default success outcome for osh.sandbox_exec_pipe_result.
+
+    Failure-loud injections (OPENCODE_CONFIG_CONTENT, auth.json) check the
+    exec outcome; tests that don't care get a benign success so unpatched
+    calls never reach a real gateway.
+    """
+    from sandboxctl import openshell as osh
+
+    ok = MagicMock(exit_code=0, stdout="configured\n", stderr="")
+    monkeypatch.setattr(osh, "sandbox_exec_pipe_result", MagicMock(return_value=ok))
+
+
 MY_LLM = CustomProviderConfig(
     base_url="https://host.example.com/api/v1",
     display_name="My LLM",
@@ -366,6 +381,10 @@ class TestPostLaunchSetup:
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=0, stdout="configured\n", stderr=""),
+            ) as mock_result,
             patch("sandboxctl.create.get_credential", side_effect=credential_for),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -379,7 +398,7 @@ class TestPostLaunchSetup:
         assert "sk-custom" not in env_scripts[0]
 
         # The provider block lands in the OPENCODE_CONFIG_CONTENT patch.
-        cfg_script = next(s for s in scripts if "OPENCODE_CONFIG_CONTENT" in s)
+        cfg_script = next(call.args[1] for call in mock_result.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(call))
         encoded = next(tok for tok in cfg_script.split() if tok.startswith("eyJ"))
         providers = json.loads(base64.b64decode(encoded))["provider"]
         block = providers["my-llm"]
@@ -398,6 +417,10 @@ class TestPostLaunchSetup:
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=0, stdout="configured\n", stderr=""),
+            ) as mock_result,
             patch("sandboxctl.create.get_credential", side_effect=credential_for),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -409,7 +432,7 @@ class TestPostLaunchSetup:
         assert len(matilda_scripts) == 1
         assert "matilda-secret" not in matilda_scripts[0]
 
-        cfg_script = next(s for s in scripts if "OPENCODE_CONFIG_CONTENT" in s)
+        cfg_script = next(call.args[1] for call in mock_result.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(call))
         encoded = next(tok for tok in cfg_script.split() if tok.startswith("eyJ"))
         block = json.loads(base64.b64decode(encoded))["provider"]["matilda"]
         assert block["options"]["baseURL"] == "https://matilda.maincode.com/api/v1/code"

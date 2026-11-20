@@ -36,6 +36,21 @@ from sandboxctl.models import Profile, SandboxConfig, WorkspaceConfig
 from sandboxctl.openshell import SandboxError
 
 
+@pytest.fixture(autouse=True)
+def _benign_exec_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default success outcome for osh.sandbox_exec_pipe_result.
+
+    Failure-loud injections (OPENCODE_CONFIG_CONTENT, auth.json) check the
+    exec outcome; tests that don't care get a benign success so unpatched
+    calls never reach a real gateway. Tests may override with their own
+    patch — nested patches take precedence.
+    """
+    from sandboxctl import openshell as osh
+
+    ok = MagicMock(exit_code=0, stdout="configured\n", stderr="")
+    monkeypatch.setattr(osh, "sandbox_exec_pipe_result", MagicMock(return_value=ok))
+
+
 class TestStageSkills:
     def test_copies_skills(self, tmp_path: Path) -> None:
         skills_src = tmp_path / "home" / ".claude" / "skills"
@@ -391,6 +406,20 @@ network_policies:
 class TestOpencodeConfigInjection:
     """Upsert semantics + auth.json + per-model context limits."""
 
+    @staticmethod
+    def _assert_valid_bash(script: str) -> None:
+        """The injected script must be valid bash.
+
+        A regression (2026-11-20) shipped an unclosed brace group: the shell
+        aborted with 'syntax error: unexpected end of file' while the
+        stdout-only exec helper silently discarded the failure — the
+        injection reported success and did nothing.
+        """
+        import subprocess
+
+        result = subprocess.run(["bash", "-n"], input=script, capture_output=True, text=True, check=False)
+        assert result.returncode == 0, f"invalid bash script: {result.stderr}"
+
     def test_config_content_upserts_instead_of_skip(self) -> None:
         """Re-injection must replace an existing export, not skip-if-present.
 
@@ -398,23 +427,33 @@ class TestOpencodeConfigInjection:
         changes) never reached running sandboxes — same failure mode as the
         rotated-credential bug fixed in c967321.
         """
-        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec:
+        ok = MagicMock(exit_code=0, stdout="OpenCode config content: configured\n", stderr="")
+        with patch("sandboxctl.openshell.sandbox_exec_pipe_result", return_value=ok) as mock_exec:
             _inject_opencode_config_content("mybox", {"model": "x"})
         script = mock_exec.call_args[0][1]
+        self._assert_valid_bash(script)
         assert "sed -i '/^export OPENCODE_CONFIG_CONTENT=/d'" in script
         assert "grep -q OPENCODE_CONFIG_CONTENT" not in script
         assert "OPENCODE_CONFIG_CONTENT" in script
 
+    def test_config_content_injection_failure_is_loud(self) -> None:
+        """A failing injection must raise, not silently do nothing."""
+        bad = MagicMock(exit_code=2, stdout="", stderr="bash: line 2: syntax error: unexpected end of file")
+        with patch("sandboxctl.openshell.sandbox_exec_pipe_result", return_value=bad):
+            with pytest.raises(SandboxError, match="injection failed"):
+                _inject_opencode_config_content("mybox", {"model": "x"})
+
     def test_auth_content_writes_auth_json(self) -> None:
         """opencode reads ~/.local/share/opencode/auth.json, not an env var."""
-        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec:
+        ok = MagicMock(exit_code=0, stdout="OpenCode authentication: configured\n", stderr="")
+        with patch("sandboxctl.openshell.sandbox_exec_pipe_result", return_value=ok) as mock_exec:
             _inject_opencode_auth_content("mybox", {"opencode-go": {"type": "api", "key": "k"}})
         script = mock_exec.call_args[0][1]
+        self._assert_valid_bash(script)
         assert "/sandbox/.local/share/opencode/auth.json" in script
         assert "chmod 600" in script
         # Legacy dead env-var export from older sandboxctl versions is removed.
         assert "sed -i '/^export OPENCODE_AUTH_CONTENT=/d'" in script
-        assert "OPENCODE_AUTH_CONTENT=" not in script.replace("sed -i '/^export OPENCODE_AUTH_CONTENT=/d'", "")
 
     def test_custom_provider_models_carry_context_limits(self) -> None:
         """Configured context_windows land as per-model limits in the patch."""
@@ -428,10 +467,12 @@ class TestOpencodeConfigInjection:
         config = MagicMock()
         config.opencode.openai_accounts = []
         config.opencode.go = False
+        ok = MagicMock(exit_code=0, stdout="configured\n", stderr="")
         with (
             patch("sandboxctl.create.resolved_custom_providers", return_value={"example": provider}),
             patch("sandboxctl.create.get_credential", return_value="sk-test"),
-            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+            patch("sandboxctl.openshell.sandbox_exec_pipe_result", return_value=ok) as mock_exec,
         ):
             _refresh_opencode_configuration("mybox", config, None)
 
@@ -597,14 +638,18 @@ class TestPostLaunchSetup:
         profile = Profile(name="test", mlflow=False)
 
         with (
-            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=0, stdout="configured\n", stderr=""),
+            ) as mock_result,
             patch("sandboxctl.create.get_credential", return_value="sk-x"),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 
-        cfg_calls = [c for c in mock_pipe.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(c)]
+        cfg_calls = [c for c in mock_result.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(c)]
         assert len(cfg_calls) == 1
         # Decode the base64 JSON payload embedded in the injection script.
         script = cfg_calls[0][0][1]
@@ -627,14 +672,18 @@ class TestPostLaunchSetup:
         profile = Profile(name="test", mlflow=False)
 
         with (
-            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_pipe,
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=0, stdout="configured\n", stderr=""),
+            ) as mock_result,
             patch("sandboxctl.create.get_credential", return_value="sk-x"),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
         ):
             post_launch_setup("mybox", profile, config)
 
-        cfg_script = next(call.args[1] for call in mock_pipe.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(call))
+        cfg_script = next(call.args[1] for call in mock_result.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(call))
         encoded = next(token for token in cfg_script.split() if token.startswith("eyJ"))
         providers = _json.loads(_b64.b64decode(encoded))["provider"]
         assert "gpt-5.6-sol" in providers["openai-work"]["models"]
@@ -692,6 +741,10 @@ class TestPostLaunchSetup:
 
         with (
             patch("sandboxctl.openshell.sandbox_exec_pipe", side_effect=fake_exec) as mock_pipe,
+            patch(
+                "sandboxctl.openshell.sandbox_exec_pipe_result",
+                return_value=MagicMock(exit_code=0, stdout="configured\n", stderr=""),
+            ) as mock_result,
             patch("sandboxctl.create.get_credential", return_value=None),
             patch("sandboxctl.create.Path.home", return_value=tmp_path / "nohome"),
             patch("sandboxctl.context.restore_claude_context", return_value=False),
@@ -702,7 +755,7 @@ class TestPostLaunchSetup:
         # Claude Code: .mcp.json written
         assert any(".mcp.json" in s for s in scripts)
         # opencode: mcp entry present in the injected OPENCODE_CONFIG_CONTENT
-        cfg_calls = [s for s in scripts if "OPENCODE_CONFIG_CONTENT" in s]
+        cfg_calls = [c.args[1] for c in mock_result.call_args_list if "OPENCODE_CONFIG_CONTENT" in str(c)]
         assert len(cfg_calls) == 1
         b64 = next(tok for tok in cfg_calls[0].split() if tok.startswith("eyJ"))
         patch_obj = _json.loads(_b64.b64decode(b64).decode())

@@ -19,6 +19,7 @@ from sandboxctl import openshell as osh
 from sandboxctl.config import SandboxctlConfig, resolved_custom_providers
 from sandboxctl.credentials import get_credential, upsert_bashrc_export
 from sandboxctl.models import ClaudePermissions, ClaudeSettings, ClaudeState, Profile
+from sandboxctl.openshell import SandboxError
 from sandboxctl.policy import prepare_policy_for_apply, record_policy_association
 from sandboxctl.provider_profiles import GITHUB_PROFILE, GOOGLE_VERTEX_AI_PROFILE, custom_provider_profile
 
@@ -183,16 +184,25 @@ def _inject_opencode_config_content(name: str, patch: dict) -> None:
     (new models, provider changes) propagates to running sandboxes on re-runs
     and `doctor --fix` instead of being skipped by a stale create-time value —
     the same failure mode fixed for rotated credentials in c967321.
+
+    Failure-loud: the outcome is checked (004 FR-002 pattern) because the
+    stdout-only exec helper silently discards shell syntax errors.
     """
     encoded = base64.b64encode(json.dumps(patch).encode()).decode()
-    osh.sandbox_exec_pipe(
-        name,
+    script = (
         "sed -i '/^export OPENCODE_CONFIG_CONTENT=/d' /sandbox/.bashrc 2>/dev/null; "
         '{ printf "export OPENCODE_CONFIG_CONTENT=\'" >> /sandbox/.bashrc && '
         f"echo {encoded} | base64 -d >> /sandbox/.bashrc && "
-        'printf "\'\\n" >> /sandbox/.bashrc; '
-        'echo "OpenCode config content: configured"',
+        'printf "\'\\n" >> /sandbox/.bashrc; }; '
+        'echo "OpenCode config content: configured"'
     )
+    outcome = osh.sandbox_exec_pipe_result(name, script)
+    if outcome.exit_code != 0 or "configured" not in outcome.stdout:
+        details = outcome.stderr.strip() or outcome.stdout.strip()
+        msg = f"OPENCODE_CONFIG_CONTENT injection failed (rc={outcome.exit_code})"
+        if details:
+            msg = f"{msg}: {details[:200]}"
+        raise SandboxError(msg)
 
 
 def _inject_opencode_auth_content(name: str, auth: dict) -> None:
@@ -204,14 +214,20 @@ def _inject_opencode_auth_content(name: str, auth: dict) -> None:
     from older sandboxctl versions is removed from the shell profile.
     """
     encoded = base64.b64encode(json.dumps(auth).encode()).decode()
-    osh.sandbox_exec_pipe(
-        name,
+    script = (
         "sed -i '/^export OPENCODE_AUTH_CONTENT=/d' /sandbox/.bashrc 2>/dev/null; "
         "mkdir -p /sandbox/.local/share/opencode && "
         f"echo {encoded} | base64 -d > /sandbox/.local/share/opencode/auth.json && "
         "chmod 600 /sandbox/.local/share/opencode/auth.json && "
-        'echo "OpenCode authentication: configured"',
+        'echo "OpenCode authentication: configured"'
     )
+    outcome = osh.sandbox_exec_pipe_result(name, script)
+    if outcome.exit_code != 0 or "configured" not in outcome.stdout:
+        details = outcome.stderr.strip() or outcome.stdout.strip()
+        msg = f"opencode auth.json injection failed (rc={outcome.exit_code})"
+        if details:
+            msg = f"{msg}: {details[:200]}"
+        raise SandboxError(msg)
 
 
 def _inject_env_secret(name: str, variable: str, value: str) -> None:

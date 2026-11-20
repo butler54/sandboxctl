@@ -945,4 +945,33 @@ def fix_sandbox_credentials(
                     details=f"Injection failed: {exc}",
                 )
             )
+
+    # Re-push the generated opencode configuration (OPENCODE_CONFIG_CONTENT).
+    # Credential fixes above refresh secrets; this refreshes the config patch
+    # itself so model-list additions and provider changes reach running
+    # sandboxes without recreation (the injection upserts).
+    try:
+        from sandboxctl.create import _refresh_opencode_configuration
+        from sandboxctl.profile import load_profile
+
+        try:
+            profile = load_profile(sandbox_name, config)
+        except FileNotFoundError:
+            profile = None
+        _refresh_opencode_configuration(sandbox_name, config, profile)
+        results.append(
+            FixResult(
+                success=True,
+                name="opencode config",
+                details="OPENCODE_CONFIG_CONTENT re-injected",
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        results.append(
+            FixResult(
+                success=False,
+                name="opencode config",
+                details=f"Re-injection failed: {exc}",
+            )
+        )
     return results

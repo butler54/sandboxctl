@@ -11,8 +11,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from sandboxctl.config import GatewayEntry
+from sandboxctl.config import CustomProviderConfig, GatewayEntry
 from sandboxctl.create import (
+    _inject_opencode_auth_content,
+    _inject_opencode_config_content,
+    _refresh_opencode_configuration,
     clone_repos,
     create_sandbox,
     generate_workspace,
@@ -437,6 +440,67 @@ network_policies:
 
         assert providers == []
         mock_create.assert_not_called()
+
+
+class TestOpencodeConfigInjection:
+    """Upsert semantics + auth.json + per-model context limits."""
+
+    def test_config_content_upserts_instead_of_skip(self) -> None:
+        """Re-injection must replace an existing export, not skip-if-present.
+
+        The old grep guard meant a regenerated patch (new models, provider
+        changes) never reached running sandboxes — same failure mode as the
+        rotated-credential bug fixed in c967321.
+        """
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec:
+            _inject_opencode_config_content("mybox", {"model": "x"})
+        script = mock_exec.call_args[0][1]
+        assert "sed -i '/^export OPENCODE_CONFIG_CONTENT=/d'" in script
+        assert "grep -q OPENCODE_CONFIG_CONTENT" not in script
+        assert "OPENCODE_CONFIG_CONTENT" in script
+
+    def test_auth_content_writes_auth_json(self) -> None:
+        """opencode reads ~/.local/share/opencode/auth.json, not an env var."""
+        with patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec:
+            _inject_opencode_auth_content("mybox", {"opencode-go": {"type": "api", "key": "k"}})
+        script = mock_exec.call_args[0][1]
+        assert "/sandbox/.local/share/opencode/auth.json" in script
+        assert "chmod 600" in script
+        # Legacy dead env-var export from older sandboxctl versions is removed.
+        assert "sed -i '/^export OPENCODE_AUTH_CONTENT=/d'" in script
+        assert "OPENCODE_AUTH_CONTENT=" not in script.replace("sed -i '/^export OPENCODE_AUTH_CONTENT=/d'", "")
+
+    def test_custom_provider_models_carry_context_limits(self) -> None:
+        """Configured context_windows land as per-model limits in the patch."""
+        provider = CustomProviderConfig(
+            base_url="https://api.example.com/v1",
+            display_name="Example",
+            models=["m-1m", "m-std"],
+            api_key_env="EXAMPLE_KEY",
+            context_windows={"m-1m": 1000000},
+        )
+        config = MagicMock()
+        config.opencode.openai_accounts = []
+        config.opencode.go = False
+        with (
+            patch("sandboxctl.create.resolved_custom_providers", return_value={"example": provider}),
+            patch("sandboxctl.create.get_credential", return_value="sk-test"),
+            patch("sandboxctl.openshell.sandbox_exec_pipe") as mock_exec,
+        ):
+            _refresh_opencode_configuration("mybox", config, None)
+
+        # Find the OPENCODE_CONFIG_CONTENT injection and decode its payload.
+        config_scripts = [
+            call.args[1] for call in mock_exec.call_args_list if "OPENCODE_CONFIG_CONTENT" in call.args[1]
+        ]
+        assert config_scripts, "OPENCODE_CONFIG_CONTENT was not injected"
+        import re as _re
+
+        b64 = _re.search(r"echo ([A-Za-z0-9+/=]+) \| base64 -d", config_scripts[0]).group(1)
+        patch_dict = json.loads(base64.b64decode(b64))
+        models = patch_dict["provider"]["example"]["models"]
+        assert models["m-1m"] == {"limit": {"context": 1000000}}
+        assert models["m-std"] == {}
 
 
 class TestPostLaunchSetup:

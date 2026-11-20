@@ -119,4 +119,6 @@ def test_go_auth_uses_opencode_runtime_auth_override() -> None:
     script = sandbox_exec.call_args.args[1]
     encoded = script.split("echo ")[1].split(" |", 1)[0]
     assert json.loads(base64.b64decode(encoded)) == {"opencode-go": {"type": "api", "key": "secret"}}
-    assert "OPENCODE_AUTH_CONTENT=$(echo" in script
+    # opencode reads credentials from auth.json, not an env var.
+    assert "/sandbox/.local/share/opencode/auth.json" in script
+    assert "chmod 600" in script

@@ -177,27 +177,39 @@ def _inject_opencode_config_content(name: str, patch: dict) -> None:
     opencode merges the JSON in OPENCODE_CONFIG_CONTENT into the user's own config at
     load time, so this adds providers/mcp/etc. without touching (or clobbering) a staged
     host opencode.jsonc. The JSON is base64-encoded into /sandbox/.bashrc to avoid any
-    shell-quoting issues. Idempotent: skipped if the export already exists.
+    shell-quoting issues.
+
+    Upsert: any existing export line is removed first so a regenerated patch
+    (new models, provider changes) propagates to running sandboxes on re-runs
+    and `doctor --fix` instead of being skipped by a stale create-time value —
+    the same failure mode fixed for rotated credentials in c967321.
     """
     encoded = base64.b64encode(json.dumps(patch).encode()).decode()
     osh.sandbox_exec_pipe(
         name,
-        "grep -q OPENCODE_CONFIG_CONTENT /sandbox/.bashrc 2>/dev/null || "
+        "sed -i '/^export OPENCODE_CONFIG_CONTENT=/d' /sandbox/.bashrc 2>/dev/null; "
         '{ printf "export OPENCODE_CONFIG_CONTENT=\'" >> /sandbox/.bashrc && '
         f"echo {encoded} | base64 -d >> /sandbox/.bashrc && "
-        'printf "\'\\n" >> /sandbox/.bashrc; }; '
+        'printf "\'\\n" >> /sandbox/.bashrc; '
         'echo "OpenCode config content: configured"',
     )
 
 
 def _inject_opencode_auth_content(name: str, auth: dict) -> None:
-    """Inject OpenCode auth without copying unrelated host-provider credentials."""
+    """Inject OpenCode auth without copying unrelated host-provider credentials.
+
+    opencode reads credentials from ~/.local/share/opencode/auth.json, not from
+    an env var (OPENCODE_AUTH_CONTENT exists nowhere in @opencode/cli) — write
+    the file directly, mode 600. Any legacy dead OPENCODE_AUTH_CONTENT export
+    from older sandboxctl versions is removed from the shell profile.
+    """
     encoded = base64.b64encode(json.dumps(auth).encode()).decode()
     osh.sandbox_exec_pipe(
         name,
-        "grep -q OPENCODE_AUTH_CONTENT /sandbox/.bashrc 2>/dev/null || "
-        f"{{ printf 'export OPENCODE_AUTH_CONTENT=$(echo {encoded} | base64 -d)\\n' "
-        ">> /sandbox/.bashrc; }; "
+        "sed -i '/^export OPENCODE_AUTH_CONTENT=/d' /sandbox/.bashrc 2>/dev/null; "
+        "mkdir -p /sandbox/.local/share/opencode && "
+        f"echo {encoded} | base64 -d > /sandbox/.local/share/opencode/auth.json && "
+        "chmod 600 /sandbox/.local/share/opencode/auth.json && "
         'echo "OpenCode authentication: configured"',
     )
 
@@ -544,6 +556,119 @@ def setup_providers(
     return providers
 
 
+def _refresh_opencode_configuration(name: str, config: SandboxctlConfig, profile: Profile | None) -> None:
+    """Inject the sandbox's opencode credentials, providers, and config patch.
+
+    Extracted from post_launch_setup so ``doctor --fix`` can re-push a
+    regenerated OPENCODE_CONFIG_CONTENT into running sandboxes: the injection
+    upserts, so model-list additions (e.g. a new free-tier model) and provider
+    changes propagate without recreating the sandbox.
+    """
+    # OpenAI API keys for opencode (#129): stage named accounts from the host keychain
+    # as OPENAI_API_KEY_<NAME> env vars (base64 to survive arbitrary key chars). The
+    # first account also sets OPENAI_API_KEY (opencode's built-in openai default).
+    # Each account also becomes a ready-to-use opencode provider (openai-<name>) so it
+    # is selectable in opencode's model picker with zero manual config (see below).
+    openai_accounts = list(config.opencode.openai_accounts)
+    configured_models = getattr(config.opencode, "openai_models", {})
+    if not isinstance(configured_models, dict):
+        configured_models = {}
+    account_user = os.environ.get("USER", "sandboxctl")
+    opencode_providers: dict[str, dict] = {}
+    for index, account in enumerate(openai_accounts):
+        _validate_repo_ref(account)  # reuse safe-name validation for the env var suffix
+        key = get_credential(f"sandboxctl-openai-{account}", account_user)
+        if not key:
+            typer.echo(f"  OpenAI ({account}): no keychain entry, skipped")
+            continue
+        env_suffix = re.sub(r"[^A-Z0-9]", "_", account.upper())
+        var_names = [f"OPENAI_API_KEY_{env_suffix}"]
+        if index == 0:
+            var_names.append("OPENAI_API_KEY")
+        for var in var_names:
+            _inject_env_secret(name, var, key)
+            typer.echo(f"  OpenAI ({account}): {var} configured")
+        # Build a selectable provider block for this account (#129). apiKey uses
+        # opencode's {env:VAR} interpolation so the secret stays in the env var.
+        provider_id = re.sub(r"[^a-z0-9-]", "-", f"openai-{account.lower()}")
+        opencode_providers[provider_id] = {
+            "npm": "@ai-sdk/openai",
+            "name": f"OpenAI ({account})",
+            "options": {"apiKey": f"{{env:OPENAI_API_KEY_{env_suffix}}}"},
+            "models": {model: {} for model in configured_models.get(account, _OPENAI_CURATED_MODELS)},
+        }
+
+    if config.opencode.go:
+        go_key = get_credential("sandboxctl-opencode-go", account_user)
+        if go_key:
+            _inject_opencode_auth_content(name, {"opencode-go": {"type": "api", "key": go_key}})
+            typer.echo("  OpenCode Go: configured")
+        else:
+            typer.echo("  OpenCode Go: no keychain entry, skipped")
+
+    # Custom OpenAI-compatible providers (#178, #205): each resolved provider has
+    # its API key injected and becomes a selectable opencode provider via the
+    # OPENCODE_CONFIG_CONTENT patch below. The legacy `matilda = true` flag
+    # resolves to the built-in matilda declaration (config.resolved_custom_providers).
+    # Missing credentials fail closed — a configured-but-unprovisioned provider
+    # must not silently degrade (#205).
+    for provider_id, provider in resolved_custom_providers(config.opencode).items():
+        key = get_credential(provider.keychain_service, account_user)
+        if not key:
+            raise RuntimeError(_missing_credential_message(provider_id, provider.keychain_service))
+        _inject_env_secret(name, provider.api_key_env, key)
+        typer.echo(f"  {provider.display_name}: {provider.api_key_env} configured")
+        # apiKey uses opencode's {env:VAR} interpolation so the secret stays in
+        # the env var and never lands in the injected config text.
+        opencode_providers[provider_id] = {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": provider.display_name,
+            "options": {"baseURL": provider.base_url, "apiKey": f"{{env:{provider.api_key_env}}}"},
+            "models": {
+                # Explicit context limits where configured: opencode's fallback
+                # for unknown models assumes 200k, truncating large-context
+                # models (EnMaaS free tier is 1M).
+                model: (
+                    {"limit": {"context": provider.context_windows[model]}} if model in provider.context_windows else {}
+                )
+                for model in provider.models
+            },
+        }
+
+    # Accumulate all generated opencode config into a single patch so it is injected once
+    # (OPENCODE_CONFIG_CONTENT holds one JSON value). Providers (#129) and the MCP server
+    # registration below (#123) both contribute to it.
+    opencode_config = _opencode_runtime_config(config, profile)
+    if opencode_providers:
+        opencode_config["provider"] = opencode_providers
+
+    # codebase-memory-mcp (#123): the base image ships this as a static binary
+    # (arm64-only). When present in the sandbox, register it as a local MCP server for
+    # both agents so it's actually usable, not just an inert binary on disk.
+    cbm_bin = "/usr/local/bin/codebase-memory-mcp"
+    cbm_present = "present" in osh.sandbox_exec_pipe(name, f"test -x {cbm_bin} && echo present || echo missing")
+    if cbm_present:
+        # opencode: merge an mcp entry (verified against opencode's McpLocalConfig schema).
+        opencode_config.setdefault("mcp", {})["codebase-memory"] = {
+            "type": "local",
+            "command": [cbm_bin],
+            "enabled": True,
+        }
+        # Claude Code: write /sandbox/.mcp.json with the equivalent mcpServers entry.
+        claude_mcp = json.dumps({"mcpServers": {"codebase-memory": {"command": cbm_bin}}})
+        encoded_mcp = base64.b64encode(claude_mcp.encode()).decode()
+        osh.sandbox_exec_pipe(
+            name,
+            f'echo {encoded_mcp} | base64 -d > /sandbox/.mcp.json; echo "codebase-memory MCP: registered"',
+        )
+
+    # Inject the combined opencode config via OPENCODE_CONFIG_CONTENT — opencode merges
+    # this JSON env var into the user's own config at load time, so providers and the MCP
+    # server are available without editing opencode.jsonc (#123, #129).
+    if opencode_config:
+        _inject_opencode_config_content(name, opencode_config)
+
+
 def post_launch_setup(
     name: str,
     profile: Profile,
@@ -635,101 +760,10 @@ def post_launch_setup(
         'echo "OpenCode YOLO: configured"',
     )
 
-    # OpenAI API keys for opencode (#129): stage named accounts from the host keychain
-    # as OPENAI_API_KEY_<NAME> env vars (base64 to survive arbitrary key chars). The
-    # first account also sets OPENAI_API_KEY (opencode's built-in openai default).
-    # Each account also becomes a ready-to-use opencode provider (openai-<name>) so it
-    # is selectable in opencode's model picker with zero manual config (see below).
-    openai_accounts = list(config.opencode.openai_accounts)
-    configured_models = getattr(config.opencode, "openai_models", {})
-    if not isinstance(configured_models, dict):
-        configured_models = {}
-    account_user = os.environ.get("USER", "sandboxctl")
-    opencode_providers: dict[str, dict] = {}
-    for index, account in enumerate(openai_accounts):
-        _validate_repo_ref(account)  # reuse safe-name validation for the env var suffix
-        key = get_credential(f"sandboxctl-openai-{account}", account_user)
-        if not key:
-            typer.echo(f"  OpenAI ({account}): no keychain entry, skipped")
-            continue
-        env_suffix = re.sub(r"[^A-Z0-9]", "_", account.upper())
-        var_names = [f"OPENAI_API_KEY_{env_suffix}"]
-        if index == 0:
-            var_names.append("OPENAI_API_KEY")
-        for var in var_names:
-            _inject_env_secret(name, var, key)
-            typer.echo(f"  OpenAI ({account}): {var} configured")
-        # Build a selectable provider block for this account (#129). apiKey uses
-        # opencode's {env:VAR} interpolation so the secret stays in the env var.
-        provider_id = re.sub(r"[^a-z0-9-]", "-", f"openai-{account.lower()}")
-        opencode_providers[provider_id] = {
-            "npm": "@ai-sdk/openai",
-            "name": f"OpenAI ({account})",
-            "options": {"apiKey": f"{{env:OPENAI_API_KEY_{env_suffix}}}"},
-            "models": {model: {} for model in configured_models.get(account, _OPENAI_CURATED_MODELS)},
-        }
-
-    if config.opencode.go:
-        go_key = get_credential("sandboxctl-opencode-go", account_user)
-        if go_key:
-            _inject_opencode_auth_content(name, {"opencode-go": {"type": "api", "key": go_key}})
-            typer.echo("  OpenCode Go: configured")
-        else:
-            typer.echo("  OpenCode Go: no keychain entry, skipped")
-
-    # Custom OpenAI-compatible providers (#178, #205): each resolved provider has
-    # its API key injected and becomes a selectable opencode provider via the
-    # OPENCODE_CONFIG_CONTENT patch below. The legacy `matilda = true` flag
-    # resolves to the built-in matilda declaration (config.resolved_custom_providers).
-    # Missing credentials fail closed — a configured-but-unprovisioned provider
-    # must not silently degrade (#205).
-    for provider_id, provider in resolved_custom_providers(config.opencode).items():
-        key = get_credential(provider.keychain_service, account_user)
-        if not key:
-            raise RuntimeError(_missing_credential_message(provider_id, provider.keychain_service))
-        _inject_env_secret(name, provider.api_key_env, key)
-        typer.echo(f"  {provider.display_name}: {provider.api_key_env} configured")
-        # apiKey uses opencode's {env:VAR} interpolation so the secret stays in
-        # the env var and never lands in the injected config text.
-        opencode_providers[provider_id] = {
-            "npm": "@ai-sdk/openai-compatible",
-            "name": provider.display_name,
-            "options": {"baseURL": provider.base_url, "apiKey": f"{{env:{provider.api_key_env}}}"},
-            "models": {model: {} for model in provider.models},
-        }
-
-    # Accumulate all generated opencode config into a single patch so it is injected once
-    # (OPENCODE_CONFIG_CONTENT holds one JSON value). Providers (#129) and the MCP server
-    # registration below (#123) both contribute to it.
-    opencode_config = _opencode_runtime_config(config, profile)
-    if opencode_providers:
-        opencode_config["provider"] = opencode_providers
-
-    # codebase-memory-mcp (#123): the base image ships this as a static binary
-    # (arm64-only). When present in the sandbox, register it as a local MCP server for
-    # both agents so it's actually usable, not just an inert binary on disk.
-    cbm_bin = "/usr/local/bin/codebase-memory-mcp"
-    cbm_present = "present" in osh.sandbox_exec_pipe(name, f"test -x {cbm_bin} && echo present || echo missing")
-    if cbm_present:
-        # opencode: merge an mcp entry (verified against opencode's McpLocalConfig schema).
-        opencode_config.setdefault("mcp", {})["codebase-memory"] = {
-            "type": "local",
-            "command": [cbm_bin],
-            "enabled": True,
-        }
-        # Claude Code: write /sandbox/.mcp.json with the equivalent mcpServers entry.
-        claude_mcp = json.dumps({"mcpServers": {"codebase-memory": {"command": cbm_bin}}})
-        encoded_mcp = base64.b64encode(claude_mcp.encode()).decode()
-        osh.sandbox_exec_pipe(
-            name,
-            f'echo {encoded_mcp} | base64 -d > /sandbox/.mcp.json; echo "codebase-memory MCP: registered"',
-        )
-
-    # Inject the combined opencode config via OPENCODE_CONFIG_CONTENT — opencode merges
-    # this JSON env var into the user's own config at load time, so providers and the MCP
-    # server are available without editing opencode.jsonc (#123, #129).
-    if opencode_config:
-        _inject_opencode_config_content(name, opencode_config)
+    # OpenCode provider/model configuration: credentials, provider blocks,
+    # and the OPENCODE_CONFIG_CONTENT patch. Extracted so doctor --fix can
+    # re-push a regenerated patch into running sandboxes.
+    _refresh_opencode_configuration(name, config, profile)
 
     if profile.ssh:
         typer.echo("Configuring SSH proxy hosts...")

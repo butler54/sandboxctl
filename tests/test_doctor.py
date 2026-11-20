@@ -620,9 +620,13 @@ class TestOrchestration:
             patch("sandboxctl.doctor.osh.sandbox_exec_pipe"),
             patch("sandboxctl.doctor.osh.sandbox_upload"),
             patch("sandboxctl.doctor.list_profiles", return_value=[]),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
         ):
             results = fix_sandbox_credentials("mybox", cfg)
-        assert len(results) == len(ALL_CHECKS)
+        # All credential checks plus the opencode-config re-injection step.
+        assert len(results) == len(ALL_CHECKS) + 1
+        assert results[-1].name == "opencode config"
 
     def test_fix_sandbox_best_effort(self) -> None:
         """One fix succeeds, another raises — both are returned."""
@@ -638,13 +642,34 @@ class TestOrchestration:
         fail_check.check_name = "fail-check"
         fail_check.fix.side_effect = RuntimeError("injection error")
 
-        with patch("sandboxctl.doctor.diagnose", return_value=health_report):
+        with (
+            patch("sandboxctl.doctor.diagnose", return_value=health_report),
+            patch("sandboxctl.create.get_credential", return_value=None),
+            patch("sandboxctl.openshell.sandbox_exec_pipe"),
+        ):
             results = fix_sandbox_credentials("mybox", cfg, checks=[ok_check, fail_check])
 
-        assert len(results) == 2
+        # The two checks plus the opencode-config re-injection step.
+        assert len(results) == 3
         assert results[0].success is True
         assert results[1].success is False
         assert "injection error" in results[1].details
+
+    def test_fix_sandbox_reinjects_opencode_config(self) -> None:
+        """doctor --fix re-pushes a regenerated OPENCODE_CONFIG_CONTENT."""
+        cfg = _make_config()
+        health_report = MagicMock(healthy=True)
+        with (
+            patch("sandboxctl.doctor.diagnose", return_value=health_report),
+            patch("sandboxctl.create._refresh_opencode_configuration") as mock_refresh,
+            patch("sandboxctl.profile.load_profile", side_effect=FileNotFoundError("no profile")),
+        ):
+            results = fix_sandbox_credentials("mybox", cfg, checks=[])
+
+        mock_refresh.assert_called_once()
+        assert results[-1].success is True
+        assert results[-1].name == "opencode config"
+        assert "re-injected" in results[-1].details
 
 
 # =========================================================================

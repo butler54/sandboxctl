@@ -129,6 +129,11 @@ class CustomProviderConfig(_SubConfig):
     display_name: str = ""
     # Optional allowlist of model IDs selectable as <provider-id>/<model-id>.
     models: list[str] = Field(default_factory=list)
+    # Optional per-model context window sizes (tokens). Without these,
+    # opencode's fallback assumes 200k for unknown models — silently
+    # truncating planning for large-context models (e.g. the 1M-context
+    # EnMaaS free tier) inside sandboxes.
+    context_windows: dict[str, int] = Field(default_factory=dict)
     # Env var injected into the sandbox holding the API key. Defaults to the
     # uppercased provider id (non-alphanumeric → "_") plus "_API_KEY".
     api_key_env: str = ""
@@ -237,6 +242,8 @@ class ResolvedCustomProvider:
     models: tuple[str, ...]
     api_key_env: str
     keychain_service: str
+    # Per-model context window sizes (tokens); empty when unconfigured.
+    context_windows: dict[str, int] = dataclasses.field(default_factory=dict)
 
 
 # The built-in declaration the legacy `matilda = true` flag expands to.
@@ -272,6 +279,7 @@ def resolved_custom_providers(opencode: OpencodeConfig) -> dict[str, ResolvedCus
             models=tuple(provider.models),
             api_key_env=api_key_env,
             keychain_service=provider.keychain_service or f"sandboxctl-{provider_id}-api-key",
+            context_windows=dict(getattr(provider, "context_windows", {}) or {}),
         )
     if getattr(opencode, "matilda", False) is True and "matilda" not in resolved:
         resolved["matilda"] = MATILDA_PROVIDER
